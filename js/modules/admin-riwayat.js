@@ -20,7 +20,7 @@ App.registerModule({
         <span style="color:var(--muted); font-size:13px;">s/d</span>
         <input type="date" id="rw-to" />
         <select id="rw-employee"><option value="">Semua karyawan</option></select>
-        <button class="btn-mini" id="rw-export" type="button" style="margin-left:auto;">⬇️ Export CSV</button>
+        <button class="btn-mini" id="rw-export" type="button" style="margin-left:auto;">⬇️ Export Excel</button>
       </div>
       <table class="data">
         <thead><tr><th>Tanggal</th><th>Karyawan</th><th>Masuk</th><th>Pulang</th><th>Alamat</th><th>Foto</th><th>Status</th></tr></thead>
@@ -38,7 +38,7 @@ App.registerModule({
       this._employees.map((p) => `<option value="${p.id}">${util.escapeHtml(p.full_name || "(tanpa nama)")}</option>`).join("");
 
     ["rw-from", "rw-to", "rw-employee"].forEach((id) => (document.getElementById(id).onchange = () => this.load()));
-    document.getElementById("rw-export").onclick = () => this.exportCSV();
+    document.getElementById("rw-export").onclick = () => this.exportExcel();
     await this.load();
   },
 
@@ -77,10 +77,11 @@ App.registerModule({
     }).join("");
   },
 
-  exportCSV() {
+  exportExcel() {
     const { util } = this._ctx;
     const rows = this._rows || [];
     if (!rows.length) { alert("Tidak ada data untuk diekspor pada rentang ini."); return; }
+    if (typeof XLSX === "undefined") { alert("Modul Excel belum termuat, coba muat ulang halaman (Ctrl+Shift+R)."); return; }
     const nameOf = (id) => (this._employees.find((p) => p.id === id) || {}).full_name || "—";
 
     const headers = [
@@ -88,18 +89,14 @@ App.registerModule({
       "Alamat Masuk", "Alamat Pulang", "Latitude Masuk", "Longitude Masuk",
       "Latitude Pulang", "Longitude Pulang", "Foto Masuk (URL)", "Foto Pulang (URL)",
     ];
-    const esc = (v) => {
-      const s = v === null || v === undefined ? "" : String(v);
-      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-    };
-    const lines = [headers.map(esc).join(",")];
+    const aoa = [headers];
     rows.forEach((r) => {
-      lines.push([
+      aoa.push([
         r.date,
         nameOf(r.user_id),
         util.timeStr(r.check_in),
         util.timeStr(r.check_out),
-        r.status,
+        r.status || "",
         r.check_in_address || "",
         r.check_out_address || "",
         r.check_in_lat ?? "",
@@ -108,20 +105,20 @@ App.registerModule({
         r.check_out_lng ?? "",
         r.check_in_photo_url || "",
         r.check_out_photo_url || "",
-      ].map(esc).join(","));
+      ]);
     });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [
+      { wch: 12 }, { wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 12 },
+      { wch: 34 }, { wch: 34 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+      { wch: 34 }, { wch: 34 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Absensi");
 
     const from = document.getElementById("rw-from").value;
     const to = document.getElementById("rw-to").value;
-    const csv = "\uFEFF" + lines.join("\r\n"); // BOM agar Excel baca UTF-8 (nama & alamat) dengan benar
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `absensi_${from}_sd_${to}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    XLSX.writeFile(wb, `absensi_${from}_sd_${to}.xlsx`);
   },
 });
