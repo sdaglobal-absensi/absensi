@@ -147,6 +147,18 @@ p.form-sub{font-size:13.5px; color:var(--muted); margin:0 0 24px;}
 .btn-out{background:#F2A65A; color:#3B2408;}
 .btn-out:disabled{background:rgba(255,255,255,.14); color:rgba(255,255,255,.4); cursor:not-allowed;}
 
+/* Foto absen hari ini (muncul di clock-card setelah absen masuk/pulang) */
+.today-photos{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
+.today-photo-card{
+  display:flex; align-items:center; gap:9px; text-decoration:none; color:inherit;
+  background:rgba(255,255,255,.08); border-radius:12px; padding:6px; padding-right:12px;
+  transition:background .15s;
+}
+.today-photo-card:hover{background:rgba(255,255,255,.14);}
+.today-photo-card img{width:44px; height:44px; border-radius:9px; object-fit:cover; flex-shrink:0;}
+.today-photo-label{font-size:12px; font-weight:700; color:#fff;}
+.today-photo-addr{font-size:11px; color:#B9C0DE; max-width:180px; margin-top:2px;}
+
 /* Punch-card ledger rows */
 .ledger{display:flex; flex-direction:column; gap:10px;}
 .ticket{

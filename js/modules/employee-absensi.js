@@ -30,6 +30,7 @@ App.registerModule({
           <div class="date mono" id="clock-date">—</div>
           <div class="time mono" id="clock-time">00:00:00</div>
           <div class="clock-status" id="today-status"><span class="dot"></span><span>Memuat status…</span></div>
+          <div class="today-photos" id="today-photos"></div>
         </div>
         <div class="clock-actions">
           <button class="btn-clock btn-in" id="btn-checkin">Absen Masuk</button>
@@ -71,6 +72,7 @@ App.registerModule({
   render() {
     const { util } = this._ctx;
     const el = document.getElementById("today-status");
+    const photosEl = document.getElementById("today-photos");
     const btnIn = document.getElementById("btn-checkin");
     const btnOut = document.getElementById("btn-checkout");
     if (!el) return; // modul sudah di-unmount
@@ -86,6 +88,30 @@ App.registerModule({
       el.innerHTML = `<span class="dot"></span><span>Selesai · ${util.timeStr(row.check_in)} – ${util.timeStr(row.check_out)}</span>`;
       btnIn.disabled = true; btnOut.disabled = true;
     }
+
+    // Tampilkan foto + alamat masuk/pulang begitu tersedia
+    if (photosEl) {
+      const cards = [];
+      if (row && row.check_in_photo_url) {
+        cards.push(this._photoCardHTML("Masuk", util.timeStr(row.check_in), row.check_in_photo_url, row.check_in_address));
+      }
+      if (row && row.check_out_photo_url) {
+        cards.push(this._photoCardHTML("Pulang", util.timeStr(row.check_out), row.check_out_photo_url, row.check_out_address));
+      }
+      photosEl.innerHTML = cards.join("");
+    }
+  },
+
+  _photoCardHTML(label, time, photoUrl, address) {
+    const { util } = this._ctx;
+    return `
+      <a href="${photoUrl}" target="_blank" rel="noopener" class="today-photo-card">
+        <img src="${photoUrl}" alt="Foto ${label}" />
+        <div class="today-photo-info">
+          <div class="today-photo-label">${label} · ${time}</div>
+          ${address ? `<div class="today-photo-addr">📍 ${util.escapeHtml(address)}</div>` : ""}
+        </div>
+      </a>`;
   },
 
   /* ================= MODAL: kamera + lokasi ================= */
@@ -186,11 +212,7 @@ App.registerModule({
         this._loc = { lat, lng, address: `${lat.toFixed(5)}, ${lng.toFixed(5)}` };
         txt.textContent = "Mendeteksi alamat…";
         try {
-          const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=id`);
-          const d = await res.json();
-          const parts = [d.locality, d.city && d.city !== d.locality ? d.city : null, d.principalSubdivision]
-            .filter(Boolean);
-          const address = parts.length ? parts.join(", ") : this._loc.address;
+          const address = await this._reverseGeocode(lat, lng);
           this._loc.address = address;
           locEl.className = "cam-loc ok";
           txt.textContent = "📍 " + address;
@@ -205,6 +227,40 @@ App.registerModule({
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     );
+  },
+
+  async _reverseGeocode(lat, lng) {
+    // Sumber utama: Nominatim (OpenStreetMap) — kasih nama jalan, kelurahan, kecamatan, kota lengkap
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=id`
+      );
+      if (res.ok) {
+        const d = await res.json();
+        const a = d.address || {};
+        const jalan = [a.road, a.house_number].filter(Boolean).join(" No. ");
+        const parts = [
+          jalan || null,
+          a.village || a.suburb || a.neighbourhood || null,
+          a.city_district || a.county || null,
+          a.city || a.town || a.municipality || null,
+          a.state || null,
+        ].filter(Boolean);
+        // hilangkan duplikat berturutan (kadang kecamatan == kota)
+        const clean = parts.filter((p, i) => p !== parts[i - 1]);
+        if (clean.length) return clean.join(", ");
+      }
+    } catch (e) { /* lanjut ke fallback */ }
+
+    // Fallback: BigDataCloud (kalau Nominatim gagal/limit)
+    try {
+      const res2 = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=id`);
+      const d2 = await res2.json();
+      const parts2 = [d2.locality, d2.city && d2.city !== d2.locality ? d2.city : null, d2.principalSubdivision].filter(Boolean);
+      if (parts2.length) return parts2.join(", ");
+    } catch (e) { /* lanjut ke koordinat */ }
+
+    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   },
 
   takeShot() {
