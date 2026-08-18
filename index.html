@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Absensi — Portal Karyawan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<!-- ============ LOGIN / SIGNUP ============ -->
+<div id="screen-login">
+  <div class="login-card">
+    <div class="brand">
+      <div class="brand-mark">A</div>
+      <div>
+        <div class="brand-name">Absensi</div>
+        <div class="brand-sub">Portal kehadiran karyawan</div>
+      </div>
+    </div>
+
+    <div id="auth-msg" class="auth-msg"></div>
+
+    <div id="mode-login">
+      <h1 class="form-title">Masuk</h1>
+      <p class="form-sub">Gunakan email dan kata sandi akun Anda.</p>
+      <div class="field"><label>Email</label><input id="li-email" type="email" placeholder="nama@perusahaan.com" /></div>
+      <div class="field"><label>Kata sandi</label><input id="li-pass" type="password" placeholder="••••••••" /></div>
+      <button class="btn-primary" id="btn-login">Masuk</button>
+      <div class="switch-mode">Belum punya akun? <button id="go-signup">Daftar</button></div>
+    </div>
+
+    <div id="mode-signup" style="display:none;">
+      <h1 class="form-title">Buat akun karyawan</h1>
+      <p class="form-sub">Akun baru otomatis berperan sebagai karyawan.</p>
+      <div class="field"><label>Nama lengkap</label><input id="su-name" type="text" placeholder="Nama Anda" /></div>
+      <div class="field"><label>Email</label><input id="su-email" type="email" placeholder="nama@perusahaan.com" /></div>
+      <div class="field"><label>Kata sandi</label><input id="su-pass" type="password" placeholder="Minimal 6 karakter" /></div>
+      <button class="btn-primary" id="btn-signup">Daftar</button>
+      <div class="switch-mode">Sudah punya akun? <button id="go-login">Masuk</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ APP SHELL ============ -->
+<div id="screen-app">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">A</div>
+        <div>
+          <div class="brand-name">Absensi</div>
+          <div class="brand-sub">Portal kehadiran</div>
+        </div>
+      </div>
+      <div class="nav-group-label">Menu</div>
+      <!-- Diisi otomatis oleh core.js berdasarkan modul yang terdaftar & role pengguna -->
+      <nav id="sidebar-nav"></nav>
+      <div class="sidebar-footer"></div>
+    </aside>
+
+    <div class="main">
+      <div class="topbar">
+        <div class="who">
+          <div class="name" id="who-name">—</div>
+          <div class="role" id="who-role">—</div>
+        </div>
+        <div class="avatar" id="who-avatar">—</div>
+        <button class="btn-logout" id="btn-logout">Keluar</button>
+      </div>
+      <div class="content">
+        <!-- Setiap modul me-render dirinya sendiri di sini -->
+        <div id="module-container"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Inti aplikasi (jangan diedit untuk menambah menu) ===== -->
+<script src="js/supabaseClient.js"></script>
+<script src="js/core.js"></script>
+<script src="js/auth.js"></script>
+
+<!-- ===== Modul menu — tambah/hapus menu cukup tambah/hapus baris <script> di sini ===== -->
+<script src="js/modules/employee-absensi.js"></script>
+<script src="js/modules/employee-riwayat.js"></script>
+<script src="js/modules/admin-ringkasan.js"></script>
+<script src="js/modules/admin-riwayat.js"></script>
+<script src="js/modules/admin-karyawan.js"></script>
+
+<!-- ===== Jalankan aplikasi ===== -->
+<script>App.init();</script>
+</body>
+</html>
