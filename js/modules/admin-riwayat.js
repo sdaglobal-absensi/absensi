@@ -22,8 +22,8 @@ App.registerModule({
         <select id="rw-employee"><option value="">Semua karyawan</option></select>
       </div>
       <table class="data">
-        <thead><tr><th>Tanggal</th><th>Karyawan</th><th>Masuk</th><th>Pulang</th><th>Status</th></tr></thead>
-        <tbody id="rw-body"><tr><td colspan="5">Memuat…</td></tr></tbody>
+        <thead><tr><th>Tanggal</th><th>Karyawan</th><th>Masuk</th><th>Pulang</th><th>Alamat</th><th>Foto</th><th>Status</th></tr></thead>
+        <tbody id="rw-body"><tr><td colspan="7">Memuat…</td></tr></tbody>
       </table>
     `;
     const { sb, util } = ctx;
@@ -51,15 +51,26 @@ App.registerModule({
     const { data, error } = await q;
 
     const body = document.getElementById("rw-body");
-    if (error || !data || data.length === 0) { body.innerHTML = '<tr><td colspan="5">Tidak ada data pada rentang ini.</td></tr>'; return; }
+    if (error || !data || data.length === 0) { body.innerHTML = '<tr><td colspan="7">Tidak ada data pada rentang ini.</td></tr>'; return; }
     const nameOf = (id) => (this._employees.find((p) => p.id === id) || {}).full_name || "—";
-    body.innerHTML = data.map((r) => `
+    body.innerHTML = data.map((r) => {
+      const address = r.check_in_address || r.check_out_address || "—";
+      const photoIn = r.check_in_photo_url;
+      const photoOut = r.check_out_photo_url;
+      const photos = `
+        ${photoIn ? `<a href="${photoIn}" target="_blank" rel="noopener" title="Foto masuk"><img src="${photoIn}" style="width:30px;height:30px;border-radius:6px;object-fit:cover;border:1px solid var(--border);margin-right:4px;" /></a>` : ""}
+        ${photoOut ? `<a href="${photoOut}" target="_blank" rel="noopener" title="Foto pulang"><img src="${photoOut}" style="width:30px;height:30px;border-radius:6px;object-fit:cover;border:1px solid var(--border);" /></a>` : ""}
+      `.trim();
+      return `
       <tr>
         <td class="mono">${r.date}</td>
         <td>${util.escapeHtml(nameOf(r.user_id))}</td>
         <td class="mono">${util.timeStr(r.check_in)}</td>
         <td class="mono">${util.timeStr(r.check_out)}</td>
+        <td style="max-width:200px; font-size:12.5px;">${util.escapeHtml(address)}</td>
+        <td>${photos || "—"}</td>
         <td><span class="badge ${r.status}">${r.status}</span></td>
-      </tr>`).join("");
+      </tr>`;
+    }).join("");
   },
 });

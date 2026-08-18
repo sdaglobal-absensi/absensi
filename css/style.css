@@ -199,6 +199,42 @@ table.data td.mono{font-family:'IBM Plex Mono',monospace;}
 .btn-mini{padding:6px 12px; border-radius:7px; border:1px solid var(--border); background:#fff; font-size:12px; font-weight:600;}
 .btn-mini:hover{border-color:var(--accent); color:var(--accent);}
 
+/* ---------- Modal absen: kamera + lokasi ---------- */
+.cam-overlay{
+  position:fixed; inset:0; background:rgba(20,33,61,.55); backdrop-filter:blur(2px);
+  display:flex; align-items:center; justify-content:center; z-index:100; padding:16px;
+}
+.cam-modal{
+  width:100%; max-width:380px; background:var(--card); border-radius:18px; overflow:hidden;
+  box-shadow:0 20px 60px rgba(20,33,61,.3);
+}
+.cam-head{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:16px 18px; border-bottom:1px solid var(--border);
+}
+.cam-head .title{font-weight:700; font-size:15px;}
+.cam-head button{border:none; background:none; font-size:16px; color:var(--muted); padding:4px;}
+.cam-body{padding:16px 18px 18px;}
+.cam-stage{
+  position:relative; width:100%; aspect-ratio:4/3; background:#0c1226;
+  border-radius:12px; overflow:hidden; margin-bottom:12px;
+}
+.cam-stage video, .cam-stage img{width:100%; height:100%; object-fit:cover; display:block;}
+.cam-stage .cam-hint{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  color:#B9C0DE; font-size:12.5px; text-align:center; padding:20px;
+}
+.cam-loc{
+  display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--muted);
+  background:var(--paper); border-radius:9px; padding:9px 11px; margin-bottom:14px; line-height:1.4;
+}
+.cam-loc .dot{margin-top:4px; background:#F2A65A;}
+.cam-loc.ok .dot{background:#7CD8B8;}
+.cam-loc.err .dot{background:var(--danger);}
+.cam-actions{display:flex; gap:8px;}
+.cam-actions .btn-mini{flex:1; padding:10px 12px;}
+.cam-actions .btn-primary{flex:1.4; margin-top:0; width:auto;}
+
 @media(max-width:860px){
   .sidebar{position:fixed; left:0; top:0; z-index:20; transform:translateX(-100%); transition:transform .2s;}
   .sidebar.open{transform:translateX(0);}

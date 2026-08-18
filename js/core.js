@@ -32,6 +32,8 @@ window.App = (function () {
       const d = new Date(row.date + "T00:00:00");
       const dow = d.toLocaleDateString("id-ID", { weekday: "short" });
       const dnum = d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" });
+      const photo = row.check_out_photo_url || row.check_in_photo_url;
+      const address = row.check_out_address || row.check_in_address;
       return `
         <div class="ticket">
           <div class="stub"><div class="dow">${dow}</div><div>${dnum}</div></div>
@@ -41,6 +43,8 @@ window.App = (function () {
               <div><div class="t-label">Masuk</div><div class="t-value">${util.timeStr(row.check_in)}</div></div>
               <div><div class="t-label">Pulang</div><div class="t-value">${util.timeStr(row.check_out)}</div></div>
             </div>
+            ${address ? `<div style="font-size:12px; color:var(--muted); max-width:220px;">📍 ${util.escapeHtml(address)}</div>` : ""}
+            ${photo ? `<a href="${photo}" target="_blank" rel="noopener"><img src="${photo}" alt="foto absen" style="width:38px;height:38px;border-radius:8px;object-fit:cover;border:1px solid var(--border);" /></a>` : ""}
             <span class="badge ${row.status}">${row.status}</span>
           </div>
         </div>`;
