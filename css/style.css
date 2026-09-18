@@ -88,6 +88,20 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary-lig
 }
 .form-section-label:first-of-type { margin-top: 4px; padding-top: 0; border-top: none; }
 .field-hint { margin: -8px 0 16px; }
+
+/* ---------------- Search Select ---------------- */
+.search-select { position: relative; display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.search-select label { margin: 0; padding: 0; }
+.search-select input[type="text"] { width: 100%; }
+.search-select-list {
+  position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; z-index: 20;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  max-height: 200px; overflow-y: auto; box-shadow: 0 6px 16px rgba(27,31,29,0.12);
+}
+.search-option { padding: 9px 12px; font-size: 0.88rem; cursor: pointer; }
+.search-option:hover { background: var(--bg); }
+.search-option.muted { cursor: default; }
+.search-option.muted:hover { background: none; }
 .checkbox-row { flex-direction: row; align-items: center; gap: 8px; }
 .checkbox-row input { width: auto; }
 

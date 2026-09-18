@@ -178,6 +178,84 @@ export function fmtRupiah(n) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 }
 
+// =====================================================================
+// SEARCH SELECT — dropdown dengan pencarian (menggantikan <select> biasa
+// untuk pilihan yang datanya banyak/berasal dari master data)
+// =====================================================================
+export function searchSelectHtml({ id, label, placeholder = "Ketik untuk cari…", required = false, hint = "" }) {
+  return `
+    <div class="search-select" data-ss-id="${id}">
+      <label for="${id}-input">${label}</label>
+      <input type="text" id="${id}-input" autocomplete="off" placeholder="${placeholder}" ${required ? "required" : ""}>
+      <input type="hidden" id="${id}-value">
+      <div class="search-select-list hidden" id="${id}-list"></div>
+      ${hint ? `<span class="small muted">${hint}</span>` : ""}
+    </div>
+  `;
+}
+
+// options: array apa saja. getLabel/getValue: cara membaca teks & nilainya.
+export function wireSearchSelect(id, options, { getLabel = o => String(o), getValue = o => String(o), onSelect } = {}) {
+  const input = document.getElementById(`${id}-input`);
+  const hidden = document.getElementById(`${id}-value`);
+  const list = document.getElementById(`${id}-list`);
+  if (!input) return null;
+
+  function renderList(filter = "") {
+    const f = filter.toLowerCase();
+    const filtered = options.filter(o => getLabel(o).toLowerCase().includes(f));
+    list.innerHTML = filtered.length
+      ? filtered.map(o => `<div class="search-option" data-value="${escapeAttr(getValue(o))}">${getLabel(o)}</div>`).join("")
+      : `<div class="search-option muted">Tidak ada hasil — cek Master Data</div>`;
+    list.classList.remove("hidden");
+  }
+
+  input.addEventListener("focus", () => renderList(input.value));
+  input.addEventListener("input", () => { hidden.value = ""; renderList(input.value); });
+  list.addEventListener("mousedown", e => {
+    const opt = e.target.closest(".search-option");
+    if (!opt || opt.dataset.value === undefined) return;
+    const o = options.find(x => getValue(x) === opt.dataset.value);
+    if (!o) return;
+    input.value = getLabel(o);
+    hidden.value = getValue(o);
+    list.classList.add("hidden");
+    if (onSelect) onSelect(o);
+  });
+  document.addEventListener("click", e => {
+    if (!input.contains(e.target) && !list.contains(e.target)) list.classList.add("hidden");
+  });
+
+  const controller = {
+    setValue(value, labelText) { input.value = labelText ?? value ?? ""; hidden.value = value ?? ""; },
+    clear() { input.value = ""; hidden.value = ""; },
+    setOptions(newOptions) { options = newOptions; },
+    get value() { return hidden.value; },
+  };
+  return controller;
+}
+
+function escapeAttr(s) {
+  return String(s).replace(/"/g, "&quot;");
+}
+
+// Hitung "lama bekerja" dari tanggal masuk ke hari ini, format "X tahun Y bulan"
+export function lamaBekerja(joinDateStr) {
+  if (!joinDateStr) return "-";
+  const start = new Date(joinDateStr);
+  const now = new Date();
+  let months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+  if (now.getDate() < start.getDate()) months--;
+  if (months < 0) return "-";
+  const years = Math.floor(months / 12);
+  const remMonths = months % 12;
+  if (years === 0 && remMonths === 0) return "Baru bergabung";
+  const parts = [];
+  if (years > 0) parts.push(`${years} tahun`);
+  if (remMonths > 0) parts.push(`${remMonths} bulan`);
+  return parts.join(" ");
+}
+
 // CSV export helper
 export function exportCSV(filename, rows) {
   if (!rows.length) { toast("Tidak ada data untuk diexport", "error"); return; }

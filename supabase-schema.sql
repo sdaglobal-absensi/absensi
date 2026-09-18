@@ -20,14 +20,40 @@ create table if not exists public.profiles (
   full_name       text not null,
   role            text not null default 'karyawan' check (role in ('admin','hr','karyawan')),
   department      text,
+  bagian          text,
   position        text,
+  grade           text,
+  level           text,
+  unit_pt         text,
+  lokasi_kerja    text,
+  status_karyawan text check (status_karyawan in ('bulanan','harian')),
   phone           text,
+  alamat          text,
+  nik_ktp         text,
+  npwp            text,
   photo_url       text,
   join_date       date default current_date,
   is_active       boolean not null default true,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()
 );
+
+-- Untuk database yang sudah pernah menjalankan versi schema sebelumnya:
+alter table public.profiles add column if not exists bagian text;
+alter table public.profiles add column if not exists grade text;
+alter table public.profiles add column if not exists level text;
+alter table public.profiles add column if not exists unit_pt text;
+alter table public.profiles add column if not exists lokasi_kerja text;
+alter table public.profiles add column if not exists status_karyawan text;
+alter table public.profiles add column if not exists alamat text;
+alter table public.profiles add column if not exists nik_ktp text;
+alter table public.profiles add column if not exists npwp text;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'profiles_status_karyawan_check') then
+    alter table public.profiles add constraint profiles_status_karyawan_check
+      check (status_karyawan in ('bulanan','harian'));
+  end if;
+end $$;
 
 comment on table public.profiles is 'Data profil & role setiap pengguna. role: admin | hr | karyawan';
 
