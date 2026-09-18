@@ -22,16 +22,22 @@ export async function render(container, user) {
           <input type="hidden" name="grade">
           <input type="hidden" name="level">
 
-          <div class="form-section-label">Data Akun</div>
+          <div class="form-section-label">Data Pribadi</div>
           <div class="form-row two-col">
             <label>Nama Lengkap <input name="full_name" required></label>
-            <label>Kode Karyawan <input name="employee_code" required></label>
-          </div>
-          <div class="form-row two-col" id="email-row">
-            <label>Email <input type="email" name="email" required></label>
-            <label>Password Awal <input type="text" name="password" placeholder="min. 6 karakter"></label>
+            <label>NIK KTP <input name="nik_ktp" inputmode="numeric" maxlength="16"></label>
           </div>
           <div class="form-row two-col">
+            <label>No. HP <input name="phone"></label>
+            <label>NPWP <input name="npwp"></label>
+          </div>
+          <div class="form-row">
+            <label>Alamat <input name="alamat"></label>
+          </div>
+
+          <div class="form-section-label">Data Akun</div>
+          <div class="form-row two-col">
+            <label>Kode Karyawan <input name="employee_code" required></label>
             <label>Role
               <select name="role">
                 <option value="karyawan">Karyawan</option>
@@ -39,7 +45,13 @@ export async function render(container, user) {
                 <option value="admin">Admin</option>
               </select>
             </label>
-            <label class="checkbox-row" style="align-self:end; padding-bottom:10px;"><input type="checkbox" name="is_active" checked> Akun aktif</label>
+          </div>
+          <div class="form-row two-col" id="email-row">
+            <label>Email <input type="email" name="email" required></label>
+            <label>Password Awal <input type="text" name="password" placeholder="min. 6 karakter"></label>
+          </div>
+          <div class="form-row">
+            <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Akun aktif</label>
           </div>
 
           <div class="form-section-label">Penempatan</div>
@@ -66,16 +78,6 @@ export async function render(container, user) {
             </label>
             <label>Tanggal Masuk <input type="date" name="join_date" id="join_date"></label>
             <label>Lama Bekerja <input type="text" id="lama_bekerja" disabled placeholder="-"></label>
-          </div>
-
-          <div class="form-section-label">Data Pribadi</div>
-          <div class="form-row two-col">
-            <label>No. HP <input name="phone"></label>
-            <label>NIK KTP <input name="nik_ktp" inputmode="numeric" maxlength="16"></label>
-          </div>
-          <div class="form-row two-col">
-            <label>NPWP <input name="npwp"></label>
-            <label>Alamat <input name="alamat"></label>
           </div>
 
           <div class="modal-actions">
