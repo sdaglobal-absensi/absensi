@@ -53,7 +53,7 @@
 
   <script type="module">
     import { supabase } from "./js/supabaseClient.js";
-    import { login } from "./js/auth.js";
+    import { login, getCurrentUser } from "./js/auth.js";
 
     // tab switching
     document.querySelectorAll(".tab-btn").forEach(btn => {
@@ -65,10 +65,26 @@
       });
     });
 
-    // redirect kalau sudah login
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) window.location.href = "app.html";
-    });
+    // Kalau ada session TAPI baris profil-nya bermasalah, app.html akan
+    // melempar balik ke sini. Tampilkan pesan yang jelas alih-alih diam-diam
+    // redirect lagi (itu yang menyebabkan loop refresh tanpa henti).
+    const params = new URLSearchParams(location.search);
+    if (params.get("reason") === "no-profile") {
+      document.getElementById("login-error").textContent =
+        "Akun berhasil login tapi datanya belum lengkap di database (baris di tabel 'profiles' tidak ditemukan). Hubungi admin, atau jalankan ulang supabase-schema.sql lalu daftar ulang.";
+    }
+
+    // Redirect ke app.html HANYA kalau sesi valid *dan* profil lengkap bisa
+    // dimuat — persis syarat yang sama dipakai app.html, supaya kedua
+    // halaman selalu sepakat dan tidak saling lempar.
+    (async () => {
+      try {
+        const user = await getCurrentUser();
+        if (user) window.location.href = "app.html";
+      } catch (e) {
+        console.error("Cek sesi gagal:", e);
+      }
+    })();
 
     document.getElementById("form-login").addEventListener("submit", async e => {
       e.preventDefault();

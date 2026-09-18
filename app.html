@@ -46,14 +46,27 @@
     async function loadTab(tabId) {
       const loader = MODULE_MAP[tabId];
       if (!loader) return;
-      const mod = await loader();
-      document.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.target === tabId));
-      await mod.render(document.getElementById("content"), currentUser);
-      history.replaceState(null, "", `#${tabId}`);
+      try {
+        const mod = await loader();
+        document.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.target === tabId));
+        await mod.render(document.getElementById("content"), currentUser);
+        history.replaceState(null, "", `#${tabId}`);
+      } catch (err) {
+        console.error("Gagal memuat halaman:", err);
+        document.getElementById("content").innerHTML =
+          `<p class="muted">Terjadi kesalahan saat memuat halaman ini: ${err.message}. Coba refresh, atau cek console browser (F12) untuk detail.</p>`;
+      }
     }
 
     (async function init() {
-      currentUser = await requireAuth(["admin", "hr", "karyawan"]);
+      try {
+        currentUser = await requireAuth(["admin", "hr", "karyawan"]);
+      } catch (err) {
+        console.error("Gagal memeriksa sesi:", err);
+        document.getElementById("content").innerHTML =
+          `<p class="muted">Gagal memeriksa sesi login: ${err.message}</p>`;
+        return;
+      }
       if (!currentUser) return;
 
       const startTab = location.hash.replace("#", "") || DEFAULT_TAB[currentUser.role];

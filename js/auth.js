@@ -22,9 +22,19 @@ export async function getCurrentUser() {
 // belum authenticated, atau redirect kalau role tidak diizinkan.
 // ---------------------------------------------------------------------
 export async function requireAuth(allowedRoles = null) {
-  const user = await getCurrentUser();
+  let user;
+  try {
+    user = await getCurrentUser();
+  } catch (e) {
+    console.error("requireAuth error:", e);
+    user = null;
+  }
   if (!user) {
-    window.location.href = "index.html";
+    // Cek dulu apakah sebenarnya ada session tapi baris profiles-nya
+    // yang bermasalah (RLS / trigger tidak jalan) — beri pesan jelas
+    // di halaman login alih-alih diam-diam redirect (penyebab loop).
+    const { data: { session } } = await supabase.auth.getSession();
+    window.location.href = session ? "index.html?reason=no-profile" : "index.html";
     return null;
   }
   if (!user.is_active) {
