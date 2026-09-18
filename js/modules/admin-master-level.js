@@ -10,7 +10,7 @@ export async function render(container, user) {
         <h1>Master Level</h1>
         <p class="muted">Data grade/level jabatan beserta denda, upah lembur, uang perjalanan dinas, BPJS, dan PPh21 — dipakai sebagai acuan perhitungan gaji.</p>
       </div>
-      ${canEdit ? `<button id="btn-new" class="btn-primary btn-block">+ Tambah Level</button>` : ""}
+      ${canEdit ? `<button id="btn-new" class="btn-primary">+ Tambah Level</button>` : ""}
     </div>
     <div id="level-table" class="table-wrap"><p class="muted">Memuat…</p></div>
 

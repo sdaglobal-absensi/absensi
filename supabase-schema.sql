@@ -125,6 +125,20 @@ alter table public.job_levels add column if not exists bpjs_tk_karyawan_persen n
 alter table public.job_levels add column if not exists bpjs_tk_perusahaan_persen numeric not null default 3.7;
 alter table public.job_levels add column if not exists pph21_persen numeric not null default 5;
 
+-- ---------------------------------------------------------------------
+-- 4c. TABEL: departments (Master Departemen — Departemen, Bagian, Jabatan)
+-- ---------------------------------------------------------------------
+create table if not exists public.departments (
+  id          uuid primary key default gen_random_uuid(),
+  departemen  text not null,
+  bagian      text not null,
+  jabatan     text not null,
+  is_active   boolean not null default true,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique (departemen, bagian, jabatan)
+);
+
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
 begin
@@ -249,6 +263,23 @@ create policy "job_levels_select" on public.job_levels
 drop policy if exists "job_levels_admin_write" on public.job_levels;
 create policy "job_levels_admin_write" on public.job_levels
   for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+
+-- departments (Master Departemen) -------------------------------------------------------------
+drop trigger if exists trg_departments_updated_at on public.departments;
+create trigger trg_departments_updated_at
+  before update on public.departments
+  for each row execute function public.set_updated_at();
+
+alter table public.departments enable row level security;
+
+drop policy if exists "departments_select" on public.departments;
+create policy "departments_select" on public.departments
+  for select using ( public.is_admin_or_hr() );
+
+drop policy if exists "departments_admin_write" on public.departments;
+create policy "departments_admin_write" on public.departments
+  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+
 
 
 -- ---------------------------------------------------------------------

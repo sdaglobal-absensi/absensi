@@ -35,6 +35,7 @@ const MENUS = {
     { id: "izin-approval", label: "Approval Izin", icon: "check" },
     { id: "laporan", label: "Laporan", icon: "chart" },
     { id: "master-level", label: "Master Level", icon: "layers", section: "Master Data" },
+    { id: "master-departemen", label: "Master Departemen", icon: "grid", section: "Master Data" },
   ],
   admin: [
     { id: "karyawan", label: "Data Karyawan", icon: "users" },
@@ -42,6 +43,7 @@ const MENUS = {
     { id: "izin-approval", label: "Approval Izin", icon: "check" },
     { id: "laporan", label: "Laporan", icon: "chart" },
     { id: "master-level", label: "Master Level", icon: "layers", section: "Master Data" },
+    { id: "master-departemen", label: "Master Departemen", icon: "grid", section: "Master Data" },
   ],
 };
 
@@ -53,6 +55,7 @@ const ICONS = {
   chart: "M3 3v18h18M18 17V9M13 17V5M8 17v-3",
   users: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
   layers: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
+  grid: "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z",
 };
 
 export function renderSidebar(user, activeId) {
