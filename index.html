@@ -25,7 +25,15 @@
           <span class="muted">Masuk dengan akun yang diberikan perusahaan</span>
           <form id="form-login">
             <label>Email <input type="email" name="email" required autocomplete="username"></label>
-            <label>Password <input type="password" name="password" required autocomplete="current-password"></label>
+            <label>Password
+            <div class="password-field">
+              <input type="password" id="login-password" name="password" required autocomplete="current-password">
+              <button type="button" class="btn-toggle-pw" data-target="login-password" aria-label="Tampilkan/sembunyikan password">
+                <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="icon-eye-off hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0112 20c-7 0-11-8-11-8a21.86 21.86 0 015.06-6.06M9.9 4.24A10.94 10.94 0 0112 4c7 0 11 8 11 8a21.86 21.86 0 01-2.16 3.19M14.12 14.12a3 3 0 11-4.24-4.24M1 1l22 22"/></svg>
+              </button>
+            </div>
+          </label>
             <div class="error-msg" id="login-error"></div>
             <button type="submit" class="btn-primary btn-block">Masuk</button>
           </form>
@@ -50,6 +58,9 @@
   <script type="module">
     import { supabase } from "./js/supabaseClient.js";
     import { login, getCurrentUser } from "./js/auth.js";
+    import { wirePasswordToggles } from "./js/core.js";
+
+    wirePasswordToggles();
 
     // toggle antara form login dan form lupa password
     document.getElementById("btn-show-forgot").addEventListener("click", () => {

@@ -161,14 +161,15 @@ async function loadTable() {
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Kode</th><th>Nama</th><th>Departemen</th><th>Grade</th><th>Role</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Kode</th><th>Nama</th><th>Departemen</th><th>Jabatan</th><th>Level</th><th>Role</th><th>Status</th><th></th></tr></thead>
       <tbody>
         ${data.map(k => `
           <tr>
             <td>${k.employee_code || "-"}</td>
             <td>${k.full_name}</td>
             <td>${k.department || "-"}</td>
-            <td>${k.grade || "-"}</td>
+            <td>${k.position || "-"}</td>
+            <td>${k.level || "-"}</td>
             <td>${roleLabel(k.role)}</td>
             <td><span class="badge badge-${k.is_active ? "ok" : "danger"}">${k.is_active ? "Aktif" : "Nonaktif"}</span></td>
             <td><button class="btn-link btn-edit" data-id="${k.id}">Edit</button></td>

@@ -179,6 +179,32 @@ export function fmtRupiah(n) {
 }
 
 // =====================================================================
+// TOGGLE LIHAT PASSWORD (tombol mata)
+// =====================================================================
+export function wirePasswordToggles(root = document) {
+  root.querySelectorAll(".btn-toggle-pw").forEach(btn => {
+    if (btn.dataset.wired) return;
+    btn.dataset.wired = "1";
+    btn.addEventListener("click", () => {
+      const input = document.getElementById(btn.dataset.target);
+      if (!input) return;
+      input.type = input.type === "password" ? "text" : "password";
+      btn.querySelector(".icon-eye").classList.toggle("hidden");
+      btn.querySelector(".icon-eye-off").classList.toggle("hidden");
+    });
+  });
+}
+
+export function passwordToggleBtnHtml(targetId) {
+  return `
+    <button type="button" class="btn-toggle-pw" data-target="${targetId}" aria-label="Tampilkan/sembunyikan password">
+      <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      <svg class="icon-eye-off hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0112 20c-7 0-11-8-11-8a21.86 21.86 0 015.06-6.06M9.9 4.24A10.94 10.94 0 0112 4c7 0 11 8 11 8a21.86 21.86 0 01-2.16 3.19M14.12 14.12a3 3 0 11-4.24-4.24M1 1l22 22"/></svg>
+    </button>
+  `;
+}
+
+// =====================================================================
 // SEARCH SELECT — dropdown dengan pencarian (menggantikan <select> biasa
 // untuk pilihan yang datanya banyak/berasal dari master data)
 // =====================================================================

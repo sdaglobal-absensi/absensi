@@ -102,6 +102,16 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary-lig
 .search-option:hover { background: var(--bg); }
 .search-option.muted { cursor: default; }
 .search-option.muted:hover { background: none; }
+
+/* ---------------- Password toggle ---------------- */
+.password-field { position: relative; }
+.password-field input { width: 100%; padding-right: 42px; }
+.btn-toggle-pw {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; padding: 6px; color: var(--muted); display: flex; cursor: pointer;
+}
+.btn-toggle-pw:hover { color: var(--primary); }
+.btn-toggle-pw svg { width: 18px; height: 18px; }
 .checkbox-row { flex-direction: row; align-items: center; gap: 8px; }
 .checkbox-row input { width: auto; }
 
