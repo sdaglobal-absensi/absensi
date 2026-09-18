@@ -1,0 +1,59 @@
+import { supabase } from "./supabaseClient.js";
+
+// ---------------------------------------------------------------------
+// Ambil sesi & profil user yang sedang login. Return null kalau belum login.
+// ---------------------------------------------------------------------
+export async function getCurrentUser() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return null;
+
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", session.user.id)
+    .single();
+
+  if (error || !profile) return null;
+  return { ...profile, email: session.user.email };
+}
+
+// ---------------------------------------------------------------------
+// Wajib dipanggil di setiap halaman terproteksi. Redirect ke login kalau
+// belum authenticated, atau redirect kalau role tidak diizinkan.
+// ---------------------------------------------------------------------
+export async function requireAuth(allowedRoles = null) {
+  const user = await getCurrentUser();
+  if (!user) {
+    window.location.href = "index.html";
+    return null;
+  }
+  if (!user.is_active) {
+    await supabase.auth.signOut();
+    alert("Akun kamu sudah dinonaktifkan. Hubungi admin.");
+    window.location.href = "index.html";
+    return null;
+  }
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    alert("Kamu tidak punya akses ke halaman ini.");
+    window.location.href = "app.html";
+    return null;
+  }
+  return user;
+}
+
+// ---------------------------------------------------------------------
+// Login
+// ---------------------------------------------------------------------
+export async function login(email, password) {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  return data;
+}
+
+// ---------------------------------------------------------------------
+// Logout
+// ---------------------------------------------------------------------
+export async function logout() {
+  await supabase.auth.signOut();
+  window.location.href = "index.html";
+}

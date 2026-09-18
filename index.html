@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Masuk — Absensi Karyawan</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-hero">
+      <div class="brand">Absensi.</div>
+      <div>
+        <h1>Hadir, tercatat, tepat.</h1>
+        <p>Absensi dengan verifikasi lokasi dan foto, pengajuan izin, dan laporan kehadiran — dalam satu tempat.</p>
+      </div>
+      <div class="hero-tag"><span class="dot"></span> GPS + Foto saat check-in/out</div>
+    </div>
+
+    <div class="login-panel">
+      <div class="login-box">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="login">Masuk</button>
+          <button class="tab-btn" data-tab="signup">Daftar Karyawan Baru</button>
+        </div>
+
+        <div id="tab-login">
+          <h2>Selamat datang kembali</h2>
+          <span class="muted">Masuk dengan akun yang diberikan perusahaan</span>
+          <form id="form-login">
+            <label>Email <input type="email" name="email" required autocomplete="username"></label>
+            <label>Password <input type="password" name="password" required autocomplete="current-password"></label>
+            <div class="error-msg" id="login-error"></div>
+            <button type="submit" class="btn-primary">Masuk</button>
+          </form>
+        </div>
+
+        <div id="tab-signup" class="hidden">
+          <h2>Buat akun karyawan</h2>
+          <span class="muted">Akun baru mendapat role Karyawan secara default</span>
+          <form id="form-signup">
+            <label>Nama Lengkap <input type="text" name="full_name" required></label>
+            <label>Email <input type="email" name="email" required autocomplete="username"></label>
+            <label>Password <input type="password" name="password" required minlength="6" autocomplete="new-password"></label>
+            <div class="error-msg" id="signup-error"></div>
+            <button type="submit" class="btn-primary">Daftar</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from "./js/supabaseClient.js";
+    import { login } from "./js/auth.js";
+
+    // tab switching
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById("tab-login").classList.toggle("hidden", btn.dataset.tab !== "login");
+        document.getElementById("tab-signup").classList.toggle("hidden", btn.dataset.tab !== "signup");
+      });
+    });
+
+    // redirect kalau sudah login
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) window.location.href = "app.html";
+    });
+
+    document.getElementById("form-login").addEventListener("submit", async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const errEl = document.getElementById("login-error");
+      errEl.textContent = "";
+      try {
+        await login(fd.get("email"), fd.get("password"));
+        window.location.href = "app.html";
+      } catch (err) {
+        errEl.textContent = "Email atau password salah.";
+      }
+    });
+
+    document.getElementById("form-signup").addEventListener("submit", async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const errEl = document.getElementById("signup-error");
+      errEl.textContent = "";
+      try {
+        const { error } = await supabase.auth.signUp({
+          email: fd.get("email"),
+          password: fd.get("password"),
+          options: { data: { full_name: fd.get("full_name"), role: "karyawan" } },
+        });
+        if (error) throw error;
+        alert("Akun berhasil dibuat. Silakan masuk.");
+        document.querySelector('[data-tab="login"]').click();
+      } catch (err) {
+        errEl.textContent = err.message;
+      }
+    });
+  </script>
+</body>
+</html>
