@@ -92,9 +92,25 @@ create table if not exists public.leave_requests (
 );
 
 -- ---------------------------------------------------------------------
--- 5. TRIGGER: auto-update updated_at
+-- 4b. TABEL: job_levels (Master Level — grade, denda, lembur, perjalanan dinas)
+--     Dasar acuan untuk perhitungan gaji nanti. Trigger & RLS-nya
+--     didefinisikan di bagian bawah, setelah fungsi helper role dibuat.
 -- ---------------------------------------------------------------------
-create or replace function public.set_updated_at()
+create table if not exists public.job_levels (
+  id                       uuid primary key default gen_random_uuid(),
+  grade                    text not null,
+  level                    text not null,
+  denda_terlambat          numeric not null default 0,   -- Rp, denda per keterlambatan
+  upah_lembur_hari_biasa   numeric not null default 0,   -- Rp per jam
+  upah_lembur_hari_libur   numeric not null default 0,   -- Rp per jam
+  uang_perjalanan_dinas    numeric not null default 0,   -- Rp per perjalanan/hari
+  is_active                boolean not null default true,
+  created_at               timestamptz not null default now(),
+  updated_at               timestamptz not null default now(),
+  unique (grade, level)
+);
+
+
 returns trigger language plpgsql as $$
 begin
   new.updated_at = now();
@@ -202,6 +218,23 @@ create policy "office_select_all" on public.office_locations
 drop policy if exists "office_admin_write" on public.office_locations;
 create policy "office_admin_write" on public.office_locations
   for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+
+-- job_levels (Master Level) -------------------------------------------------------------
+drop trigger if exists trg_job_levels_updated_at on public.job_levels;
+create trigger trg_job_levels_updated_at
+  before update on public.job_levels
+  for each row execute function public.set_updated_at();
+
+alter table public.job_levels enable row level security;
+
+drop policy if exists "job_levels_select" on public.job_levels;
+create policy "job_levels_select" on public.job_levels
+  for select using ( public.is_admin_or_hr() );
+
+drop policy if exists "job_levels_admin_write" on public.job_levels;
+create policy "job_levels_admin_write" on public.job_levels
+  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+
 
 -- ---------------------------------------------------------------------
 -- 9. STORAGE BUCKET untuk foto absensi (jalankan sekali)

@@ -34,12 +34,14 @@ const MENUS = {
     { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock" },
     { id: "izin-approval", label: "Approval Izin", icon: "check" },
     { id: "laporan", label: "Laporan", icon: "chart" },
+    { id: "master-level", label: "Master Level", icon: "layers", section: "Master Data" },
   ],
   admin: [
     { id: "karyawan", label: "Data Karyawan", icon: "users" },
     { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock" },
     { id: "izin-approval", label: "Approval Izin", icon: "check" },
     { id: "laporan", label: "Laporan", icon: "chart" },
+    { id: "master-level", label: "Master Level", icon: "layers", section: "Master Data" },
   ],
 };
 
@@ -50,17 +52,27 @@ const ICONS = {
   check: "M20 6L9 17l-5-5",
   chart: "M3 3v18h18M18 17V9M13 17V5M8 17v-3",
   users: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
+  layers: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
 };
 
 export function renderSidebar(user, activeId) {
   const menu = MENUS[user.role] || [];
   const nav = document.getElementById("sidebar-nav");
-  nav.innerHTML = menu.map(item => `
-    <button class="nav-item ${item.id === activeId ? "active" : ""}" data-target="${item.id}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[item.icon]}"/></svg>
-      <span>${item.label}</span>
-    </button>
-  `).join("");
+  let html = "";
+  let lastSection;
+  for (const item of menu) {
+    if (item.section && item.section !== lastSection) {
+      html += `<div class="nav-section-label">${item.section}</div>`;
+    }
+    lastSection = item.section;
+    html += `
+      <button class="nav-item ${item.id === activeId ? "active" : ""}" data-target="${item.id}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[item.icon]}"/></svg>
+        <span>${item.label}</span>
+      </button>
+    `;
+  }
+  nav.innerHTML = html;
 
   document.getElementById("sidebar-user-name").textContent = user.full_name;
   document.getElementById("sidebar-user-role").textContent = roleLabel(user.role);
@@ -156,6 +168,11 @@ export function fmtDateTime(d) {
 
 export function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+export function fmtRupiah(n) {
+  if (n === null || n === undefined || n === "") return "-";
+  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 }
 
 // CSV export helper
