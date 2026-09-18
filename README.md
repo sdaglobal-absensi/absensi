@@ -57,17 +57,32 @@ Di tabel `office_locations` (lewat Table Editor), sesuaikan `lat`, `lng`, dan
 ada beberapa cabang.
 
 ### 5. Buat akun admin pertama
-1. Buka `index.html` di browser → tab **Daftar Karyawan Baru** → daftar dengan
-   email kamu sendiri (default role: karyawan).
-2. Di Supabase SQL Editor jalankan:
+Tidak ada halaman daftar publik (sengaja dihilangkan) — semua akun karyawan
+dibuat lewat panel admin. Untuk akun admin pertama:
+
+1. Di Supabase Dashboard → **Authentication → Users → Add user** → buat user
+   dengan email & password kamu sendiri (centang **Auto Confirm User**).
+   Trigger otomatis akan membuat baris di tabel `profiles` dengan role
+   `karyawan`.
+2. Di **SQL Editor**, jadikan admin:
    ```sql
    update public.profiles set role = 'admin'
    where id = (select id from auth.users where email = 'emailkamu@contoh.com');
    ```
-3. Login lagi di `index.html` — sekarang kamu masuk sebagai Admin dan bisa
-   menambah karyawan lain lewat menu **Data Karyawan**.
+3. Login di `index.html` — sekarang kamu masuk sebagai Admin dan bisa
+   menambah karyawan lain lewat menu **Data Karyawan** (ini otomatis membuat
+   akun login untuk mereka).
 
-### 6. Jalankan secara lokal
+### 6. Aktifkan email untuk fitur "Lupa Password"
+Fitur reset password memakai `supabase.auth.resetPasswordForEmail`, yang
+otomatis aktif begitu project Supabase dibuat (pakai email bawaan Supabase).
+Kalau mau pakai domain email sendiri, atur di **Authentication → Email
+Templates / SMTP Settings**. Pastikan juga di **Authentication → URL
+Configuration**, `reset-password.html` (URL lengkap situs kamu, contoh
+`https://namamu.github.io/absensi/reset-password.html`) ditambahkan ke
+**Redirect URLs**, atau reset password tidak akan berfungsi.
+
+### 7. Jalankan secara lokal
 Karena pakai ES Modules, buka lewat local server (bukan `file://`), misalnya:
 
 ```bash
@@ -76,7 +91,7 @@ npx serve .
 python3 -m http.server 8080
 ```
 
-### 7. Deploy
+### 8. Deploy
 Bisa langsung deploy folder ini ke **GitHub Pages**, **Netlify**, atau
 **Vercel** — murni file statis, tidak butuh backend server sendiri (backend =
 Supabase).

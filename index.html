@@ -20,12 +20,7 @@
 
     <div class="login-panel">
       <div class="login-box">
-        <div class="tabs">
-          <button class="tab-btn active" data-tab="login">Masuk</button>
-          <button class="tab-btn" data-tab="signup">Daftar Karyawan Baru</button>
-        </div>
-
-        <div id="tab-login">
+        <div id="panel-login">
           <h2>Selamat datang kembali</h2>
           <span class="muted">Masuk dengan akun yang diberikan perusahaan</span>
           <form id="form-login">
@@ -34,18 +29,19 @@
             <div class="error-msg" id="login-error"></div>
             <button type="submit" class="btn-primary">Masuk</button>
           </form>
+          <button type="button" id="btn-show-forgot" class="btn-link forgot-link">Lupa password?</button>
         </div>
 
-        <div id="tab-signup" class="hidden">
-          <h2>Buat akun karyawan</h2>
-          <span class="muted">Akun baru mendapat role Karyawan secara default</span>
-          <form id="form-signup">
-            <label>Nama Lengkap <input type="text" name="full_name" required></label>
+        <div id="panel-forgot" class="hidden">
+          <h2>Reset password</h2>
+          <span class="muted">Masukkan email akun kamu, kami kirim link untuk membuat password baru</span>
+          <form id="form-forgot">
             <label>Email <input type="email" name="email" required autocomplete="username"></label>
-            <label>Password <input type="password" name="password" required minlength="6" autocomplete="new-password"></label>
-            <div class="error-msg" id="signup-error"></div>
-            <button type="submit" class="btn-primary">Daftar</button>
+            <div class="error-msg" id="forgot-error"></div>
+            <div class="success-msg hidden" id="forgot-success">Link reset password sudah dikirim. Cek inbox (atau folder spam) email kamu.</div>
+            <button type="submit" class="btn-primary">Kirim Link Reset</button>
           </form>
+          <button type="button" id="btn-back-login" class="btn-link forgot-link">← Kembali ke halaman masuk</button>
         </div>
       </div>
     </div>
@@ -55,14 +51,14 @@
     import { supabase } from "./js/supabaseClient.js";
     import { login, getCurrentUser } from "./js/auth.js";
 
-    // tab switching
-    document.querySelectorAll(".tab-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-        document.getElementById("tab-login").classList.toggle("hidden", btn.dataset.tab !== "login");
-        document.getElementById("tab-signup").classList.toggle("hidden", btn.dataset.tab !== "signup");
-      });
+    // toggle antara form login dan form lupa password
+    document.getElementById("btn-show-forgot").addEventListener("click", () => {
+      document.getElementById("panel-login").classList.add("hidden");
+      document.getElementById("panel-forgot").classList.remove("hidden");
+    });
+    document.getElementById("btn-back-login").addEventListener("click", () => {
+      document.getElementById("panel-forgot").classList.add("hidden");
+      document.getElementById("panel-login").classList.remove("hidden");
     });
 
     // Kalau ada session TAPI baris profil-nya bermasalah, app.html akan
@@ -71,7 +67,11 @@
     const params = new URLSearchParams(location.search);
     if (params.get("reason") === "no-profile") {
       document.getElementById("login-error").textContent =
-        "Akun berhasil login tapi datanya belum lengkap di database (baris di tabel 'profiles' tidak ditemukan). Hubungi admin, atau jalankan ulang supabase-schema.sql lalu daftar ulang.";
+        "Akun berhasil login tapi datanya belum lengkap di database (baris di tabel 'profiles' tidak ditemukan). Hubungi admin, atau jalankan ulang supabase-schema.sql lalu buat ulang akun lewat panel admin.";
+    }
+    if (params.get("reset") === "success") {
+      document.getElementById("login-error").style.color = "var(--ok)";
+      document.getElementById("login-error").textContent = "Password berhasil diubah. Silakan masuk dengan password baru.";
     }
 
     // Redirect ke app.html HANYA kalau sesi valid *dan* profil lengkap bisa
@@ -90,6 +90,7 @@
       e.preventDefault();
       const fd = new FormData(e.target);
       const errEl = document.getElementById("login-error");
+      errEl.style.color = "";
       errEl.textContent = "";
       try {
         await login(fd.get("email"), fd.get("password"));
@@ -99,20 +100,19 @@
       }
     });
 
-    document.getElementById("form-signup").addEventListener("submit", async e => {
+    document.getElementById("form-forgot").addEventListener("submit", async e => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      const errEl = document.getElementById("signup-error");
+      const errEl = document.getElementById("forgot-error");
+      const okEl = document.getElementById("forgot-success");
       errEl.textContent = "";
+      okEl.classList.add("hidden");
       try {
-        const { error } = await supabase.auth.signUp({
-          email: fd.get("email"),
-          password: fd.get("password"),
-          options: { data: { full_name: fd.get("full_name"), role: "karyawan" } },
-        });
+        const redirectTo = new URL("reset-password.html", location.href).href;
+        const { error } = await supabase.auth.resetPasswordForEmail(fd.get("email"), { redirectTo });
         if (error) throw error;
-        alert("Akun berhasil dibuat. Silakan masuk.");
-        document.querySelector('[data-tab="login"]').click();
+        okEl.classList.remove("hidden");
+        e.target.reset();
       } catch (err) {
         errEl.textContent = err.message;
       }

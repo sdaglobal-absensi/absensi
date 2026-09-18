@@ -96,6 +96,8 @@ button { font-family: 'Inter'; cursor: pointer; }
 .btn-link { background: none; border: none; color: var(--primary); font-size: 0.85rem; padding: 0; text-decoration: underline; }
 
 .error-msg { color: var(--danger); font-size: 0.85rem; margin-top: 4px; min-height: 1.2em; }
+.success-msg { color: var(--ok); font-size: 0.85rem; margin-top: 4px; background: var(--ok-bg); padding: 10px 12px; border-radius: var(--radius); }
+.forgot-link { display: block; margin-top: 16px; font-size: 0.85rem; }
 
 /* ---------------- App shell ---------------- */
 .app-shell { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
