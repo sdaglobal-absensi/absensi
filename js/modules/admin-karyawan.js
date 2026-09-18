@@ -5,7 +5,7 @@ export async function render(container, user) {
   container.innerHTML = `
     <div class="page-header">
       <h1>Data Karyawan</h1>
-      <button id="btn-new" class="btn-primary">+ Tambah Karyawan</button>
+      <button id="btn-new" class="btn-primary btn-block">+ Tambah Karyawan</button>
     </div>
     <div id="karyawan-table" class="table-wrap"><p class="muted">Memuat…</p></div>
 

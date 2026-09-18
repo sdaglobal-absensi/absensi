@@ -25,7 +25,7 @@ export async function render(container, user) {
       <div class="form-row">
         <label>Alasan <textarea name="reason" rows="3" required placeholder="Jelaskan alasan pengajuan"></textarea></label>
       </div>
-      <button type="submit" class="btn-primary">Kirim Pengajuan</button>
+      <button type="submit" class="btn-primary btn-block">Kirim Pengajuan</button>
     </form>
 
     <h2 class="section-title">Riwayat Pengajuan</h2>

@@ -8,30 +8,54 @@ export async function render(container, user) {
     <div class="page-header">
       <div>
         <h1>Master Level</h1>
-        <p class="muted">Data grade/level jabatan beserta denda keterlambatan, upah lembur, dan uang perjalanan dinas — dipakai sebagai acuan perhitungan gaji.</p>
+        <p class="muted">Data grade/level jabatan beserta denda, upah lembur, uang perjalanan dinas, BPJS, dan PPh21 — dipakai sebagai acuan perhitungan gaji.</p>
       </div>
-      ${canEdit ? `<button id="btn-new" class="btn-primary">+ Tambah Level</button>` : ""}
+      ${canEdit ? `<button id="btn-new" class="btn-primary btn-block">+ Tambah Level</button>` : ""}
     </div>
     <div id="level-table" class="table-wrap"><p class="muted">Memuat…</p></div>
 
     ${canEdit ? `
     <div id="modal-level" class="modal hidden">
-      <div class="modal-box">
+      <div class="modal-box modal-box-lg">
         <h3 id="modal-title">Tambah Level</h3>
         <form id="form-level">
           <input type="hidden" name="id">
+
+          <div class="form-section-label">Identitas</div>
           <div class="form-row two-col">
             <label>Grade <input name="grade" required placeholder="Contoh: I"></label>
             <label>Level <input name="level" required placeholder="Contoh: Staff"></label>
           </div>
+
+          <div class="form-section-label">Denda &amp; Tunjangan</div>
           <div class="form-row two-col">
-            <label>Denda Terlambat (Rp) <input type="number" name="denda_terlambat" min="0" step="1000" required></label>
+            <label>Denda Terlambat &amp; Pulang Cepat (Rp) <input type="number" name="denda_terlambat" min="0" step="1000" required></label>
             <label>Uang Perjalanan Dinas (Rp) <input type="number" name="uang_perjalanan_dinas" min="0" step="1000" required></label>
           </div>
           <div class="form-row two-col">
             <label>Upah Lembur Hari Biasa (Rp/jam) <input type="number" name="upah_lembur_hari_biasa" min="0" step="1000" required></label>
             <label>Upah Lembur Hari Libur (Rp/jam) <input type="number" name="upah_lembur_hari_libur" min="0" step="1000" required></label>
           </div>
+
+          <div class="form-section-label">BPJS Kesehatan</div>
+          <div class="form-row three-col">
+            <label>Upah Lapor BPJS (Rp) <input type="number" name="upah_lapor_bpjs" min="0" step="1000" required></label>
+            <label>% Ditanggung Karyawan <input type="number" name="bpjs_kesehatan_karyawan_persen" min="0" max="100" step="0.1" required></label>
+            <label>% Ditanggung Perusahaan <input type="number" name="bpjs_kesehatan_perusahaan_persen" min="0" max="100" step="0.1" required></label>
+          </div>
+
+          <div class="form-section-label">BPJS Ketenagakerjaan</div>
+          <div class="form-row two-col">
+            <label>% Ditanggung Karyawan <input type="number" name="bpjs_tk_karyawan_persen" min="0" max="100" step="0.1" required></label>
+            <label>% Ditanggung Perusahaan <input type="number" name="bpjs_tk_perusahaan_persen" min="0" max="100" step="0.1" required></label>
+          </div>
+          <p class="small muted field-hint">Upah lapor BPJS Kesehatan di atas juga dipakai sebagai dasar perhitungan BPJS Ketenagakerjaan.</p>
+
+          <div class="form-section-label">Pajak</div>
+          <div class="form-row">
+            <label>PPh21 (%) <input type="number" name="pph21_persen" min="0" max="100" step="0.1" required></label>
+          </div>
+
           <div class="form-row">
             <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Aktif dipakai</label>
           </div>
@@ -68,9 +92,15 @@ async function loadTable(canEdit) {
     <table class="table">
       <thead>
         <tr>
-          <th>Grade</th><th>Level</th><th>Denda Terlambat</th>
-          <th>Lembur Hari Biasa</th><th>Lembur Hari Libur</th>
-          <th>Uang Perjalanan Dinas</th><th>Status</th>${canEdit ? "<th></th>" : ""}
+          <th>Grade</th><th>Level</th>
+          <th>Denda Telat &amp; Pulang Cepat</th>
+          <th>Lembur Biasa</th><th>Lembur Libur</th>
+          <th>Uang Dinas</th>
+          <th>Upah Lapor BPJS</th>
+          <th>BPJS Kesehatan<br><span class="th-sub">Karyawan / Perusahaan</span></th>
+          <th>BPJS Ketenagakerjaan<br><span class="th-sub">Karyawan / Perusahaan</span></th>
+          <th>PPh21</th>
+          <th>Status</th>${canEdit ? "<th></th>" : ""}
         </tr>
       </thead>
       <tbody>
@@ -82,6 +112,10 @@ async function loadTable(canEdit) {
             <td>${fmtRupiah(r.upah_lembur_hari_biasa)}/jam</td>
             <td>${fmtRupiah(r.upah_lembur_hari_libur)}/jam</td>
             <td>${fmtRupiah(r.uang_perjalanan_dinas)}</td>
+            <td>${fmtRupiah(r.upah_lapor_bpjs)}</td>
+            <td>${r.bpjs_kesehatan_karyawan_persen}% / ${r.bpjs_kesehatan_perusahaan_persen}%</td>
+            <td>${r.bpjs_tk_karyawan_persen}% / ${r.bpjs_tk_perusahaan_persen}%</td>
+            <td>${r.pph21_persen}%</td>
             <td><span class="badge badge-${r.is_active ? "ok" : "danger"}">${r.is_active ? "Aktif" : "Nonaktif"}</span></td>
             ${canEdit ? `<td><button class="btn-link btn-edit" data-id="${r.id}">Edit</button></td>` : ""}
           </tr>
@@ -100,6 +134,13 @@ async function loadTable(canEdit) {
   }
 }
 
+const FIELDS = [
+  "grade", "level", "denda_terlambat", "uang_perjalanan_dinas",
+  "upah_lembur_hari_biasa", "upah_lembur_hari_libur",
+  "upah_lapor_bpjs", "bpjs_kesehatan_karyawan_persen", "bpjs_kesehatan_perusahaan_persen",
+  "bpjs_tk_karyawan_persen", "bpjs_tk_perusahaan_persen", "pph21_persen",
+];
+
 function openModal(existing = null) {
   const modal = document.getElementById("modal-level");
   const form = document.getElementById("form-level");
@@ -108,12 +149,7 @@ function openModal(existing = null) {
 
   if (existing) {
     form.id.value = existing.id;
-    form.grade.value = existing.grade;
-    form.level.value = existing.level;
-    form.denda_terlambat.value = existing.denda_terlambat;
-    form.uang_perjalanan_dinas.value = existing.uang_perjalanan_dinas;
-    form.upah_lembur_hari_biasa.value = existing.upah_lembur_hari_biasa;
-    form.upah_lembur_hari_libur.value = existing.upah_lembur_hari_libur;
+    FIELDS.forEach(f => { form[f].value = existing[f]; });
     form.is_active.checked = existing.is_active;
   } else {
     form.id.value = "";
@@ -129,15 +165,8 @@ async function onSubmit(e) {
   e.preventDefault();
   const fd = new FormData(e.target);
   const id = fd.get("id");
-  const payload = {
-    grade: fd.get("grade"),
-    level: fd.get("level"),
-    denda_terlambat: Number(fd.get("denda_terlambat")),
-    uang_perjalanan_dinas: Number(fd.get("uang_perjalanan_dinas")),
-    upah_lembur_hari_biasa: Number(fd.get("upah_lembur_hari_biasa")),
-    upah_lembur_hari_libur: Number(fd.get("upah_lembur_hari_libur")),
-    is_active: fd.get("is_active") === "on",
-  };
+  const payload = { grade: fd.get("grade"), level: fd.get("level"), is_active: fd.get("is_active") === "on" };
+  FIELDS.slice(2).forEach(f => { payload[f] = Number(fd.get(f)); });
 
   try {
     const { error } = id

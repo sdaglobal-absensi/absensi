@@ -100,15 +100,30 @@ create table if not exists public.job_levels (
   id                       uuid primary key default gen_random_uuid(),
   grade                    text not null,
   level                    text not null,
-  denda_terlambat          numeric not null default 0,   -- Rp, denda per keterlambatan
+  denda_terlambat          numeric not null default 0,   -- Rp, denda per keterlambatan & pulang cepat
   upah_lembur_hari_biasa   numeric not null default 0,   -- Rp per jam
   upah_lembur_hari_libur   numeric not null default 0,   -- Rp per jam
   uang_perjalanan_dinas    numeric not null default 0,   -- Rp per perjalanan/hari
+  upah_lapor_bpjs                    numeric not null default 0,   -- Rp, upah dasar yang dilaporkan ke BPJS
+  bpjs_kesehatan_karyawan_persen     numeric not null default 1,   -- % dari upah lapor, ditanggung karyawan
+  bpjs_kesehatan_perusahaan_persen   numeric not null default 4,   -- % dari upah lapor, ditanggung perusahaan
+  bpjs_tk_karyawan_persen            numeric not null default 2,   -- % BPJS Ketenagakerjaan ditanggung karyawan
+  bpjs_tk_perusahaan_persen          numeric not null default 3.7, -- % BPJS Ketenagakerjaan ditanggung perusahaan
+  pph21_persen                       numeric not null default 5,   -- % PPh21
   is_active                boolean not null default true,
   created_at               timestamptz not null default now(),
   updated_at               timestamptz not null default now(),
   unique (grade, level)
 );
+
+-- Untuk database yang sudah pernah menjalankan versi schema sebelumnya
+-- (create table if not exists tidak menambah kolom baru ke tabel lama):
+alter table public.job_levels add column if not exists upah_lapor_bpjs numeric not null default 0;
+alter table public.job_levels add column if not exists bpjs_kesehatan_karyawan_persen numeric not null default 1;
+alter table public.job_levels add column if not exists bpjs_kesehatan_perusahaan_persen numeric not null default 4;
+alter table public.job_levels add column if not exists bpjs_tk_karyawan_persen numeric not null default 2;
+alter table public.job_levels add column if not exists bpjs_tk_perusahaan_persen numeric not null default 3.7;
+alter table public.job_levels add column if not exists pph21_persen numeric not null default 5;
 
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
