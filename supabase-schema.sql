@@ -110,7 +110,7 @@ create table if not exists public.job_levels (
   unique (grade, level)
 );
 
-
+create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
 begin
   new.updated_at = now();
@@ -263,8 +263,10 @@ on conflict do nothing;
 -- ---------------------------------------------------------------------
 -- 11. AKUN ADMIN PERTAMA
 -- ---------------------------------------------------------------------
--- Setelah signup akun pertama lewat halaman login (index.html), jalankan
--- baris berikut di SQL editor (ganti email) supaya akun itu jadi admin:
+-- Buat user pertama lewat Supabase Dashboard > Authentication > Users >
+-- Add user (centang "Auto Confirm User"). Trigger di atas otomatis membuat
+-- baris di public.profiles untuknya. Lalu jalankan baris berikut (ganti
+-- email) supaya akun itu jadi admin:
 --
 -- update public.profiles set role = 'admin' where id =
 --   (select id from auth.users where email = 'admin@perusahaan.com');

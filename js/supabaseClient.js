@@ -3,8 +3,8 @@
 // Ganti dua nilai di bawah dengan milik project Supabase kamu sendiri.
 // Ambil dari: Supabase Dashboard > Project Settings > API
 // =====================================================================
-const SUPABASE_URL = "https://cugjzcspygqxlmbqfayc.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_GbDS7pltDds4Wpt9wFZ8Sg_t0qlY_1A";
+const SUPABASE_URL = "https://xxxxxxxxxxxxxxxxx.supabase.co";
+const SUPABASE_ANON_KEY = "PASTE_ANON_PUBLIC_KEY_DISINI";
 
 export const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
