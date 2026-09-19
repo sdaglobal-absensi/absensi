@@ -17,8 +17,24 @@ export async function render(container, user) {
     .limit(1)
     .maybeSingle();
 
-  const openShift = !!(latest && !latest.check_out);
-  const completedToday = !!(latest && latest.check_out && latest.date === todayISO());
+  const today = todayISO();
+  let openShift = !!(latest && !latest.check_out);
+  let staleOpen = false;
+
+  // Sesi terbuka HANYA dianggap "masih berjalan" (dan memblokir check-in baru)
+  // kalau tanggalnya hari ini, atau kalau itu memang shift lintas hari dari
+  // kemarin (sesuai Master Jadwal Kerja karyawan). Kalau bukan keduanya —
+  // misal karyawan shift reguler yang lupa check-out — jangan diblokir;
+  // anggap sesi lama itu tertinggal, dan izinkan check-in baru hari ini.
+  if (openShift && latest.date !== today) {
+    const continuation = await isOvernightContinuation(user, latest);
+    if (!continuation) {
+      staleOpen = true;
+      openShift = false;
+    }
+  }
+
+  const completedToday = !!(latest && latest.check_out && latest.date === today);
   const activeRow = openShift || completedToday ? latest : null;
 
   container.innerHTML = `
@@ -28,6 +44,7 @@ export async function render(container, user) {
     </div>
 
     ${openShift ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">Sesi kerja dari ${fmtDate(activeRow.date)} masih berjalan (belum check-out).</p>` : ""}
+    ${staleOpen ? `<p class="small" style="margin-top:-14px; margin-bottom:18px; color:var(--warn);">⚠️ Ada check-in tanggal ${fmtDate(latest.date)} yang belum di-check-out (kemungkinan lupa). Kamu tetap bisa check-in baru hari ini — data lama itu akan tercatat tidak lengkap sampai diperbaiki admin.</p>` : ""}
 
     <div class="status-grid">
       <div class="status-card ${activeRow?.check_in ? "done" : ""}">
@@ -72,6 +89,29 @@ export async function render(container, user) {
   if (btnOpen) btnOpen.addEventListener("click", () => openCamera(btnOpen.dataset.mode, user, activeRow));
 
   document.getElementById("btn-cancel").addEventListener("click", closeCamera);
+}
+
+// Cek apakah sesi terbuka dari kemarin memang shift lintas hari (misal
+// 22:00-06:00) berdasarkan Master Jadwal Kerja karyawan pada hari check-in
+// tersebut terjadi. Kalau karyawan tidak punya jadwal, anggap bukan
+// lintas hari (perilaku aman/default).
+function yesterdayISO(base = new Date()) {
+  const d = new Date(base);
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+async function isOvernightContinuation(user, row) {
+  if (!row || row.date !== yesterdayISO()) return false;
+  if (!user.schedule_id) return false;
+  const dow = new Date(row.check_in).getDay();
+  const { data: day } = await supabase
+    .from("work_schedule_days")
+    .select("crosses_midnight")
+    .eq("schedule_id", user.schedule_id)
+    .eq("day_of_week", dow)
+    .maybeSingle();
+  return !!day?.crosses_midnight;
 }
 
 async function openCamera(mode, user, activeRow) {
