@@ -4,8 +4,7 @@ import { toast, roleLabel, searchSelectHtml, wireSearchSelect, lamaBekerja } fro
 let masterDepartments = [];
 let masterLevels = [];
 let masterLocations = [];
-let masterSchedules = [];
-let ssDepartemen, ssBagian, ssJabatan, ssGrade, ssLokasi, ssJadwal;
+let ssDepartemen, ssBagian, ssJabatan, ssGrade, ssLokasi;
 
 export async function render(container, user) {
   container.innerHTML = `
@@ -80,9 +79,6 @@ export async function render(container, user) {
             <label>Tanggal Masuk <input type="date" name="join_date" id="join_date"></label>
             <label>Lama Bekerja <input type="text" id="lama_bekerja" disabled placeholder="-"></label>
           </div>
-          <div class="form-row">
-            ${searchSelectHtml({ id: "ss-jadwal", label: "Jadwal Kerja", placeholder: "Cari jadwal kerja…" })}
-          </div>
 
           <div class="modal-actions">
             <button type="button" id="btn-cancel-modal" class="btn-secondary">Batal</button>
@@ -107,16 +103,14 @@ export async function render(container, user) {
 }
 
 async function loadMasterData() {
-  const [{ data: depts }, { data: levels }, { data: locs }, { data: schedules }] = await Promise.all([
+  const [{ data: depts }, { data: levels }, { data: locs }] = await Promise.all([
     supabase.from("departments").select("*").eq("is_active", true),
     supabase.from("job_levels").select("*").eq("is_active", true),
     supabase.from("office_locations").select("*").eq("is_active", true),
-    supabase.from("work_schedules").select("*").eq("is_active", true),
   ]);
   masterDepartments = depts || [];
   masterLevels = levels || [];
   masterLocations = locs || [];
-  masterSchedules = schedules || [];
 }
 
 function setupSearchSelects() {
@@ -158,11 +152,6 @@ function setupSearchSelects() {
     getLabel: o => o.name,
     getValue: o => o.name,
   });
-
-  ssJadwal = wireSearchSelect("ss-jadwal", masterSchedules, {
-    getLabel: o => o.name,
-    getValue: o => o.id,
-  });
 }
 
 async function loadTable() {
@@ -203,7 +192,7 @@ function openModal(existing = null) {
   const form = document.getElementById("form-karyawan");
   form.reset();
   ssDepartemen.clear(); ssBagian.setOptions([]); ssBagian.clear();
-  ssJabatan.setOptions([]); ssJabatan.clear(); ssGrade.clear(); ssLokasi.clear(); ssJadwal.clear();
+  ssJabatan.setOptions([]); ssJabatan.clear(); ssGrade.clear(); ssLokasi.clear();
   document.getElementById("lama_bekerja").value = "";
 
   document.getElementById("modal-title").textContent = existing ? "Edit Karyawan" : "Tambah Karyawan";
@@ -243,10 +232,6 @@ function openModal(existing = null) {
     if (existing.position) ssJabatan.setValue(existing.position);
     if (existing.grade) ssGrade.setValue(existing.grade, `${existing.grade} — ${existing.level || ""}`);
     if (existing.lokasi_kerja) ssLokasi.setValue(existing.lokasi_kerja);
-    if (existing.schedule_id) {
-      const sched = masterSchedules.find(s => s.id === existing.schedule_id);
-      if (sched) ssJadwal.setValue(sched.id, sched.name);
-    }
   } else {
     form.id.value = "";
     form.status_karyawan.value = "bulanan";
@@ -272,7 +257,6 @@ async function onSubmit(e, currentUser) {
     level: fd.get("level") || null,
     unit_pt: fd.get("unit_pt") || null,
     lokasi_kerja: ssLokasi.value || null,
-    schedule_id: ssJadwal.value || null,
     status_karyawan: fd.get("status_karyawan"),
     join_date: fd.get("join_date") || null,
     phone: fd.get("phone") || null,

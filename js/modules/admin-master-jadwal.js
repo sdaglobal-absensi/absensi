@@ -10,7 +10,7 @@ export async function render(container, user) {
     <div class="page-header">
       <div>
         <h1>Master Jadwal Kerja</h1>
-        <p class="muted">Jam kerja per hari untuk tiap jadwal/shift, termasuk shift yang lintas hari (misal 22:00–06:00). Karyawan dikaitkan ke salah satu jadwal ini lewat Data Karyawan.</p>
+        <p class="muted">Jam kerja per hari untuk tiap jadwal/shift, termasuk shift yang lintas hari (misal 22:00–06:00). Pilih karyawan mana saja yang memakai tiap jadwal langsung dari sini.</p>
       </div>
       ${canEdit ? `<button id="btn-new" class="btn-primary">+ Tambah Jadwal</button>` : ""}
     </div>
@@ -48,6 +48,11 @@ export async function render(container, user) {
           <div class="form-row" style="margin-top:16px;">
             <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Aktif dipakai</label>
           </div>
+
+          <div class="form-section-label">Karyawan yang Menggunakan Jadwal Ini</div>
+          <input type="text" id="employee-filter" placeholder="Cari nama karyawan…" style="margin-bottom:10px;">
+          <div id="employee-checklist" class="employee-checklist"><p class="muted small">Memuat daftar karyawan…</p></div>
+
           <div class="modal-actions">
             <button type="button" id="btn-cancel-modal" class="btn-secondary">Batal</button>
             <button type="submit" class="btn-primary">Simpan</button>
@@ -65,6 +70,7 @@ export async function render(container, user) {
     document.querySelectorAll(".day-active").forEach((cb, i) => {
       cb.addEventListener("change", () => toggleDayInputs(i, cb.checked));
     });
+    document.getElementById("employee-filter").addEventListener("input", e => filterEmployeeChecklist(e.target.value));
   }
 
   loadList(canEdit);
@@ -77,6 +83,40 @@ function toggleDayInputs(i, active) {
   if (!active) { form[`start_${i}`].value = ""; form[`end_${i}`].value = ""; }
 }
 
+// =====================================================================
+// Checklist karyawan yang memakai jadwal ini
+// =====================================================================
+let allEmployees = [];
+
+async function loadEmployeeChecklist(scheduleId) {
+  const el = document.getElementById("employee-checklist");
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, full_name, employee_code, department, schedule_id")
+    .eq("is_active", true)
+    .order("full_name");
+
+  if (error) { el.innerHTML = `<p class="muted small">Gagal memuat daftar karyawan.</p>`; return; }
+  allEmployees = data || [];
+
+  if (!allEmployees.length) { el.innerHTML = `<p class="muted small">Belum ada data karyawan.</p>`; return; }
+
+  el.innerHTML = allEmployees.map(emp => `
+    <label data-name="${(emp.full_name || "").toLowerCase()}">
+      <input type="checkbox" class="emp-check" value="${emp.id}" ${emp.schedule_id === scheduleId ? "checked" : ""}>
+      <span>${emp.full_name}</span>
+      <span class="emp-meta">${[emp.employee_code, emp.department].filter(Boolean).join(" · ")}</span>
+    </label>
+  `).join("");
+}
+
+function filterEmployeeChecklist(query) {
+  const q = query.toLowerCase();
+  document.querySelectorAll("#employee-checklist label").forEach(label => {
+    label.classList.toggle("hidden", !label.dataset.name.includes(q));
+  });
+}
+
 async function loadList(canEdit) {
   const { data: schedules, error } = await supabase.from("work_schedules").select("*").order("name");
   const el = document.getElementById("schedule-list");
@@ -84,9 +124,11 @@ async function loadList(canEdit) {
   if (!schedules.length) { el.innerHTML = `<p class="muted">Belum ada jadwal kerja.</p>`; return; }
 
   const { data: days } = await supabase.from("work_schedule_days").select("*");
+  const { data: employees } = await supabase.from("profiles").select("id, schedule_id").eq("is_active", true);
 
   el.innerHTML = schedules.map(s => {
     const myDays = (days || []).filter(d => d.schedule_id === s.id).sort((a, b) => a.day_of_week - b.day_of_week);
+    const empCount = (employees || []).filter(e => e.schedule_id === s.id).length;
     const ringkasan = myDays.filter(d => d.is_working_day).map(d => {
       const jam = `${(d.start_time || "").slice(0, 5)}–${(d.end_time || "").slice(0, 5)}${d.crosses_midnight ? " (+1 hari)" : ""}`;
       return `${DAY_NAMES[d.day_of_week].slice(0, 3)}: ${jam}`;
@@ -99,6 +141,7 @@ async function loadList(canEdit) {
             <div style="display:flex; align-items:center; gap:10px;">
               <strong>${s.name}</strong>
               <span class="badge badge-${s.is_active ? "ok" : "danger"}">${s.is_active ? "Aktif" : "Nonaktif"}</span>
+              <span class="small muted">${empCount} karyawan</span>
             </div>
             <p class="small muted" style="margin:6px 0 0;">${ringkasan}</p>
             <p class="small muted" style="margin:4px 0 0;">Toleransi telat: ${s.late_tolerance_minutes} menit</p>
@@ -125,6 +168,7 @@ function openModal(existing = null, existingDays = []) {
   const form = document.getElementById("form-schedule");
   form.reset();
   document.getElementById("modal-title").textContent = existing ? "Edit Jadwal" : "Tambah Jadwal";
+  document.getElementById("employee-filter").value = "";
 
   DAY_NAMES.forEach((_, i) => toggleDayInputs(i, false));
 
@@ -146,6 +190,7 @@ function openModal(existing = null, existingDays = []) {
   } else {
     form.id.value = "";
   }
+  loadEmployeeChecklist(existing ? existing.id : null);
   modal.classList.remove("hidden");
 }
 
@@ -195,6 +240,26 @@ async function onSubmit(e) {
     await supabase.from("work_schedule_days").delete().eq("schedule_id", scheduleId);
     const { error: dayError } = await supabase.from("work_schedule_days").insert(dayRows);
     if (dayError) throw dayError;
+
+    // Terapkan pilihan karyawan: yang dicentang -> dikaitkan ke jadwal ini,
+    // yang sebelumnya terkait tapi sekarang dicentang-lepas -> dilepas.
+    const checkedIds = new Set(
+      Array.from(document.querySelectorAll(".emp-check:checked")).map(cb => cb.value)
+    );
+    const previouslyAssignedIds = new Set(
+      allEmployees.filter(emp => emp.schedule_id === scheduleId).map(emp => emp.id)
+    );
+    const toAssign = [...checkedIds].filter(id => !previouslyAssignedIds.has(id));
+    const toUnassign = [...previouslyAssignedIds].filter(id => !checkedIds.has(id));
+
+    if (toAssign.length) {
+      const { error } = await supabase.from("profiles").update({ schedule_id: scheduleId }).in("id", toAssign);
+      if (error) throw error;
+    }
+    if (toUnassign.length) {
+      const { error } = await supabase.from("profiles").update({ schedule_id: null }).in("id", toUnassign);
+      if (error) throw error;
+    }
 
     toast("Jadwal kerja tersimpan", "success");
     closeModal();

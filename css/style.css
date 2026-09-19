@@ -112,6 +112,19 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary-lig
 }
 .btn-toggle-pw:hover { color: var(--primary); }
 .btn-toggle-pw svg { width: 18px; height: 18px; }
+
+/* ---------------- Employee checklist (Master Jadwal Kerja) ---------------- */
+.employee-checklist {
+  max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius);
+}
+.employee-checklist label {
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px; margin: 0;
+  border-bottom: 1px solid var(--border); font-size: 0.88rem; cursor: pointer;
+}
+.employee-checklist label:last-child { border-bottom: none; }
+.employee-checklist label:hover { background: var(--bg); }
+.employee-checklist input[type="checkbox"] { width: auto; flex-shrink: 0; }
+.employee-checklist .emp-meta { color: var(--muted); font-size: 0.78rem; }
 .checkbox-row { flex-direction: row; align-items: center; gap: 8px; }
 .checkbox-row input { width: auto; }
 
