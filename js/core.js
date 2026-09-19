@@ -144,15 +144,74 @@ export async function uploadPhoto(fileOrBlob, pathPrefix) {
   return data.publicUrl;
 }
 
-// Ambil Blob dari elemen <video> (dipakai setelah capture kamera)
-export function captureFrameAsBlob(videoEl) {
+// Ambil Blob dari elemen <video> (dipakai setelah capture kamera).
+// watermarkLines (opsional): array baris teks yang dicap di bagian bawah foto
+// (misal [waktu, alamat]).
+export function captureFrameAsBlob(videoEl, watermarkLines = null) {
   return new Promise(resolve => {
     const canvas = document.createElement("canvas");
     canvas.width = videoEl.videoWidth;
     canvas.height = videoEl.videoHeight;
-    canvas.getContext("2d").drawImage(videoEl, 0, 0);
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(videoEl, 0, 0);
+    if (watermarkLines && watermarkLines.length) {
+      drawPhotoWatermark(ctx, canvas.width, canvas.height, watermarkLines);
+    }
     canvas.toBlob(blob => resolve(blob), "image/jpeg", 0.85);
   });
+}
+
+// Cap teks (waktu, alamat, dsb) di bagian bawah foto dengan latar semi-transparan.
+function drawPhotoWatermark(ctx, w, h, lines) {
+  const padding = Math.max(8, Math.floor(h * 0.018));
+  const fontSize = Math.max(12, Math.floor(h * 0.026));
+  const lineHeight = Math.round(fontSize * 1.45);
+  ctx.font = `${fontSize}px -apple-system, Arial, sans-serif`;
+
+  // Bungkus tiap baris supaya tidak keluar dari lebar foto
+  const maxWidth = w - padding * 2;
+  const wrapped = [];
+  lines.forEach(line => {
+    const words = String(line).split(" ");
+    let current = "";
+    words.forEach(word => {
+      const test = current ? `${current} ${word}` : word;
+      if (ctx.measureText(test).width > maxWidth && current) {
+        wrapped.push(current);
+        current = word;
+      } else {
+        current = test;
+      }
+    });
+    if (current) wrapped.push(current);
+  });
+  const capped = wrapped.slice(0, 4); // batasi maksimal 4 baris
+
+  const barHeight = capped.length * lineHeight + padding * 2;
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillRect(0, h - barHeight, w, barHeight);
+  ctx.fillStyle = "#ffffff";
+  ctx.textBaseline = "top";
+  capped.forEach((line, i) => {
+    ctx.fillText(line, padding, h - barHeight + padding + i * lineHeight);
+  });
+}
+
+// Reverse geocode koordinat -> alamat (pakai OpenStreetMap Nominatim, gratis
+// tanpa API key). Bisa gagal/lambat; pemanggil harus siap fallback ke
+// koordinat mentah kalau hasilnya null.
+export async function reverseGeocode(lat, lng) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=0`,
+      { headers: { "Accept-Language": "id" } }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.display_name || null;
+  } catch (e) {
+    return null;
+  }
 }
 
 // =====================================================================
@@ -301,4 +360,17 @@ export function exportCSV(filename, rows) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// Export Excel (.xlsx) asli lewat SheetJS (dimuat via <script> di app.html)
+export function exportXLSX(filename, rows, sheetName = "Data") {
+  if (!rows.length) { toast("Tidak ada data untuk diexport", "error"); return; }
+  if (typeof XLSX === "undefined") {
+    toast("Gagal export: library Excel belum termuat, coba refresh halaman.", "error");
+    return;
+  }
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, filename);
 }

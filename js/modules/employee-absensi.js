@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, fmtTime, fmtDate, todayISO } from "../core.js";
+import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, reverseGeocode, fmtTime, fmtDate, todayISO } from "../core.js";
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -199,6 +199,7 @@ async function openCamera(mode, user, activeRow) {
         const office = await getNearestOffice(pos.lat, pos.lng);
         window.__pendingPos = pos;
         window.__pendingOffice = office;
+        window.__pendingAddress = null;
         if (office && office.distance > office.radius_meters) {
           document.getElementById("camera-status").textContent =
             `⚠️ Kamu ${Math.round(office.distance)}m dari kantor (radius ${office.radius_meters}m). Absen tetap bisa dikirim untuk ditinjau admin.`;
@@ -206,6 +207,8 @@ async function openCamera(mode, user, activeRow) {
           document.getElementById("camera-status").textContent = "Lokasi terverifikasi ✓. Silakan ambil foto.";
         }
         document.getElementById("btn-capture").disabled = false;
+        // Cari alamat dari koordinat di belakang layar (tidak memblokir tombol Ambil Foto)
+        reverseGeocode(pos.lat, pos.lng).then(addr => { window.__pendingAddress = addr; });
       })
       .catch(err => {
         document.getElementById("camera-status").textContent = "⚠️ " + err.message + " Kamu tetap bisa lanjut tanpa GPS.";
@@ -222,16 +225,32 @@ async function openCamera(mode, user, activeRow) {
   document.getElementById("btn-submit").onclick = () => submitAttendance(user, activeRow);
 }
 
+function buildWatermarkLines() {
+  const now = new Date();
+  const timeStr = now.toLocaleString("id-ID", {
+    day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const pos = window.__pendingPos;
+  const addressStr = window.__pendingAddress
+    || (pos ? `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}` : "Lokasi tidak tersedia");
+  return [timeStr, addressStr];
+}
+
 async function capturePhoto() {
   const video = document.getElementById("camera-video");
-  capturedBlob = await captureFrameAsBlob(video);
+  const watermarkLines = buildWatermarkLines();
+  capturedBlob = await captureFrameAsBlob(video, watermarkLines);
 
   video.classList.add("hidden");
   const canvas = document.getElementById("camera-preview");
   canvas.classList.remove("hidden");
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext("2d").drawImage(video, 0, 0);
+
+  // Gambar ulang dari hasil blob (yang sudah ada watermark-nya) supaya
+  // preview yang dilihat karyawan persis sama dengan yang akan diupload.
+  const bitmap = await createImageBitmap(capturedBlob);
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  canvas.getContext("2d").drawImage(bitmap, 0, 0);
 
   document.getElementById("btn-capture").classList.add("hidden");
   document.getElementById("btn-retake").classList.remove("hidden");

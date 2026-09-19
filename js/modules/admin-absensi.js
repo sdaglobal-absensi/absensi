@@ -1,5 +1,7 @@
 import { supabase } from "../supabaseClient.js";
-import { fmtDate, fmtTime, todayISO } from "../core.js";
+import { fmtDate, fmtTime, todayISO, exportXLSX } from "../core.js";
+
+let lastRows = [];
 
 export async function render(container) {
   container.innerHTML = `
@@ -8,6 +10,7 @@ export async function render(container) {
       <div class="filter-row">
         <input type="date" id="filter-date" value="${todayISO()}">
         <input type="text" id="filter-search" placeholder="Cari nama karyawan…">
+        <button id="btn-export" class="btn-secondary">Export Excel</button>
       </div>
     </div>
     <div id="absensi-table" class="table-wrap"><p class="muted">Memuat…</p></div>
@@ -15,6 +18,7 @@ export async function render(container) {
 
   document.getElementById("filter-date").addEventListener("change", load);
   document.getElementById("filter-search").addEventListener("input", load);
+  document.getElementById("btn-export").addEventListener("click", doExport);
   load();
 }
 
@@ -34,6 +38,20 @@ async function load() {
   const filtered = search
     ? data.filter(r => r.profiles?.full_name?.toLowerCase().includes(search))
     : data;
+
+  lastRows = filtered.map(r => ({
+    Tanggal: r.date,
+    "Kode Karyawan": r.profiles?.employee_code || "-",
+    Nama: r.profiles?.full_name || "-",
+    Departemen: r.profiles?.department || "-",
+    "Jam Check-in": fmtTime(r.check_in),
+    Status: r.check_in_status === "telat" ? "Telat" : r.check_in_status === "tepat_waktu" ? "Tepat waktu" : "-",
+    "Jarak Check-in (m)": r.check_in_distance_m ?? "-",
+    "Jam Check-out": fmtTime(r.check_out),
+    "Jarak Check-out (m)": r.check_out_distance_m ?? "-",
+    "Foto Check-in": r.check_in_photo_url || "-",
+    "Foto Check-out": r.check_out_photo_url || "-",
+  }));
 
   if (!filtered.length) { el.innerHTML = `<p class="muted">Belum ada data absensi untuk tanggal ini.</p>`; return; }
 
@@ -56,6 +74,11 @@ async function load() {
       </tbody>
     </table>
   `;
+}
+
+function doExport() {
+  const date = document.getElementById("filter-date").value;
+  exportXLSX(`monitor-absensi-${date}.xlsx`, lastRows, "Absensi");
 }
 
 function locationCell(r) {
