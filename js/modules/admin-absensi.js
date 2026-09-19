@@ -39,7 +39,7 @@ async function load() {
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Karyawan</th><th>Departemen</th><th>Check-in</th><th>Status</th><th>Lokasi</th><th>Check-out</th><th>Foto</th></tr></thead>
+      <thead><tr><th>Karyawan</th><th>Departemen</th><th>Check-in</th><th>Status</th><th>Lokasi</th><th>Foto Check-in</th><th>Check-out</th><th>Foto Check-out</th></tr></thead>
       <tbody>
         ${filtered.map(r => `
           <tr>
@@ -48,8 +48,9 @@ async function load() {
             <td>${fmtTime(r.check_in)}</td>
             <td>${r.check_in_status ? `<span class="badge badge-${r.check_in_status === "telat" ? "warn" : "ok"}">${r.check_in_status === "telat" ? "Telat" : "Tepat waktu"}</span>` : "-"}</td>
             <td>${locationCell(r)}</td>
+            <td>${photoCell(r.check_in_photo_url)}</td>
             <td>${fmtTime(r.check_out)}</td>
-            <td>${photoCell(r)}</td>
+            <td>${photoCell(r.check_out_photo_url)}</td>
           </tr>
         `).join("")}
       </tbody>
@@ -64,7 +65,7 @@ function locationCell(r) {
   return `<a href="${link}" target="_blank" rel="noopener" class="btn-link">Lihat peta</a><br><span class="small muted">${dist}</span>`;
 }
 
-function photoCell(r) {
-  if (!r.check_in_photo_url) return "-";
-  return `<a href="${r.check_in_photo_url}" target="_blank" rel="noopener"><img src="${r.check_in_photo_url}" class="thumb"></a>`;
+function photoCell(url) {
+  if (!url) return "-";
+  return `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" class="thumb"></a>`;
 }

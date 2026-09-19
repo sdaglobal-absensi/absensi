@@ -119,27 +119,38 @@ function scheduleCardHtml(info) {
     `;
   }
   const { sched, days } = info;
+  const todayRow = days.find(d => d.day_of_week === todayDow);
+  const todayJam = todayRow && todayRow.is_working_day
+    ? `${(todayRow.start_time || "").slice(0, 5)} – ${(todayRow.end_time || "").slice(0, 5)}${todayRow.crosses_midnight ? " (lintas hari)" : ""}`
+    : "Libur";
+
   return `
     <div class="card" style="margin-bottom:24px;">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-        <strong>Jadwal Kerja Saya: ${sched.name}</strong>
+        <div>
+          <strong>Jadwal Kerja Saya: ${sched.name}</strong>
+          <p style="margin:6px 0 0;">Hari ini (${DAY_NAMES[todayDow]}): <strong>${todayJam}</strong></p>
+        </div>
         ${sched.late_tolerance_minutes ? `<span class="small muted">Toleransi telat: ${sched.late_tolerance_minutes} menit</span>` : ""}
       </div>
-      <div class="table-wrap" style="margin-top:12px;">
-        <table class="table">
-          <thead><tr><th>Hari</th><th>Jam Kerja</th></tr></thead>
-          <tbody>
-            ${DAY_NAMES.map((name, i) => {
-              const d = days.find(x => x.day_of_week === i);
-              const isToday = i === todayDow;
-              const jam = d && d.is_working_day
-                ? `${(d.start_time || "").slice(0, 5)} – ${(d.end_time || "").slice(0, 5)}${d.crosses_midnight ? " (lintas hari)" : ""}`
-                : `<span class="muted">Libur</span>`;
-              return `<tr${isToday ? ' style="font-weight:600; background:var(--bg);"' : ""}><td>${name}${isToday ? " · <span class=\"small\" style=\"font-weight:400;\">Hari ini</span>" : ""}</td><td>${jam}</td></tr>`;
-            }).join("")}
-          </tbody>
-        </table>
-      </div>
+      <details style="margin-top:12px;">
+        <summary class="small" style="cursor:pointer; color:var(--primary); font-weight:600;">Lihat jadwal satu minggu</summary>
+        <div class="table-wrap" style="margin-top:10px;">
+          <table class="table">
+            <thead><tr><th>Hari</th><th>Jam Kerja</th></tr></thead>
+            <tbody>
+              ${DAY_NAMES.map((name, i) => {
+                const d = days.find(x => x.day_of_week === i);
+                const isToday = i === todayDow;
+                const jam = d && d.is_working_day
+                  ? `${(d.start_time || "").slice(0, 5)} – ${(d.end_time || "").slice(0, 5)}${d.crosses_midnight ? " (lintas hari)" : ""}`
+                  : `<span class="muted">Libur</span>`;
+                return `<tr${isToday ? ' style="font-weight:600; background:var(--bg);"' : ""}><td>${name}${isToday ? " · <span class=\"small\" style=\"font-weight:400;\">Hari ini</span>" : ""}</td><td>${jam}</td></tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
   `;
 }
