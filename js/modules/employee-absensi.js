@@ -1,6 +1,8 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, fmtTime, fmtDate, todayISO } from "../core.js";
 
+const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+
 let stream = null;
 let capturedBlob = null;
 let pendingMode = null; // 'in' | 'out'
@@ -37,6 +39,8 @@ export async function render(container, user) {
   const completedToday = !!(latest && latest.check_out && latest.date === today);
   const activeRow = openShift || completedToday ? latest : null;
 
+  const scheduleInfo = await loadMySchedule(user);
+
   container.innerHTML = `
     <div class="page-header">
       <h1>Absensi</h1>
@@ -45,6 +49,8 @@ export async function render(container, user) {
 
     ${openShift ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">Sesi kerja dari ${fmtDate(activeRow.date)} masih berjalan (belum check-out).</p>` : ""}
     ${staleOpen ? `<p class="small" style="margin-top:-14px; margin-bottom:18px; color:var(--warn);">⚠️ Ada check-in tanggal ${fmtDate(latest.date)} yang belum di-check-out (kemungkinan lupa). Kamu tetap bisa check-in baru hari ini — data lama itu akan tercatat tidak lengkap sampai diperbaiki admin.</p>` : ""}
+
+    ${scheduleCardHtml(scheduleInfo)}
 
     <div class="status-grid">
       <div class="status-card ${activeRow?.check_in ? "done" : ""}">
@@ -89,6 +95,53 @@ export async function render(container, user) {
   if (btnOpen) btnOpen.addEventListener("click", () => openCamera(btnOpen.dataset.mode, user, activeRow));
 
   document.getElementById("btn-cancel").addEventListener("click", closeCamera);
+}
+
+// Ambil jadwal kerja milik karyawan (untuk ditampilkan, dan dipakai juga
+// oleh getLateCutoff supaya tidak query dua kali kalau memungkinkan).
+async function loadMySchedule(user) {
+  if (!user.schedule_id) return null;
+  const [{ data: sched }, { data: days }] = await Promise.all([
+    supabase.from("work_schedules").select("*").eq("id", user.schedule_id).maybeSingle(),
+    supabase.from("work_schedule_days").select("*").eq("schedule_id", user.schedule_id).order("day_of_week"),
+  ]);
+  if (!sched) return null;
+  return { sched, days: days || [] };
+}
+
+function scheduleCardHtml(info) {
+  const todayDow = new Date().getDay();
+  if (!info) {
+    return `
+      <div class="card" style="margin-bottom:24px;">
+        <p class="muted small" style="margin:0;">Jadwal kerja belum diatur oleh admin. Hubungi HR/Admin kalau ini seharusnya sudah ada.</p>
+      </div>
+    `;
+  }
+  const { sched, days } = info;
+  return `
+    <div class="card" style="margin-bottom:24px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <strong>Jadwal Kerja Saya: ${sched.name}</strong>
+        ${sched.late_tolerance_minutes ? `<span class="small muted">Toleransi telat: ${sched.late_tolerance_minutes} menit</span>` : ""}
+      </div>
+      <div class="table-wrap" style="margin-top:12px;">
+        <table class="table">
+          <thead><tr><th>Hari</th><th>Jam Kerja</th></tr></thead>
+          <tbody>
+            ${DAY_NAMES.map((name, i) => {
+              const d = days.find(x => x.day_of_week === i);
+              const isToday = i === todayDow;
+              const jam = d && d.is_working_day
+                ? `${(d.start_time || "").slice(0, 5)} – ${(d.end_time || "").slice(0, 5)}${d.crosses_midnight ? " (lintas hari)" : ""}`
+                : `<span class="muted">Libur</span>`;
+              return `<tr${isToday ? ' style="font-weight:600; background:var(--bg);"' : ""}><td>${name}${isToday ? " · <span class=\"small\" style=\"font-weight:400;\">Hari ini</span>" : ""}</td><td>${jam}</td></tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
 
 // Cek apakah sesi terbuka dari kemarin memang shift lintas hari (misal
