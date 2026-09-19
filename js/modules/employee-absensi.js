@@ -1,43 +1,50 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, fmtTime, todayISO } from "../core.js";
+import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, fmtTime, fmtDate, todayISO } from "../core.js";
 
 let stream = null;
 let capturedBlob = null;
 let pendingMode = null; // 'in' | 'out'
 
 export async function render(container, user) {
-  const { data: today } = await supabase
+  // Ambil absensi TERBARU milik user (bukan cuma "hari ini"), supaya shift
+  // yang lintas hari (misal masuk jam 22:00, pulang besok jam 06:00) tetap
+  // terdeteksi sebagai satu sesi yang sama saat check-out.
+  const { data: latest } = await supabase
     .from("attendance")
     .select("*")
     .eq("user_id", user.id)
-    .eq("date", todayISO())
+    .order("check_in", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
-  const hasCheckedIn = !!today?.check_in;
-  const hasCheckedOut = !!today?.check_out;
+  const openShift = !!(latest && !latest.check_out);
+  const completedToday = !!(latest && latest.check_out && latest.date === todayISO());
+  const activeRow = openShift || completedToday ? latest : null;
 
   container.innerHTML = `
     <div class="page-header">
-      <h1>Absensi Hari Ini</h1>
+      <h1>Absensi</h1>
       <p class="muted">${new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
     </div>
 
+    ${openShift ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">Sesi kerja dari ${fmtDate(activeRow.date)} masih berjalan (belum check-out).</p>` : ""}
+
     <div class="status-grid">
-      <div class="status-card ${hasCheckedIn ? "done" : ""}">
+      <div class="status-card ${activeRow?.check_in ? "done" : ""}">
         <span class="status-label">Check-in</span>
-        <span class="status-value">${hasCheckedIn ? fmtTime(today.check_in) : "Belum absen"}</span>
-        ${today?.check_in_status ? `<span class="badge badge-${today.check_in_status === "telat" ? "warn" : "ok"}">${today.check_in_status === "telat" ? "Telat" : "Tepat waktu"}</span>` : ""}
+        <span class="status-value">${activeRow?.check_in ? fmtTime(activeRow.check_in) : "Belum absen"}</span>
+        ${activeRow?.check_in_status ? `<span class="badge badge-${activeRow.check_in_status === "telat" ? "warn" : "ok"}">${activeRow.check_in_status === "telat" ? "Telat" : "Tepat waktu"}</span>` : ""}
       </div>
-      <div class="status-card ${hasCheckedOut ? "done" : ""}">
+      <div class="status-card ${activeRow?.check_out ? "done" : ""}">
         <span class="status-label">Check-out</span>
-        <span class="status-value">${hasCheckedOut ? fmtTime(today.check_out) : "Belum absen"}</span>
+        <span class="status-value">${activeRow?.check_out ? fmtTime(activeRow.check_out) : "Belum absen"}</span>
       </div>
     </div>
 
     <div class="action-area">
-      ${!hasCheckedIn
+      ${!openShift && !completedToday
         ? `<button id="btn-open-camera" class="btn-primary btn-lg" data-mode="in">Check-in Sekarang</button>`
-        : !hasCheckedOut
+        : openShift
         ? `<button id="btn-open-camera" class="btn-primary btn-lg" data-mode="out">Check-out Sekarang</button>`
         : `<p class="muted">Absensi hari ini sudah lengkap. Sampai jumpa besok 👋</p>`
       }
@@ -62,12 +69,12 @@ export async function render(container, user) {
   `;
 
   const btnOpen = document.getElementById("btn-open-camera");
-  if (btnOpen) btnOpen.addEventListener("click", () => openCamera(btnOpen.dataset.mode, user));
+  if (btnOpen) btnOpen.addEventListener("click", () => openCamera(btnOpen.dataset.mode, user, activeRow));
 
   document.getElementById("btn-cancel").addEventListener("click", closeCamera);
 }
 
-async function openCamera(mode, user) {
+async function openCamera(mode, user, activeRow) {
   pendingMode = mode;
   capturedBlob = null;
   const modal = document.getElementById("camera-modal");
@@ -108,7 +115,7 @@ async function openCamera(mode, user) {
 
   document.getElementById("btn-capture").onclick = capturePhoto;
   document.getElementById("btn-retake").onclick = retake;
-  document.getElementById("btn-submit").onclick = () => submitAttendance(user);
+  document.getElementById("btn-submit").onclick = () => submitAttendance(user, activeRow);
 }
 
 async function capturePhoto() {
@@ -136,7 +143,31 @@ function retake() {
   document.getElementById("btn-submit").classList.add("hidden");
 }
 
-async function submitAttendance(user) {
+// Tentukan status tepat-waktu/telat berdasarkan Master Jadwal Kerja milik
+// karyawan. Kalau karyawan belum dikaitkan ke jadwal manapun, pakai jam
+// 08:15 sebagai cadangan (perilaku lama) supaya tidak mengganggu yang
+// belum sempat diatur adminnya.
+async function getLateCutoff(user, now) {
+  if (user.schedule_id) {
+    const dow = now.getDay(); // 0=Minggu ... 6=Sabtu
+    const [{ data: sched }, { data: day }] = await Promise.all([
+      supabase.from("work_schedules").select("*").eq("id", user.schedule_id).maybeSingle(),
+      supabase.from("work_schedule_days").select("*").eq("schedule_id", user.schedule_id).eq("day_of_week", dow).maybeSingle(),
+    ]);
+    if (day?.is_working_day && day.start_time) {
+      const [h, m] = day.start_time.split(":").map(Number);
+      const cutoff = new Date(now);
+      cutoff.setHours(h, m, 0, 0);
+      cutoff.setMinutes(cutoff.getMinutes() + (sched?.late_tolerance_minutes || 0));
+      return cutoff;
+    }
+  }
+  const fallback = new Date(now);
+  fallback.setHours(8, 15, 0, 0);
+  return fallback;
+}
+
+async function submitAttendance(user, activeRow) {
   if (!capturedBlob) { toast("Ambil foto dulu", "error"); return; }
   const submitBtn = document.getElementById("btn-submit");
   submitBtn.disabled = true;
@@ -149,8 +180,7 @@ async function submitAttendance(user) {
     const now = new Date();
 
     if (pendingMode === "in") {
-      // Jam kerja default: masuk sebelum 08:15 = tepat waktu
-      const cutoff = new Date(now); cutoff.setHours(8, 15, 0, 0);
+      const cutoff = await getLateCutoff(user, now);
       const status = now > cutoff ? "telat" : "tepat_waktu";
 
       const { error } = await supabase.from("attendance").insert({
@@ -166,15 +196,16 @@ async function submitAttendance(user) {
       if (error) throw error;
       toast("Check-in berhasil!", "success");
     } else {
-      const { data: row } = await supabase
-        .from("attendance").select("id").eq("user_id", user.id).eq("date", todayISO()).single();
+      // Update baris sesi yang masih terbuka (bisa jadi tanggalnya kemarin,
+      // untuk shift lintas hari), bukan selalu baris tanggal hari ini.
+      if (!activeRow) throw new Error("Tidak ada sesi check-in yang terbuka.");
       const { error } = await supabase.from("attendance").update({
         check_out: now.toISOString(),
         check_out_lat: pos?.lat ?? null,
         check_out_lng: pos?.lng ?? null,
         check_out_distance_m: office ? Math.round(office.distance) : null,
         check_out_photo_url: photoUrl,
-      }).eq("id", row.id);
+      }).eq("id", activeRow.id);
       if (error) throw error;
       toast("Check-out berhasil!", "success");
     }

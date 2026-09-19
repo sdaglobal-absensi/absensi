@@ -165,6 +165,45 @@ create table if not exists public.departments (
   unique (departemen, bagian, jabatan)
 );
 
+-- ---------------------------------------------------------------------
+-- 4d. TABEL: work_schedules & work_schedule_days (Master Jadwal Kerja)
+--     Satu "jadwal" bisa punya jam kerja berbeda tiap hari, termasuk
+--     shift yang lintas hari (misal 22:00 - 06:00).
+-- ---------------------------------------------------------------------
+create table if not exists public.work_schedules (
+  id                      uuid primary key default gen_random_uuid(),
+  name                    text not null,
+  late_tolerance_minutes  integer not null default 0,   -- toleransi sebelum dianggap telat
+  is_active               boolean not null default true,
+  created_at              timestamptz not null default now(),
+  updated_at              timestamptz not null default now()
+);
+
+create table if not exists public.work_schedule_days (
+  id                uuid primary key default gen_random_uuid(),
+  schedule_id       uuid not null references public.work_schedules(id) on delete cascade,
+  day_of_week       smallint not null check (day_of_week between 0 and 6), -- 0=Minggu ... 6=Sabtu
+  is_working_day    boolean not null default false,
+  start_time        time,
+  end_time          time,
+  crosses_midnight  boolean not null default false,  -- true kalau end_time < start_time (shift lintas hari)
+  unique (schedule_id, day_of_week)
+);
+
+-- ---------------------------------------------------------------------
+-- 4e. TABEL: holidays (Master Hari Libur — diisi manual oleh admin)
+-- ---------------------------------------------------------------------
+create table if not exists public.holidays (
+  id          uuid primary key default gen_random_uuid(),
+  date        date not null unique,
+  name        text not null,
+  is_active   boolean not null default true,
+  created_at  timestamptz not null default now()
+);
+
+-- Hubungkan karyawan ke salah satu jadwal kerja
+alter table public.profiles add column if not exists schedule_id uuid references public.work_schedules(id);
+
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
 begin
@@ -306,6 +345,36 @@ drop policy if exists "departments_admin_write" on public.departments;
 create policy "departments_admin_write" on public.departments
   for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
 
+-- work_schedules & work_schedule_days (Master Jadwal Kerja) -------------------------------------------------------------
+drop trigger if exists trg_work_schedules_updated_at on public.work_schedules;
+create trigger trg_work_schedules_updated_at
+  before update on public.work_schedules
+  for each row execute function public.set_updated_at();
+
+alter table public.work_schedules enable row level security;
+alter table public.work_schedule_days enable row level security;
+
+drop policy if exists "schedules_select" on public.work_schedules;
+create policy "schedules_select" on public.work_schedules for select using ( true );
+drop policy if exists "schedules_admin_write" on public.work_schedules;
+create policy "schedules_admin_write" on public.work_schedules
+  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+
+drop policy if exists "schedule_days_select" on public.work_schedule_days;
+create policy "schedule_days_select" on public.work_schedule_days for select using ( true );
+drop policy if exists "schedule_days_admin_write" on public.work_schedule_days;
+create policy "schedule_days_admin_write" on public.work_schedule_days
+  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+
+-- holidays (Master Hari Libur) -------------------------------------------------------------
+alter table public.holidays enable row level security;
+drop policy if exists "holidays_select" on public.holidays;
+create policy "holidays_select" on public.holidays for select using ( true );
+drop policy if exists "holidays_admin_write" on public.holidays;
+create policy "holidays_admin_write" on public.holidays
+  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+
+
 
 
 -- ---------------------------------------------------------------------
@@ -331,6 +400,41 @@ create policy "photo_read_all" on storage.objects
 insert into public.office_locations (name, lat, lng, radius_meters)
 values ('Kantor Pusat', -7.257472, 112.752088, 150)
 on conflict do nothing;
+
+-- ---------------------------------------------------------------------
+-- Contoh data jadwal kerja sesuai kondisi saat ini (silakan edit/hapus lewat panel admin)
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_reguler uuid;
+  v_malam uuid;
+begin
+  if not exists (select 1 from public.work_schedules where name = 'Reguler Kantor (Senin-Sabtu)') then
+    insert into public.work_schedules (name, late_tolerance_minutes) values ('Reguler Kantor (Senin-Sabtu)', 0)
+      returning id into v_reguler;
+    insert into public.work_schedule_days (schedule_id, day_of_week, is_working_day, start_time, end_time, crosses_midnight) values
+      (v_reguler, 0, false, null, null, false),                    -- Minggu libur
+      (v_reguler, 1, true, '08:00', '16:00', false),                -- Senin
+      (v_reguler, 2, true, '08:00', '16:00', false),                -- Selasa
+      (v_reguler, 3, true, '08:00', '16:00', false),                -- Rabu
+      (v_reguler, 4, true, '08:00', '16:00', false),                -- Kamis
+      (v_reguler, 5, true, '08:00', '16:00', false),                -- Jumat
+      (v_reguler, 6, true, '08:00', '13:00', false);                -- Sabtu
+  end if;
+
+  if not exists (select 1 from public.work_schedules where name = 'Shift Malam (22:00-06:00)') then
+    insert into public.work_schedules (name, late_tolerance_minutes) values ('Shift Malam (22:00-06:00)', 0)
+      returning id into v_malam;
+    insert into public.work_schedule_days (schedule_id, day_of_week, is_working_day, start_time, end_time, crosses_midnight) values
+      (v_malam, 0, false, null, null, false),
+      (v_malam, 1, true, '22:00', '06:00', true),
+      (v_malam, 2, true, '22:00', '06:00', true),
+      (v_malam, 3, true, '22:00', '06:00', true),
+      (v_malam, 4, true, '22:00', '06:00', true),
+      (v_malam, 5, true, '22:00', '06:00', true),
+      (v_malam, 6, true, '22:00', '06:00', true);
+  end if;
+end $$;
 
 -- ---------------------------------------------------------------------
 -- 11. AKUN ADMIN PERTAMA

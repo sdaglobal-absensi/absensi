@@ -36,6 +36,8 @@ const MENUS = {
     { id: "laporan", label: "Laporan", icon: "chart" },
     { id: "master-level", label: "Master Level", icon: "layers", section: "Master Data" },
     { id: "master-departemen", label: "Master Departemen", icon: "grid", section: "Master Data" },
+    { id: "master-jadwal", label: "Master Jadwal Kerja", icon: "clock", section: "Master Data" },
+    { id: "master-libur", label: "Master Hari Libur", icon: "file", section: "Master Data" },
   ],
   admin: [
     { id: "karyawan", label: "Data Karyawan", icon: "users" },
@@ -44,6 +46,8 @@ const MENUS = {
     { id: "laporan", label: "Laporan", icon: "chart" },
     { id: "master-level", label: "Master Level", icon: "layers", section: "Master Data" },
     { id: "master-departemen", label: "Master Departemen", icon: "grid", section: "Master Data" },
+    { id: "master-jadwal", label: "Master Jadwal Kerja", icon: "clock", section: "Master Data" },
+    { id: "master-libur", label: "Master Hari Libur", icon: "file", section: "Master Data" },
   ],
 };
 
