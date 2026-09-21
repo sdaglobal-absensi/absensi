@@ -28,11 +28,14 @@ const MENUS = {
   karyawan: [
     { id: "absensi", label: "Absensi", icon: "clock" },
     { id: "izin", label: "Pengajuan Izin", icon: "file" },
+    { id: "lembur", label: "Pengajuan Lembur", icon: "file" },
     { id: "riwayat", label: "Riwayat Saya", icon: "history" },
   ],
   hr: [
+    { id: "karyawan", label: "Data Karyawan", icon: "users" },
     { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock" },
     { id: "izin-approval", label: "Approval Izin", icon: "check" },
+    { id: "lembur-approval", label: "Approval Lembur", icon: "check" },
     { id: "laporan", label: "Laporan", icon: "chart" },
     { id: "master-level", label: "Master Level", icon: "layers", section: "Master Data" },
     { id: "master-departemen", label: "Master Departemen", icon: "grid", section: "Master Data" },
@@ -44,6 +47,7 @@ const MENUS = {
     { id: "karyawan", label: "Data Karyawan", icon: "users" },
     { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock" },
     { id: "izin-approval", label: "Approval Izin", icon: "check" },
+    { id: "lembur-approval", label: "Approval Lembur", icon: "check" },
     { id: "laporan", label: "Laporan", icon: "chart" },
     { id: "master-level", label: "Master Level", icon: "layers", section: "Master Data" },
     { id: "master-departemen", label: "Master Departemen", icon: "grid", section: "Master Data" },

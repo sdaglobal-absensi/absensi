@@ -204,6 +204,24 @@ create table if not exists public.holidays (
 -- Hubungkan karyawan ke salah satu jadwal kerja
 alter table public.profiles add column if not exists schedule_id uuid references public.work_schedules(id);
 
+-- ---------------------------------------------------------------------
+-- 4f. TABEL: overtime_requests (Pengajuan Lembur)
+-- ---------------------------------------------------------------------
+create table if not exists public.overtime_requests (
+  id             uuid primary key default gen_random_uuid(),
+  user_id        uuid not null references public.profiles(id) on delete cascade,
+  date           date not null,
+  start_time     time not null,
+  end_time       time not null,
+  is_hari_libur  boolean not null default false,  -- otomatis: Minggu atau tanggal di Master Hari Libur
+  reason         text not null,
+  status         text not null default 'pending' check (status in ('pending','approved','rejected')),
+  reviewed_by    uuid references public.profiles(id),
+  reviewed_at    timestamptz,
+  review_notes   text,
+  created_at     timestamptz not null default now()
+);
+
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
 begin
@@ -302,6 +320,21 @@ create policy "leave_insert_self" on public.leave_requests
 
 drop policy if exists "leave_update" on public.leave_requests;
 create policy "leave_update" on public.leave_requests
+  for update using ( user_id = auth.uid() or public.is_admin_or_hr() );
+
+-- overtime_requests (Pengajuan Lembur) -------------------------------------------------------------
+alter table public.overtime_requests enable row level security;
+
+drop policy if exists "overtime_select" on public.overtime_requests;
+create policy "overtime_select" on public.overtime_requests
+  for select using ( user_id = auth.uid() or public.is_admin_or_hr() );
+
+drop policy if exists "overtime_insert_self" on public.overtime_requests;
+create policy "overtime_insert_self" on public.overtime_requests
+  for insert with check ( user_id = auth.uid() );
+
+drop policy if exists "overtime_update" on public.overtime_requests;
+create policy "overtime_update" on public.overtime_requests
   for update using ( user_id = auth.uid() or public.is_admin_or_hr() );
 
 -- office_locations -------------------------------------------------------------

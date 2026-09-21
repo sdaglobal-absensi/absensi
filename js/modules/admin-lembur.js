@@ -4,7 +4,7 @@ import { toast, fmtDate } from "../core.js";
 export async function render(container, user) {
   container.innerHTML = `
     <div class="page-header">
-      <h1>Approval Izin</h1>
+      <h1>Approval Lembur</h1>
       <select id="filter-status">
         <option value="pending">Menunggu</option>
         <option value="approved">Disetujui</option>
@@ -12,7 +12,7 @@ export async function render(container, user) {
         <option value="all">Semua</option>
       </select>
     </div>
-    <div id="izin-table" class="table-wrap"><p class="muted">Memuat…</p></div>
+    <div id="lembur-table" class="table-wrap"><p class="muted">Memuat…</p></div>
   `;
   document.getElementById("filter-status").addEventListener("change", () => load(user));
   load(user);
@@ -21,25 +21,26 @@ export async function render(container, user) {
 async function load(user) {
   const status = document.getElementById("filter-status").value;
   let query = supabase
-    .from("leave_requests")
-    .select("*, profiles!leave_requests_user_id_fkey(full_name, department)")
+    .from("overtime_requests")
+    .select("*, profiles!overtime_requests_user_id_fkey(full_name, department)")
     .order("created_at", { ascending: false });
   if (status !== "all") query = query.eq("status", status);
 
   const { data, error } = await query;
-  const el = document.getElementById("izin-table");
+  const el = document.getElementById("lembur-table");
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
   if (!data.length) { el.innerHTML = `<p class="muted">Tidak ada pengajuan.</p>`; return; }
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Karyawan</th><th>Jenis</th><th>Periode</th><th>Alasan</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Karyawan</th><th>Tanggal</th><th>Jam</th><th>Jenis Hari</th><th>Keterangan</th><th>Status</th><th></th></tr></thead>
       <tbody>
         ${data.map(r => `
           <tr>
             <td>${r.profiles?.full_name || "-"}</td>
-            <td class="capitalize">${r.type}</td>
-            <td>${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}</td>
+            <td>${fmtDate(r.date)}</td>
+            <td>${r.start_time?.slice(0, 5)} – ${r.end_time?.slice(0, 5)}</td>
+            <td>${r.is_hari_libur ? "Hari Libur" : "Hari Biasa"}</td>
             <td>${escapeHtml(r.reason)}</td>
             <td><span class="badge badge-${r.status === "approved" ? "ok" : r.status === "rejected" ? "danger" : "warn"}">${statusLabel(r.status)}</span></td>
             <td>
@@ -59,11 +60,11 @@ async function load(user) {
 }
 
 async function decide(id, status, user) {
-  const { error } = await supabase.from("leave_requests").update({
+  const { error } = await supabase.from("overtime_requests").update({
     status, reviewed_by: user.id, reviewed_at: new Date().toISOString(),
   }).eq("id", id);
   if (error) { toast("Gagal memperbarui: " + error.message, "error"); return; }
-  toast(status === "approved" ? "Pengajuan disetujui" : "Pengajuan ditolak", "success");
+  toast(status === "approved" ? "Lembur disetujui" : "Lembur ditolak", "success");
   load(user);
 }
 

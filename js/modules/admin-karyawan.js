@@ -7,13 +7,16 @@ let masterLocations = [];
 let ssDepartemen, ssBagian, ssJabatan, ssGrade, ssLokasi;
 
 export async function render(container, user) {
+  const canEdit = user.role === "admin";
+
   container.innerHTML = `
     <div class="page-header">
       <h1>Data Karyawan</h1>
-      <button id="btn-new" class="btn-primary">+ Tambah Karyawan</button>
+      ${canEdit ? `<button id="btn-new" class="btn-primary">+ Tambah Karyawan</button>` : ""}
     </div>
     <div id="karyawan-table" class="table-wrap"><p class="muted">Memuat…</p></div>
 
+    ${canEdit ? `
     <div id="modal-karyawan" class="modal hidden">
       <div class="modal-box modal-box-lg">
         <h3 id="modal-title">Tambah Karyawan</h3>
@@ -87,19 +90,22 @@ export async function render(container, user) {
         </form>
       </div>
     </div>
+    ` : ""}
   `;
 
-  await loadMasterData();
-  setupSearchSelects();
+  if (canEdit) {
+    await loadMasterData();
+    setupSearchSelects();
 
-  document.getElementById("btn-new").addEventListener("click", () => openModal());
-  document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
-  document.getElementById("form-karyawan").addEventListener("submit", e => onSubmit(e, user));
-  document.getElementById("join_date").addEventListener("input", e => {
-    document.getElementById("lama_bekerja").value = lamaBekerja(e.target.value);
-  });
+    document.getElementById("btn-new").addEventListener("click", () => openModal());
+    document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
+    document.getElementById("form-karyawan").addEventListener("submit", e => onSubmit(e, user));
+    document.getElementById("join_date").addEventListener("input", e => {
+      document.getElementById("lama_bekerja").value = lamaBekerja(e.target.value);
+    });
+  }
 
-  loadTable();
+  loadTable(canEdit);
 }
 
 async function loadMasterData() {
@@ -154,14 +160,14 @@ function setupSearchSelects() {
   });
 }
 
-async function loadTable() {
+async function loadTable(canEdit) {
   const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
   const el = document.getElementById("karyawan-table");
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Kode</th><th>Nama</th><th>Departemen</th><th>Jabatan</th><th>Level</th><th>Role</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Kode</th><th>Nama</th><th>Departemen</th><th>Jabatan</th><th>Level</th><th>Role</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead>
       <tbody>
         ${data.map(k => `
           <tr>
@@ -172,19 +178,21 @@ async function loadTable() {
             <td>${k.level || "-"}</td>
             <td>${roleLabel(k.role)}</td>
             <td><span class="badge badge-${k.is_active ? "ok" : "danger"}">${k.is_active ? "Aktif" : "Nonaktif"}</span></td>
-            <td><button class="btn-link btn-edit" data-id="${k.id}">Edit</button></td>
+            ${canEdit ? `<td><button class="btn-link btn-edit" data-id="${k.id}">Edit</button></td>` : ""}
           </tr>
         `).join("")}
       </tbody>
     </table>
   `;
 
-  el.querySelectorAll(".btn-edit").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const row = data.find(k => k.id === btn.dataset.id);
-      openModal(row);
+  if (canEdit) {
+    el.querySelectorAll(".btn-edit").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const row = data.find(k => k.id === btn.dataset.id);
+        openModal(row);
+      });
     });
-  });
+  }
 }
 
 function openModal(existing = null) {
@@ -290,7 +298,7 @@ async function onSubmit(e, currentUser) {
       toast(`Akun dibuat. Beritahu karyawan: email ${email}, password ${password}`, "success");
     }
     closeModal();
-    loadTable();
+    loadTable(true);
   } catch (err) {
     toast("Gagal menyimpan: " + err.message, "error");
   }
