@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, getPosition } from "../core.js";
+import { toast, getPosition, searchLocation } from "../core.js";
 
 export async function render(container, user) {
   const canEdit = user.role === "admin";
@@ -22,6 +22,16 @@ export async function render(container, user) {
           <input type="hidden" name="id">
           <div class="form-row">
             <label>Nama Kantor/Cabang <input name="name" required placeholder="Contoh: Kantor Cabang Malang"></label>
+          </div>
+
+          <div class="form-row">
+            <label>Cari Lokasi di Peta (opsional)</label>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="location-search" placeholder="Contoh: SDA Semarang, Jl. Pemuda">
+              <button type="button" id="btn-search-location" class="btn-secondary" style="white-space:nowrap;">Cari</button>
+            </div>
+            <div id="search-results" class="location-search-results hidden"></div>
+            <p class="small muted field-hint">Cari nama tempat/alamat yang sudah terdaftar di peta (OpenStreetMap). Kalau tidak ketemu, isi koordinat manual di bawah.</p>
           </div>
 
           <button type="button" id="btn-use-current" class="btn-secondary" style="margin-bottom:14px;">📍 Gunakan Lokasi Saya Sekarang</button>
@@ -52,9 +62,40 @@ export async function render(container, user) {
     document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
     document.getElementById("form-lokasi").addEventListener("submit", onSubmit);
     document.getElementById("btn-use-current").addEventListener("click", useCurrentLocation);
+    document.getElementById("btn-search-location").addEventListener("click", doLocationSearch);
+    document.getElementById("location-search").addEventListener("keydown", e => {
+      if (e.key === "Enter") { e.preventDefault(); doLocationSearch(); }
+    });
   }
 
   loadTable();
+}
+
+async function doLocationSearch() {
+  const q = document.getElementById("location-search").value.trim();
+  const resultsEl = document.getElementById("search-results");
+  if (!q) return;
+
+  resultsEl.classList.remove("hidden");
+  resultsEl.innerHTML = `<div class="search-option muted">Mencari…</div>`;
+
+  const results = await searchLocation(q);
+  if (!results.length) {
+    resultsEl.innerHTML = `<div class="search-option muted">Tidak ditemukan. Coba kata kunci lain, atau isi koordinat manual di bawah.</div>`;
+    return;
+  }
+
+  resultsEl.innerHTML = results.map((r, i) => `<div class="search-option" data-i="${i}">${r.label}</div>`).join("");
+  resultsEl.querySelectorAll(".search-option[data-i]").forEach(el => {
+    el.addEventListener("click", () => {
+      const r = results[Number(el.dataset.i)];
+      const form = document.getElementById("form-lokasi");
+      form.lat.value = r.lat.toFixed(6);
+      form.lng.value = r.lng.toFixed(6);
+      resultsEl.classList.add("hidden");
+      toast("Koordinat terisi dari hasil pencarian", "success");
+    });
+  });
 }
 
 async function useCurrentLocation() {
@@ -111,6 +152,8 @@ function openModal(existing = null) {
   const modal = document.getElementById("modal-lokasi");
   const form = document.getElementById("form-lokasi");
   form.reset();
+  document.getElementById("search-results").classList.add("hidden");
+  document.getElementById("search-results").innerHTML = "";
   document.getElementById("modal-title").textContent = existing ? "Edit Lokasi" : "Tambah Lokasi";
 
   if (existing) {

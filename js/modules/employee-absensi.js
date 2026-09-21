@@ -202,9 +202,11 @@ async function openCamera(mode, user, activeRow) {
         window.__pendingAddress = null;
         if (office && office.distance > office.radius_meters) {
           document.getElementById("camera-status").textContent =
-            `⚠️ Kamu ${Math.round(office.distance)}m dari kantor (radius ${office.radius_meters}m). Absen tetap bisa dikirim untuk ditinjau admin.`;
+            `⚠️ Kamu ${Math.round(office.distance)}m dari ${office.name} (radius ${office.radius_meters}m). Absen tetap bisa dikirim untuk ditinjau admin.`;
+        } else if (office) {
+          document.getElementById("camera-status").textContent = `Lokasi terverifikasi ✓ (${office.name}). Silakan ambil foto.`;
         } else {
-          document.getElementById("camera-status").textContent = "Lokasi terverifikasi ✓. Silakan ambil foto.";
+          document.getElementById("camera-status").textContent = "Lokasi tercatat, tapi belum ada data kantor untuk dibandingkan. Silakan ambil foto.";
         }
         document.getElementById("btn-capture").disabled = false;
         // Cari alamat dari koordinat di belakang layar (tidak memblokir tombol Ambil Foto)

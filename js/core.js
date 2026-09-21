@@ -199,7 +199,23 @@ function drawPhotoWatermark(ctx, w, h, lines) {
   });
 }
 
-// Reverse geocode koordinat -> alamat (pakai OpenStreetMap Nominatim, gratis
+// Cari lokasi berdasarkan nama/alamat (forward geocode) lewat OpenStreetMap
+// Nominatim. Cocok untuk alamat/tempat umum yang sudah terdaftar di peta;
+// nama internal perusahaan yang sangat spesifik mungkin tidak ketemu —
+// pemanggil tetap harus sediakan opsi isi manual sebagai fallback.
+export async function searchLocation(query) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`,
+      { headers: { "Accept-Language": "id" } }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.map(d => ({ label: d.display_name, lat: parseFloat(d.lat), lng: parseFloat(d.lon) }));
+  } catch (e) {
+    return [];
+  }
+}
 // tanpa API key). Bisa gagal/lambat; pemanggil harus siap fallback ke
 // koordinat mentah kalau hasilnya null.
 export async function reverseGeocode(lat, lng) {

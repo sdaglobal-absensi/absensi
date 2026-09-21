@@ -126,6 +126,12 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary-lig
 .employee-checklist label:hover { background: var(--bg); }
 .employee-checklist input[type="checkbox"] { width: auto; flex-shrink: 0; }
 .employee-checklist .emp-meta { color: var(--muted); font-size: 0.78rem; }
+
+/* ---------------- Location search (Master Lokasi Kantor) ---------------- */
+.location-search-results {
+  border: 1px solid var(--border); border-radius: var(--radius); margin-top: 8px;
+  max-height: 200px; overflow-y: auto;
+}
 .checkbox-row { flex-direction: row; align-items: center; gap: 8px; }
 .checkbox-row input { width: auto; }
 
