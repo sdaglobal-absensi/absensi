@@ -16,7 +16,7 @@ export async function render(container, user) {
 
     ${canEdit ? `
     <div id="modal-lokasi" class="modal hidden">
-      <div class="modal-box">
+      <div class="modal-box modal-box-lg">
         <h3 id="modal-title">Tambah Lokasi</h3>
         <form id="form-lokasi">
           <input type="hidden" name="id">
@@ -28,8 +28,8 @@ export async function render(container, user) {
           <p class="small muted field-hint" style="margin-top:-10px;">Praktis kalau kamu sedang berada di lokasi kantor tersebut. Atau isi manual di bawah — cari koordinat lewat Google Maps (klik kanan titik di peta → koordinat langsung tersalin).</p>
 
           <div class="form-row two-col">
-            <label>Latitude <input type="number" name="lat" step="0.000001" required placeholder="-7.257472"></label>
-            <label>Longitude <input type="number" name="lng" step="0.000001" required placeholder="112.752088"></label>
+            <label>Latitude <input type="text" inputmode="decimal" name="lat" required placeholder="-7.257472"></label>
+            <label>Longitude <input type="text" inputmode="decimal" name="lng" required placeholder="112.752088"></label>
           </div>
           <div class="form-row">
             <label>Radius Toleransi (meter) <input type="number" name="radius_meters" min="10" step="10" value="150" required></label>
@@ -37,9 +37,12 @@ export async function render(container, user) {
           <div class="form-row">
             <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Aktif dipakai</label>
           </div>
-          <div class="modal-actions">
-            <button type="button" id="btn-cancel-modal" class="btn-secondary">Batal</button>
-            <button type="submit" class="btn-primary">Simpan</button>
+          <div class="modal-actions" style="justify-content:space-between;">
+            <button type="button" id="btn-delete" class="btn-secondary hidden" style="color:var(--danger); border-color:var(--danger);">Hapus</button>
+            <div style="display:flex; gap:10px; margin-left:auto;">
+              <button type="button" id="btn-cancel-modal" class="btn-secondary">Batal</button>
+              <button type="submit" class="btn-primary">Simpan</button>
+            </div>
           </div>
         </form>
       </div>
@@ -52,6 +55,7 @@ export async function render(container, user) {
     document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
     document.getElementById("form-lokasi").addEventListener("submit", onSubmit);
     document.getElementById("btn-use-current").addEventListener("click", useCurrentLocation);
+    document.getElementById("btn-delete").addEventListener("click", onDelete);
   }
 
   loadTable();
@@ -112,6 +116,7 @@ function openModal(existing = null) {
   const form = document.getElementById("form-lokasi");
   form.reset();
   document.getElementById("modal-title").textContent = existing ? "Edit Lokasi" : "Tambah Lokasi";
+  document.getElementById("btn-delete").classList.toggle("hidden", !existing);
 
   if (existing) {
     form.id.value = existing.id;
@@ -131,14 +136,38 @@ function closeModal() {
   document.getElementById("modal-lokasi").classList.add("hidden");
 }
 
+async function onDelete() {
+  const id = document.querySelector('#form-lokasi input[name="id"]').value;
+  if (!id) return;
+  if (!confirm("Hapus lokasi ini? Karyawan yang absen dekat lokasi ini nantinya tidak akan tervalidasi terhadap titik ini lagi.")) return;
+
+  try {
+    const { error } = await supabase.from("office_locations").delete().eq("id", id);
+    if (error) throw error;
+    toast("Lokasi dihapus", "success");
+    closeModal();
+    loadTable();
+  } catch (err) {
+    toast("Gagal menghapus: " + err.message, "error");
+  }
+}
+
 async function onSubmit(e) {
   e.preventDefault();
   const fd = new FormData(e.target);
   const id = fd.get("id");
+
+  const lat = parseFloat(String(fd.get("lat")).replace(",", "."));
+  const lng = parseFloat(String(fd.get("lng")).replace(",", "."));
+  if (isNaN(lat) || isNaN(lng)) {
+    toast("Latitude/Longitude harus berupa angka, contoh: -7.257472", "error");
+    return;
+  }
+
   const payload = {
     name: fd.get("name"),
-    lat: Number(fd.get("lat")),
-    lng: Number(fd.get("lng")),
+    lat,
+    lng,
     radius_meters: Number(fd.get("radius_meters")),
     is_active: fd.get("is_active") === "on",
   };
