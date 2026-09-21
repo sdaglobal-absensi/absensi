@@ -264,6 +264,32 @@ export function fmtRupiah(n) {
 }
 
 // =====================================================================
+// PEMBULATAN JAM LEMBUR
+// < 25 menit  -> turun ke jam penuh
+// 25-54 menit -> naik ke X,5 jam
+// >= 55 menit -> naik ke jam penuh berikutnya
+// =====================================================================
+export function roundOvertimeHours(startTime, endTime) {
+  const [sh, sm] = startTime.split(":").map(Number);
+  const [eh, em] = endTime.split(":").map(Number);
+  let startMinutes = sh * 60 + sm;
+  let endMinutes = eh * 60 + em;
+  if (endMinutes <= startMinutes) endMinutes += 24 * 60; // jaga-jaga kalau lintas hari
+  const totalMinutes = endMinutes - startMinutes;
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  if (mins < 25) return hours;
+  if (mins < 55) return hours + 0.5;
+  return hours + 1;
+}
+
+export function fmtJam(n) {
+  if (n === null || n === undefined) return "-";
+  const str = Number.isInteger(n) ? String(n) : String(n).replace(".", ",");
+  return `${str} jam`;
+}
+
+// =====================================================================
 // DIALOG KONFIRMASI generik (dipakai sebelum aksi penting seperti
 // Setuju/Tolak pengajuan). Return true kalau user klik konfirmasi.
 // =====================================================================

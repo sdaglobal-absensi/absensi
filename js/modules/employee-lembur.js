@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtDate, fmtTime } from "../core.js";
+import { toast, fmtDate, fmtTime, roundOvertimeHours, fmtJam } from "../core.js";
 
 export async function render(container, user) {
   container.innerHTML = `
@@ -39,6 +39,7 @@ export async function render(container, user) {
     }
 
     const isHariLibur = await determineIsHoliday(date);
+    const totalJam = roundOvertimeHours(startTime, endTime);
 
     const payload = {
       user_id: user.id,
@@ -46,6 +47,7 @@ export async function render(container, user) {
       start_time: startTime,
       end_time: endTime,
       is_hari_libur: isHariLibur,
+      total_jam: totalJam,
       reason: fd.get("reason"),
     };
     const { error } = await supabase.from("overtime_requests").insert(payload);
@@ -79,12 +81,13 @@ async function loadList(user) {
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Tanggal</th><th>Jam</th><th>Jenis Hari</th><th>Keterangan</th><th>Status</th></tr></thead>
+      <thead><tr><th>Tanggal</th><th>Jam</th><th>Total Jam</th><th>Jenis Hari</th><th>Keterangan</th><th>Status</th></tr></thead>
       <tbody>
         ${data.map(r => `
           <tr>
             <td>${fmtDate(r.date)}</td>
             <td>${r.start_time?.slice(0, 5)} – ${r.end_time?.slice(0, 5)}</td>
+            <td>${fmtJam(r.total_jam)}</td>
             <td>${r.is_hari_libur ? "Hari Libur" : "Hari Biasa"}</td>
             <td>${escapeHtml(r.reason)}</td>
             <td><span class="badge badge-${r.status === "approved" ? "ok" : r.status === "rejected" ? "danger" : "warn"}">${statusLabel(r.status)}</span></td>

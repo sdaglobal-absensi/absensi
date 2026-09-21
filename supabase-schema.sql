@@ -222,6 +222,9 @@ create table if not exists public.overtime_requests (
   created_at     timestamptz not null default now()
 );
 
+-- Kolom total jam lembur (hasil pembulatan otomatis saat pengajuan dikirim)
+alter table public.overtime_requests add column if not exists total_jam numeric;
+
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
 begin
