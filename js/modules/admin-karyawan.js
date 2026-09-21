@@ -50,8 +50,12 @@ export async function render(container, user) {
             </label>
           </div>
           <div class="form-row two-col" id="email-row">
-            <label>Email <input type="email" name="email" required></label>
-            <label>Password Awal <input type="text" name="password" placeholder="min. 6 karakter"></label>
+            <label id="email-label">Email <input type="email" name="email" required></label>
+            <label id="password-label">Password Awal <input type="text" name="password" placeholder="min. 6 karakter"></label>
+          </div>
+          <div class="form-row two-col hidden" id="email-readonly-row">
+            <label>Email <input type="email" id="email-readonly" disabled></label>
+            <label class="small muted" style="align-self:end; padding-bottom:10px;">Karyawan lupa email? Ini alamat yang terdaftar untuk akun ini.</label>
           </div>
           <div class="form-row">
             <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Akun aktif</label>
@@ -167,12 +171,13 @@ async function loadTable(canEdit) {
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Kode</th><th>Nama</th><th>Departemen</th><th>Jabatan</th><th>Level</th><th>Role</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead>
+      <thead><tr><th>Kode</th><th>Nama</th><th>Email</th><th>Departemen</th><th>Jabatan</th><th>Level</th><th>Role</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead>
       <tbody>
         ${data.map(k => `
           <tr>
             <td>${k.employee_code || "-"}</td>
             <td>${k.full_name}</td>
+            <td>${k.email || "-"}</td>
             <td>${k.department || "-"}</td>
             <td>${k.position || "-"}</td>
             <td>${k.level || "-"}</td>
@@ -206,6 +211,8 @@ function openModal(existing = null) {
   document.getElementById("modal-title").textContent = existing ? "Edit Karyawan" : "Tambah Karyawan";
   document.getElementById("email-row").classList.toggle("hidden", !!existing);
   form.email.required = !existing;
+  document.getElementById("email-readonly-row").classList.toggle("hidden", !existing);
+  document.getElementById("email-readonly").value = existing?.email || "(tidak diketahui)";
 
   if (existing) {
     form.id.value = existing.id;
@@ -292,7 +299,7 @@ async function onSubmit(e, currentUser) {
 
       const newUserId = signUpData.user?.id;
       if (newUserId) {
-        await supabase.from("profiles").update(payload).eq("id", newUserId);
+        await supabase.from("profiles").update({ ...payload, email }).eq("id", newUserId);
       }
       await supabaseAdminCreate.auth.signOut();
       toast(`Akun dibuat. Beritahu karyawan: email ${email}, password ${password}`, "success");

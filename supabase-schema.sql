@@ -48,12 +48,22 @@ alter table public.profiles add column if not exists status_karyawan text;
 alter table public.profiles add column if not exists alamat text;
 alter table public.profiles add column if not exists nik_ktp text;
 alter table public.profiles add column if not exists npwp text;
+-- Simpan salinan email di profiles supaya Admin bisa melihatnya langsung dari
+-- aplikasi (tanpa perlu buka Supabase Dashboard) — misal saat karyawan lupa
+-- email login-nya.
+alter table public.profiles add column if not exists email text;
 do $$ begin
   if not exists (select 1 from pg_constraint where conname = 'profiles_status_karyawan_check') then
     alter table public.profiles add constraint profiles_status_karyawan_check
       check (status_karyawan in ('bulanan','harian'));
   end if;
 end $$;
+
+-- Backfill email untuk akun yang sudah ada sebelum kolom ini ditambahkan
+update public.profiles p
+set email = u.email
+from auth.users u
+where p.id = u.id and p.email is null;
 
 comment on table public.profiles is 'Data profil & role setiap pengguna. role: admin | hr | karyawan';
 
@@ -245,12 +255,13 @@ create trigger trg_profiles_updated_at
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  insert into public.profiles (id, full_name, role, employee_code)
+  insert into public.profiles (id, full_name, role, employee_code, email)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'full_name', new.email),
     coalesce(new.raw_user_meta_data->>'role', 'karyawan'),
-    new.raw_user_meta_data->>'employee_code'
+    new.raw_user_meta_data->>'employee_code',
+    new.email
   )
   on conflict (id) do nothing;
   return new;
