@@ -397,9 +397,21 @@ create policy "photo_read_all" on storage.objects
 -- ---------------------------------------------------------------------
 -- 10. CONTOH DATA lokasi kantor (edit sesuai lokasi asli)
 -- ---------------------------------------------------------------------
+-- Bersihkan duplikat lokasi kerja yang mungkin sudah terbentuk dari
+-- menjalankan schema ini berkali-kali sebelumnya
+delete from public.office_locations a
+using public.office_locations b
+where a.id > b.id and a.name = b.name;
+
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'office_locations_name_key') then
+    alter table public.office_locations add constraint office_locations_name_key unique (name);
+  end if;
+end $$;
+
 insert into public.office_locations (name, lat, lng, radius_meters)
 values ('Kantor Pusat', -7.257472, 112.752088, 150)
-on conflict do nothing;
+on conflict (name) do nothing;
 
 -- ---------------------------------------------------------------------
 -- Contoh data jadwal kerja sesuai kondisi saat ini (silakan edit/hapus lewat panel admin)
