@@ -264,6 +264,50 @@ export function fmtRupiah(n) {
 }
 
 // =====================================================================
+// DIALOG KONFIRMASI generik (dipakai sebelum aksi penting seperti
+// Setuju/Tolak pengajuan). Return true kalau user klik konfirmasi.
+// =====================================================================
+export function confirmDialog({ title, message, confirmLabel = "Ya", confirmClass = "btn-primary" }) {
+  return new Promise(resolve => {
+    let modal = document.getElementById("global-confirm-modal");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "global-confirm-modal";
+      modal.className = "modal hidden";
+      modal.innerHTML = `
+        <div class="modal-box">
+          <h3 id="confirm-title"></h3>
+          <p id="confirm-message" class="muted" style="white-space:pre-line; margin-top:8px;"></p>
+          <div class="modal-actions">
+            <button type="button" id="confirm-cancel" class="btn-secondary">Batal</button>
+            <button type="button" id="confirm-ok" class="btn-primary">Ya</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+    modal.querySelector("#confirm-title").textContent = title;
+    modal.querySelector("#confirm-message").textContent = message;
+    const okBtn = modal.querySelector("#confirm-ok");
+    const cancelBtn = modal.querySelector("#confirm-cancel");
+    okBtn.textContent = confirmLabel;
+    okBtn.className = confirmClass;
+    modal.classList.remove("hidden");
+
+    function cleanup(result) {
+      modal.classList.add("hidden");
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      resolve(result);
+    }
+    function onOk() { cleanup(true); }
+    function onCancel() { cleanup(false); }
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+  });
+}
+
+// =====================================================================
 // TOGGLE LIHAT PASSWORD (tombol mata)
 // =====================================================================
 export function wirePasswordToggles(root = document) {

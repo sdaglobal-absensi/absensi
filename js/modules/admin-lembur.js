@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtDate } from "../core.js";
+import { toast, fmtDate, confirmDialog } from "../core.js";
 
 export async function render(container, user) {
   container.innerHTML = `
@@ -44,7 +44,7 @@ async function load(user) {
             <td>${escapeHtml(r.reason)}</td>
             <td><span class="badge badge-${r.status === "approved" ? "ok" : r.status === "rejected" ? "danger" : "warn"}">${statusLabel(r.status)}</span></td>
             <td>
-              ${r.status === "pending" ? `
+              ${r.status === "pending" && user.role === "hr" ? `
                 <button class="btn-link btn-approve" data-id="${r.id}">Setujui</button>
                 <button class="btn-link btn-reject" data-id="${r.id}">Tolak</button>
               ` : ""}
@@ -55,8 +55,28 @@ async function load(user) {
     </table>
   `;
 
-  el.querySelectorAll(".btn-approve").forEach(b => b.addEventListener("click", () => decide(b.dataset.id, "approved", user)));
-  el.querySelectorAll(".btn-reject").forEach(b => b.addEventListener("click", () => decide(b.dataset.id, "rejected", user)));
+  el.querySelectorAll(".btn-approve").forEach(b => b.addEventListener("click", () => confirmDecide(b.dataset.id, "approved", user, data)));
+  el.querySelectorAll(".btn-reject").forEach(b => b.addEventListener("click", () => confirmDecide(b.dataset.id, "rejected", user, data)));
+}
+
+async function confirmDecide(id, status, user, allData) {
+  const row = allData.find(r => r.id === id);
+  const detail = [
+    `Karyawan: ${row.profiles?.full_name || "-"}`,
+    `Tanggal: ${fmtDate(row.date)}`,
+    `Jam: ${row.start_time?.slice(0, 5)} – ${row.end_time?.slice(0, 5)}`,
+    `Jenis Hari: ${row.is_hari_libur ? "Hari Libur" : "Hari Biasa"}`,
+    `Keterangan: ${row.reason}`,
+  ].join("\n");
+
+  const ok = await confirmDialog({
+    title: status === "approved" ? "Setujui lembur ini?" : "Tolak lembur ini?",
+    message: detail,
+    confirmLabel: status === "approved" ? "Ya, Setujui" : "Ya, Tolak",
+    confirmClass: status === "approved" ? "btn-primary" : "btn-secondary",
+  });
+  if (!ok) return;
+  decide(id, status, user);
 }
 
 async function decide(id, status, user) {
