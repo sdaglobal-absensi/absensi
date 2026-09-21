@@ -24,18 +24,30 @@ export async function render(container, user) {
             <label>Nama Kantor/Cabang <input name="name" required placeholder="Contoh: Kantor Cabang Malang"></label>
           </div>
 
-          <div class="form-row">
-            <label>Cari Lokasi di Peta (opsional)</label>
-            <div style="display:flex; gap:8px;">
-              <input type="text" id="location-search" placeholder="Contoh: SDA Semarang, Jl. Pemuda">
+          <div class="form-section-label">Isi Koordinat</div>
+
+          <button type="button" id="btn-use-current" class="btn-secondary" style="margin-bottom:6px;">📍 Gunakan Lokasi Saya Sekarang</button>
+          <p class="small muted field-hint">Paling akurat kalau kamu sedang berada di lokasi kantor tersebut.</p>
+
+          <p class="small" style="margin:14px 0 8px;">Atau cari di Google Maps &amp; salin koordinatnya:</p>
+          <div style="display:flex; gap:8px; margin-bottom:8px;">
+            <input type="text" id="location-search" placeholder="Contoh: SDA Global Semarang">
+            <button type="button" id="btn-open-maps" class="btn-secondary" style="white-space:nowrap;">Buka Google Maps ↗</button>
+          </div>
+          <ol class="small muted" style="margin:0 0 16px; padding-left:18px; line-height:1.7;">
+            <li>Tab baru terbuka, cari lokasinya di sana</li>
+            <li>Klik-kanan titik lokasi di peta → klik angka koordinat yang muncul (otomatis tersalin)</li>
+            <li>Tempel di kolom Latitude &amp; Longitude di bawah ini</li>
+          </ol>
+
+          <details style="margin-bottom:16px;">
+            <summary class="small" style="cursor:pointer; color:var(--primary); font-weight:600;">Coba cari otomatis di sini (opsional, database terbatas)</summary>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+              <input type="text" id="location-search-osm" placeholder="Cari nama tempat/alamat…">
               <button type="button" id="btn-search-location" class="btn-secondary" style="white-space:nowrap;">Cari</button>
             </div>
             <div id="search-results" class="location-search-results hidden"></div>
-            <p class="small muted field-hint">Cari nama tempat/alamat yang sudah terdaftar di peta (OpenStreetMap). Kalau tidak ketemu, isi koordinat manual di bawah.</p>
-          </div>
-
-          <button type="button" id="btn-use-current" class="btn-secondary" style="margin-bottom:14px;">📍 Gunakan Lokasi Saya Sekarang</button>
-          <p class="small muted field-hint" style="margin-top:-10px;">Praktis kalau kamu sedang berada di lokasi kantor tersebut. Atau isi manual di bawah — cari koordinat lewat Google Maps (klik kanan titik di peta → koordinat langsung tersalin).</p>
+          </details>
 
           <div class="form-row two-col">
             <label>Latitude <input type="number" name="lat" step="0.000001" required placeholder="-7.257472"></label>
@@ -62,8 +74,12 @@ export async function render(container, user) {
     document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
     document.getElementById("form-lokasi").addEventListener("submit", onSubmit);
     document.getElementById("btn-use-current").addEventListener("click", useCurrentLocation);
-    document.getElementById("btn-search-location").addEventListener("click", doLocationSearch);
+    document.getElementById("btn-open-maps").addEventListener("click", openInGoogleMaps);
     document.getElementById("location-search").addEventListener("keydown", e => {
+      if (e.key === "Enter") { e.preventDefault(); openInGoogleMaps(); }
+    });
+    document.getElementById("btn-search-location").addEventListener("click", doLocationSearch);
+    document.getElementById("location-search-osm").addEventListener("keydown", e => {
       if (e.key === "Enter") { e.preventDefault(); doLocationSearch(); }
     });
   }
@@ -71,8 +87,16 @@ export async function render(container, user) {
   loadTable();
 }
 
-async function doLocationSearch() {
+function openInGoogleMaps() {
   const q = document.getElementById("location-search").value.trim();
+  const nameField = document.querySelector('#form-lokasi input[name="name"]').value.trim();
+  const query = q || nameField;
+  if (!query) { toast("Isi nama lokasi yang mau dicari dulu", "error"); return; }
+  window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, "_blank", "noopener");
+}
+
+async function doLocationSearch() {
+  const q = document.getElementById("location-search-osm").value.trim();
   const resultsEl = document.getElementById("search-results");
   if (!q) return;
 
@@ -81,7 +105,7 @@ async function doLocationSearch() {
 
   const results = await searchLocation(q);
   if (!results.length) {
-    resultsEl.innerHTML = `<div class="search-option muted">Tidak ditemukan. Coba kata kunci lain, atau isi koordinat manual di bawah.</div>`;
+    resultsEl.innerHTML = `<div class="search-option muted">Tidak ditemukan di database ini. Pakai cara "Buka Google Maps" di atas untuk hasil yang lebih lengkap.</div>`;
     return;
   }
 
@@ -152,6 +176,8 @@ function openModal(existing = null) {
   const modal = document.getElementById("modal-lokasi");
   const form = document.getElementById("form-lokasi");
   form.reset();
+  document.getElementById("location-search").value = "";
+  document.getElementById("location-search-osm").value = "";
   document.getElementById("search-results").classList.add("hidden");
   document.getElementById("search-results").innerHTML = "";
   document.getElementById("modal-title").textContent = existing ? "Edit Lokasi" : "Tambah Lokasi";
