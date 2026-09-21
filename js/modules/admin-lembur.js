@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtDate, confirmDialog, fmtJam } from "../core.js";
+import { toast, fmtDate, confirmDialog, fmtJam, roundOvertimeHours } from "../core.js";
 
 export async function render(container, user) {
   container.innerHTML = `
@@ -40,7 +40,7 @@ async function load(user) {
             <td>${r.profiles?.full_name || "-"}</td>
             <td>${fmtDate(r.date)}</td>
             <td>${r.start_time?.slice(0, 5)} – ${r.end_time?.slice(0, 5)}</td>
-            <td>${fmtJam(r.total_jam)}</td>
+            <td>${fmtJam(r.total_jam ?? roundOvertimeHours(r.start_time, r.end_time))}</td>
             <td>${r.is_hari_libur ? "Hari Libur" : "Hari Biasa"}</td>
             <td>${escapeHtml(r.reason)}</td>
             <td><span class="badge badge-${r.status === "approved" ? "ok" : r.status === "rejected" ? "danger" : "warn"}">${statusLabel(r.status)}</span></td>
@@ -65,7 +65,7 @@ async function confirmDecide(id, status, user, allData) {
   const detail = [
     `Karyawan: ${row.profiles?.full_name || "-"}`,
     `Tanggal: ${fmtDate(row.date)}`,
-    `Jam: ${row.start_time?.slice(0, 5)} – ${row.end_time?.slice(0, 5)} (${fmtJam(row.total_jam)})`,
+    `Jam: ${row.start_time?.slice(0, 5)} – ${row.end_time?.slice(0, 5)} (${fmtJam(row.total_jam ?? roundOvertimeHours(row.start_time, row.end_time))})`,
     `Jenis Hari: ${row.is_hari_libur ? "Hari Libur" : "Hari Biasa"}`,
     `Keterangan: ${row.reason}`,
   ].join("\n");

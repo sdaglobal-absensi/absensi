@@ -87,7 +87,7 @@ async function loadList(user) {
           <tr>
             <td>${fmtDate(r.date)}</td>
             <td>${r.start_time?.slice(0, 5)} – ${r.end_time?.slice(0, 5)}</td>
-            <td>${fmtJam(r.total_jam)}</td>
+            <td>${fmtJam(r.total_jam ?? roundOvertimeHours(r.start_time, r.end_time))}</td>
             <td>${r.is_hari_libur ? "Hari Libur" : "Hari Biasa"}</td>
             <td>${escapeHtml(r.reason)}</td>
             <td><span class="badge badge-${r.status === "approved" ? "ok" : r.status === "rejected" ? "danger" : "warn"}">${statusLabel(r.status)}</span></td>
