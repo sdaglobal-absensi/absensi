@@ -43,7 +43,7 @@ export async function render(container, user) {
 
     <div id="panel-harian">
       <div class="page-header">
-        <p class="muted small" style="max-width:70ch;">Upah harian untuk karyawan berstatus "Harian". Kenaikan diterapkan 2x setahun (50% + 50%) sesuai Kenaikan Upah per Tahun di Master Level.</p>
+        <p class="muted small" style="max-width:70ch;">Upah harian untuk karyawan berstatus "Harian". Kenaikan diterapkan 2x setahun (Maret &amp; September); nominalnya diinput manual saat menerapkan, bisa disesuaikan per karyawan.</p>
         <button id="btn-apply-period-harian" class="btn-primary">Terapkan Kenaikan — ${periodHarian.label}</button>
       </div>
       <p class="small muted" style="margin-top:-16px;">Periode berjalan saat ini: <strong>${periodHarian.rangeLabel}</strong></p>
@@ -85,8 +85,13 @@ export async function render(container, user) {
 
     <div id="modal-preview-harian" class="modal hidden">
       <div class="modal-box modal-box-lg">
-        <h3>Pratinjau Kenaikan — ${periodHarian.label}</h3>
-        <p class="muted small">Periksa dulu sebelum diterapkan. Karyawan yang sudah pernah menerima kenaikan periode ini tidak akan ditampilkan/diulang.</p>
+        <h3>Terapkan Kenaikan — ${periodHarian.label}</h3>
+        <p class="muted small">Masukkan nominal kenaikannya di sini. Kenaikan ditambahkan ke upah lama masing-masing karyawan. Karyawan yang sudah pernah menerima kenaikan periode ini tidak akan ditampilkan/diulang.</p>
+        <div class="form-row two-col" style="align-items:flex-end;">
+          <label>Kenaikan (Rp) — isi ke semua baris <input type="number" id="harian-nominal-default" min="0" step="1" placeholder="Contoh: 75000"></label>
+          <button type="button" id="btn-fill-nominal-harian" class="btn-secondary">Terapkan Nominal ke Semua Baris</button>
+        </div>
+        <p class="small muted field-hint">Nilai "Kenaikan" per baris di bawah bisa disesuaikan lagi satu per satu kalau ada karyawan yang naiknya beda.</p>
         <div id="preview-content-harian" class="table-wrap" style="margin:16px 0;"></div>
         <div class="modal-actions">
           <button type="button" class="btn-secondary btn-cancel-preview-harian">Batal</button>
@@ -186,7 +191,7 @@ function switchTab(tab) {
 async function loadHarian() {
   const [{ data: emp }, { data: lvl }, { data: hist }] = await Promise.all([
     supabase.from("profiles").select("id, full_name, grade, status_karyawan").eq("status_karyawan", "harian").eq("is_active", true).order("full_name"),
-    supabase.from("job_levels").select("grade, upah_harian_pokok, kenaikan_upah_tahunan"),
+    supabase.from("job_levels").select("grade, upah_harian_pokok"),
     supabase.from("wage_history").select("*").order("effective_date", { ascending: false }).order("created_at", { ascending: false }),
   ]);
   employeesHarian = emp || [];
@@ -275,48 +280,71 @@ async function onSubmitWageHarian(e, user) {
   renderTableHarian();
 }
 
-function buildPreviewListHarian() {
+function buildEligibleListHarian() {
+  // Karyawan yang sudah punya upah awal, dan belum pernah dapat kenaikan periode ini.
   const period = getCurrentPeriodHarian();
   const list = [];
   for (const emp of employeesHarian) {
-    const level = levels.find(l => l.grade === emp.grade);
-    if (!level || !level.kenaikan_upah_tahunan) continue;
     const rows = historyHarian[emp.id] || [];
     if (!rows.length) continue; // belum ada upah awal, tidak bisa dihitung kenaikannya
     const already = rows.some(h => h.reason === period.label);
     if (already) continue; // sudah pernah diterapkan periode ini
-    const current = rows[0].daily_wage;
-    const increase = level.kenaikan_upah_tahunan / 2;
-    list.push({ user_id: emp.id, name: emp.full_name, grade: emp.grade, current, increase, newWage: current + increase });
+    list.push({ user_id: emp.id, name: emp.full_name, grade: emp.grade, current: rows[0].daily_wage });
   }
   return { period, list };
 }
 
+function rowInputIdHarian(userId) { return `harian-kenaikan-${userId}`; }
+function rowNewWageIdHarian(userId) { return `harian-baru-${userId}`; }
+
+function updateRowNewWageHarian(userId, current) {
+  const input = document.getElementById(rowInputIdHarian(userId));
+  const target = document.getElementById(rowNewWageIdHarian(userId));
+  const increase = Number(input.value) || 0;
+  target.textContent = fmtRupiah(current + increase);
+}
+
 function openPreviewHarian() {
-  const { period, list } = buildPreviewListHarian();
+  const { period, list } = buildEligibleListHarian();
   const content = document.getElementById("preview-content-harian");
+  const nominalInput = document.getElementById("harian-nominal-default");
+  nominalInput.value = "";
 
   if (!list.length) {
-    content.innerHTML = `<p class="muted">Tidak ada karyawan yang perlu diterapkan kenaikannya untuk ${period.label} — semua sudah pernah diterapkan, atau belum punya upah awal/kenaikan tahunan di Master Level.</p>`;
+    content.innerHTML = `<p class="muted">Tidak ada karyawan yang perlu diterapkan kenaikannya untuk ${period.label} — semua sudah pernah diterapkan periode ini, atau belum punya upah awal.</p>`;
     document.getElementById("btn-confirm-preview-harian").classList.add("hidden");
+    document.getElementById("btn-fill-nominal-harian").classList.add("hidden");
   } else {
     content.innerHTML = `
       <table class="table">
-        <thead><tr><th>Nama</th><th>Grade</th><th>Upah Sekarang</th><th>Kenaikan</th><th>Upah Baru</th></tr></thead>
+        <thead><tr><th>Nama</th><th>Grade</th><th>Upah Sekarang</th><th>Kenaikan (Rp)</th><th>Upah Baru</th></tr></thead>
         <tbody>
           ${list.map(r => `
             <tr>
-              <td>${r.name}</td><td>${r.grade}</td>
-              <td>${fmtRupiah(r.current)}</td><td>+${fmtRupiah(r.increase)}</td><td><strong>${fmtRupiah(r.newWage)}</strong></td>
+              <td>${r.name}</td><td>${r.grade || "-"}</td>
+              <td>${fmtRupiah(r.current)}</td>
+              <td><input type="number" id="${rowInputIdHarian(r.user_id)}" min="0" step="1" value="0" style="width:130px;"></td>
+              <td><strong id="${rowNewWageIdHarian(r.user_id)}">${fmtRupiah(r.current)}</strong></td>
             </tr>
           `).join("")}
         </tbody>
       </table>
     `;
+    list.forEach(r => {
+      document.getElementById(rowInputIdHarian(r.user_id)).addEventListener("input", () => updateRowNewWageHarian(r.user_id, r.current));
+    });
     document.getElementById("btn-confirm-preview-harian").classList.remove("hidden");
+    document.getElementById("btn-fill-nominal-harian").classList.remove("hidden");
   }
 
   document.getElementById("modal-preview-harian").classList.remove("hidden");
+  document.getElementById("btn-fill-nominal-harian").onclick = () => {
+    const val = nominalInput.value;
+    list.forEach(r => {
+      document.getElementById(rowInputIdHarian(r.user_id)).value = val;
+      updateRowNewWageHarian(r.user_id, r.current);
+    });
+  };
   document.getElementById("btn-confirm-preview-harian").onclick = () => confirmApplyHarian(period, list);
 }
 
@@ -325,24 +353,34 @@ function closePreviewHarian() {
 }
 
 async function confirmApplyHarian(period, list) {
+  // Ambil nilai kenaikan terbaru dari masing-masing input di tabel pratinjau.
+  const rowsToApply = list
+    .map(r => ({ ...r, increase: Number(document.getElementById(rowInputIdHarian(r.user_id)).value) || 0 }))
+    .filter(r => r.increase > 0); // karyawan dengan kenaikan 0/kosong dilewati, tidak dibuat riwayat baru
+
+  if (!rowsToApply.length) {
+    toast("Belum ada nominal kenaikan yang diisi.", "error");
+    return;
+  }
+
   const ok = await confirmDialog({
-    title: `Terapkan kenaikan ${period.label} ke ${list.length} karyawan?`,
-    message: "Tindakan ini akan menambah baris riwayat upah baru untuk semua karyawan di daftar. Tidak bisa dibatalkan otomatis setelah tersimpan.",
+    title: `Terapkan kenaikan ${period.label} ke ${rowsToApply.length} karyawan?`,
+    message: `${rowsToApply.length} dari ${list.length} karyawan akan mendapat riwayat upah baru (yang kenaikannya kosong/0 dilewati). Tidak bisa dibatalkan otomatis setelah tersimpan.`,
     confirmLabel: "Ya, Terapkan",
   });
   if (!ok) return;
 
   const today = todayISO();
-  const rows = list.map(r => ({
+  const rows = rowsToApply.map(r => ({
     user_id: r.user_id,
     effective_date: today,
-    daily_wage: r.newWage,
+    daily_wage: r.current + r.increase,
     reason: period.label,
   }));
 
   const { error } = await supabase.from("wage_history").insert(rows);
   if (error) { toast("Gagal menerapkan: " + error.message, "error"); return; }
-  toast(`Kenaikan ${period.label} diterapkan ke ${list.length} karyawan`, "success");
+  toast(`Kenaikan ${period.label} diterapkan ke ${rowsToApply.length} karyawan`, "success");
   closePreviewHarian();
   await loadHarian();
   renderTableHarian();

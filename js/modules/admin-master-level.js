@@ -58,11 +58,10 @@ export async function render(container, user) {
           </div>
 
           <div class="form-section-label">Upah Harian (khusus status Karyawan Harian)</div>
-          <div class="form-row two-col">
+          <div class="form-row">
             <label>Upah Harian Pokok (Rp/hari) <input type="number" name="upah_harian_pokok" min="0" step="1" required></label>
-            <label>Kenaikan Upah per Tahun (Rp) <input type="number" name="kenaikan_upah_tahunan" min="0" step="1" required></label>
           </div>
-          <p class="small muted field-hint">Kenaikan dibagi otomatis jadi 2 periode: 50% diterapkan Maret, 50% lagi September.</p>
+          <p class="small muted field-hint">Kenaikan upah tahunan karyawan harian diinput manual per periode di menu "Kenaikan Upah &amp; Gaji" — bukan di sini.</p>
 
           <div class="form-row">
             <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Aktif dipakai</label>
@@ -114,7 +113,6 @@ async function loadTable(canEdit) {
           <th>BPJS Ketenagakerjaan (Karyawan/Perusahaan)</th>
           <th>PPh21</th>
           <th>Upah Harian Pokok</th>
-          <th>Kenaikan/Tahun</th>
           ${canEdit ? "<th></th>" : ""}
         </tr>
       </thead>
@@ -133,7 +131,6 @@ async function loadTable(canEdit) {
             <td>${r.bpjs_tk_karyawan_persen}% / ${r.bpjs_tk_perusahaan_persen}%</td>
             <td>${r.pph21_persen}%</td>
             <td>${fmtRupiah(r.upah_harian_pokok)}/hari</td>
-            <td>${fmtRupiah(r.kenaikan_upah_tahunan)}</td>
             ${canEdit ? `<td><button class="btn-link btn-edit" data-id="${r.id}">Edit</button></td>` : ""}
           </tr>
         `).join("")}
@@ -156,7 +153,7 @@ const FIELDS = [
   "upah_lembur_hari_biasa", "upah_lembur_hari_libur",
   "upah_lapor_bpjs", "bpjs_kesehatan_karyawan_persen", "bpjs_kesehatan_perusahaan_persen",
   "bpjs_tk_karyawan_persen", "bpjs_tk_perusahaan_persen", "pph21_persen",
-  "upah_harian_pokok", "kenaikan_upah_tahunan",
+  "upah_harian_pokok",
 ];
 
 function openModal(existing = null) {

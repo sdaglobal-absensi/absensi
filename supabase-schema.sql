@@ -147,7 +147,6 @@ create table if not exists public.job_levels (
   bpjs_tk_perusahaan_persen          numeric not null default 3.7, -- % BPJS Ketenagakerjaan ditanggung perusahaan
   pph21_persen                       numeric not null default 5,   -- % PPh21
   upah_harian_pokok        numeric not null default 0,   -- Rp/hari, upah awal karyawan harian di grade ini
-  kenaikan_upah_tahunan    numeric not null default 0,   -- Rp, total kenaikan setahun (dibagi 2 periode = 50%+50%)
   is_active                boolean not null default true,
   created_at               timestamptz not null default now(),
   updated_at               timestamptz not null default now(),
@@ -163,7 +162,6 @@ alter table public.job_levels add column if not exists bpjs_tk_karyawan_persen n
 alter table public.job_levels add column if not exists bpjs_tk_perusahaan_persen numeric not null default 3.7;
 alter table public.job_levels add column if not exists pph21_persen numeric not null default 5;
 alter table public.job_levels add column if not exists upah_harian_pokok numeric not null default 0;
-alter table public.job_levels add column if not exists kenaikan_upah_tahunan numeric not null default 0;
 
 -- Tunjangan Jabatan & Tunjangan Loyalitas ternyata beda-beda per karyawan
 -- (bukan per grade/level), jadi kolom di job_levels ini tidak dipakai lagi
@@ -172,6 +170,13 @@ alter table public.job_levels add column if not exists kenaikan_upah_tahunan num
 -- dibuat di database (aman dijalankan ulang meski kolomnya belum ada).
 alter table public.job_levels drop column if exists tunjangan_jabatan;
 alter table public.job_levels drop column if exists tunjangan_loyalitas;
+
+-- Kenaikan Upah per Tahun (utk Karyawan Harian) dulu satu nilai per grade
+-- di sini, dipakai otomatis oleh menu Kenaikan Upah & Gaji. Sekarang
+-- nominalnya diinput manual tiap kali kenaikan diterapkan (sama seperti
+-- Karyawan Bulanan, karena bisa beda-beda tiap periode/karyawan), jadi
+-- kolom ini tidak dipakai lagi.
+alter table public.job_levels drop column if exists kenaikan_upah_tahunan;
 
 -- ---------------------------------------------------------------------
 -- 4b2. TABEL: wage_history (Riwayat Upah Harian)
