@@ -5,6 +5,8 @@ import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exp
 // SLIP GAJI — dihitung otomatis dari data yang sudah ada di sistem:
 //   - Gaji pokok: Riwayat Upah Harian (x hari hadir) / Riwayat Gaji Bulanan
 //   - Uang lembur: Pengajuan Lembur yang disetujui x tarif di Master Level
+//   - Tunjangan Jabatan & Tunjangan Loyalitas: nominal tetap per grade/level
+//     di Master Level, otomatis ditambahkan tiap slip.
 //   - Denda keterlambatan & pulang cepat: tabel jam bertingkat, diatur
 //     manual di menu "Master Denda Telat" (tabel late_penalty_rules).
 //     Tier bertipe % dikalikan "Denda Terlambat & Pulang Cepat" (Rp) di
@@ -239,8 +241,10 @@ function computeSlip(emp) {
   const rateLemburLibur = level?.upah_lembur_hari_libur || 0;
   const uangLembur = jamLemburBiasa * rateLemburBiasa + jamLemburLibur * rateLemburLibur;
   const uangDinas = (adj.hari_dinas || 0) * (level?.uang_perjalanan_dinas || 0);
+  const tunjanganJabatan = level?.tunjangan_jabatan || 0;
+  const tunjanganLoyalitas = level?.tunjangan_loyalitas || 0;
   const tunjanganLain = adj.tunjangan_lain || 0;
-  const totalPendapatan = gajiPokok + uangLembur + uangDinas + tunjanganLain;
+  const totalPendapatan = gajiPokok + uangLembur + uangDinas + tunjanganJabatan + tunjanganLoyalitas + tunjanganLain;
 
   const upahLapor = level?.upah_lapor_bpjs || 0;
   const bpjsKesKaryawan = upahLapor * (level?.bpjs_kesehatan_karyawan_persen || 0) / 100;
@@ -253,7 +257,7 @@ function computeSlip(emp) {
 
   return {
     emp, level, adj, hariHadir, hariTelat, jamLemburBiasa, jamLemburLibur,
-    gajiPokok, gajiPokokLabel, rateLemburBiasa, rateLemburLibur, uangLembur, uangDinas, tunjanganLain, totalPendapatan,
+    gajiPokok, gajiPokokLabel, rateLemburBiasa, rateLemburLibur, uangLembur, uangDinas, tunjanganJabatan, tunjanganLoyalitas, tunjanganLain, totalPendapatan,
     dendaKeterlambatan, dendaPulangCepat, upahLapor, bpjsKesKaryawan, bpjsTkKaryawan, pph21, potonganLain, totalPotongan, gajiBersih,
   };
 }
@@ -372,6 +376,8 @@ function renderSlipContent(s) {
           <div class="slip-line"><span>${s.gajiPokokLabel}</span><span>${fmtRupiah(s.gajiPokok)}</span></div>
           <div class="slip-line"><span>Uang Lembur (${fmtJam(s.jamLemburBiasa)} biasa + ${fmtJam(s.jamLemburLibur)} libur)</span><span>${fmtRupiah(s.uangLembur)}</span></div>
           <div class="slip-line"><span>Uang Perjalanan Dinas (${s.adj.hari_dinas || 0} hari)</span><span>${fmtRupiah(s.uangDinas)}</span></div>
+          <div class="slip-line"><span>Tunjangan Jabatan</span><span>${fmtRupiah(s.tunjanganJabatan)}</span></div>
+          <div class="slip-line"><span>Tunjangan Loyalitas</span><span>${fmtRupiah(s.tunjanganLoyalitas)}</span></div>
           <div class="slip-line"><span>${s.adj.keterangan_tunjangan || "Tunjangan Lain"}</span><span>${fmtRupiah(s.tunjanganLain)}</span></div>
           <div class="slip-line total"><span>Total Pendapatan</span><span>${fmtRupiah(s.totalPendapatan)}</span></div>
         </div>
@@ -467,6 +473,8 @@ function doExport() {
     "Gaji Pokok": s.gajiPokok,
     "Uang Lembur": s.uangLembur,
     "Uang Dinas": s.uangDinas,
+    "Tunjangan Jabatan": s.tunjanganJabatan,
+    "Tunjangan Loyalitas": s.tunjanganLoyalitas,
     "Tunjangan Lain": s.tunjanganLain,
     "Total Pendapatan": s.totalPendapatan,
     "Denda Keterlambatan": s.dendaKeterlambatan,

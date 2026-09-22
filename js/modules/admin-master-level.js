@@ -33,6 +33,10 @@ export async function render(container, user) {
             <label>Uang Perjalanan Dinas (Rp) <input type="number" name="uang_perjalanan_dinas" min="0" step="1" required></label>
           </div>
           <div class="form-row two-col">
+            <label>Tunjangan Jabatan (Rp/bulan) <input type="number" name="tunjangan_jabatan" min="0" step="1" value="0" required></label>
+            <label>Tunjangan Loyalitas (Rp/bulan) <input type="number" name="tunjangan_loyalitas" min="0" step="1" value="0" required></label>
+          </div>
+          <div class="form-row two-col">
             <label>Upah Lembur Hari Biasa (Rp/jam) <input type="number" name="upah_lembur_hari_biasa" min="0" step="1" required></label>
             <label>Upah Lembur Hari Libur (Rp/jam) <input type="number" name="upah_lembur_hari_libur" min="0" step="1" required></label>
           </div>
@@ -101,6 +105,8 @@ async function loadTable(canEdit) {
         <tr>
           <th>Grade</th><th>Level</th>
           <th>Denda Telat &amp; Pulang Cepat</th>
+          <th>Tunjangan Jabatan</th>
+          <th>Tunjangan Loyalitas</th>
           <th>Lembur Biasa</th><th>Lembur Libur</th>
           <th>Uang Dinas</th>
           <th>Upah Lapor BPJS</th>
@@ -116,6 +122,8 @@ async function loadTable(canEdit) {
             <td>${r.grade}</td>
             <td>${r.level}</td>
             <td>${fmtRupiah(r.denda_terlambat)}</td>
+            <td>${fmtRupiah(r.tunjangan_jabatan)}</td>
+            <td>${fmtRupiah(r.tunjangan_loyalitas)}</td>
             <td>${fmtRupiah(r.upah_lembur_hari_biasa)}/jam</td>
             <td>${fmtRupiah(r.upah_lembur_hari_libur)}/jam</td>
             <td>${fmtRupiah(r.uang_perjalanan_dinas)}</td>
@@ -143,6 +151,7 @@ async function loadTable(canEdit) {
 
 const FIELDS = [
   "grade", "level", "denda_terlambat", "uang_perjalanan_dinas",
+  "tunjangan_jabatan", "tunjangan_loyalitas",
   "upah_lembur_hari_biasa", "upah_lembur_hari_libur",
   "upah_lapor_bpjs", "bpjs_kesehatan_karyawan_persen", "bpjs_kesehatan_perusahaan_persen",
   "bpjs_tk_karyawan_persen", "bpjs_tk_perusahaan_persen", "pph21_persen",

@@ -137,6 +137,8 @@ create table if not exists public.job_levels (
   grade                    text not null,
   level                    text not null,
   denda_terlambat          numeric not null default 0,   -- Rp, denda per keterlambatan & pulang cepat
+  tunjangan_jabatan        numeric not null default 0,   -- Rp/bulan, tunjangan jabatan per grade/level
+  tunjangan_loyalitas      numeric not null default 0,   -- Rp/bulan, tunjangan loyalitas per grade/level
   upah_lembur_hari_biasa   numeric not null default 0,   -- Rp per jam
   upah_lembur_hari_libur   numeric not null default 0,   -- Rp per jam
   uang_perjalanan_dinas    numeric not null default 0,   -- Rp per perjalanan/hari
@@ -164,6 +166,8 @@ alter table public.job_levels add column if not exists bpjs_tk_perusahaan_persen
 alter table public.job_levels add column if not exists pph21_persen numeric not null default 5;
 alter table public.job_levels add column if not exists upah_harian_pokok numeric not null default 0;
 alter table public.job_levels add column if not exists kenaikan_upah_tahunan numeric not null default 0;
+alter table public.job_levels add column if not exists tunjangan_jabatan numeric not null default 0;    -- Rp/bulan, tunjangan jabatan per grade/level
+alter table public.job_levels add column if not exists tunjangan_loyalitas numeric not null default 0;  -- Rp/bulan, tunjangan loyalitas per grade/level
 
 -- ---------------------------------------------------------------------
 -- 4b2. TABEL: wage_history (Riwayat Upah Harian)
