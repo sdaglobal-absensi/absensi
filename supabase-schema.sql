@@ -146,6 +146,8 @@ create table if not exists public.job_levels (
   bpjs_tk_karyawan_persen            numeric not null default 2,   -- % BPJS Ketenagakerjaan ditanggung karyawan
   bpjs_tk_perusahaan_persen          numeric not null default 3.7, -- % BPJS Ketenagakerjaan ditanggung perusahaan
   pph21_persen                       numeric not null default 5,   -- % PPh21
+  upah_harian_pokok        numeric not null default 0,   -- Rp/hari, upah awal karyawan harian di grade ini
+  kenaikan_upah_tahunan    numeric not null default 0,   -- Rp, total kenaikan setahun (dibagi 2 periode = 50%+50%)
   is_active                boolean not null default true,
   created_at               timestamptz not null default now(),
   updated_at               timestamptz not null default now(),
@@ -160,6 +162,24 @@ alter table public.job_levels add column if not exists bpjs_kesehatan_perusahaan
 alter table public.job_levels add column if not exists bpjs_tk_karyawan_persen numeric not null default 2;
 alter table public.job_levels add column if not exists bpjs_tk_perusahaan_persen numeric not null default 3.7;
 alter table public.job_levels add column if not exists pph21_persen numeric not null default 5;
+alter table public.job_levels add column if not exists upah_harian_pokok numeric not null default 0;
+alter table public.job_levels add column if not exists kenaikan_upah_tahunan numeric not null default 0;
+
+-- ---------------------------------------------------------------------
+-- 4b2. TABEL: wage_history (Riwayat Upah Harian)
+--      Satu baris = satu perubahan upah harian karyawan yang berlaku
+--      mulai tanggal tertentu. Payroll nanti mencari baris dengan
+--      effective_date terbaru yang <= tanggal yang dihitung.
+-- ---------------------------------------------------------------------
+create table if not exists public.wage_history (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null references public.profiles(id) on delete cascade,
+  effective_date  date not null,
+  daily_wage      numeric not null,
+  reason          text not null,  -- "Upah Awal", "Kenaikan Periode 1 2027", "Penyesuaian Manual", dst
+  created_by      uuid references public.profiles(id),
+  created_at      timestamptz not null default now()
+);
 
 -- ---------------------------------------------------------------------
 -- 4c. TABEL: departments (Master Departemen — Departemen, Bagian, Jabatan)
@@ -374,6 +394,17 @@ create policy "job_levels_select" on public.job_levels
 
 drop policy if exists "job_levels_admin_write" on public.job_levels;
 create policy "job_levels_admin_write" on public.job_levels
+  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+
+-- wage_history (Riwayat Upah Harian) -------------------------------------------------------------
+alter table public.wage_history enable row level security;
+
+drop policy if exists "wage_history_select" on public.wage_history;
+create policy "wage_history_select" on public.wage_history
+  for select using ( user_id = auth.uid() or public.is_admin_or_hr() );
+
+drop policy if exists "wage_history_admin_write" on public.wage_history;
+create policy "wage_history_admin_write" on public.wage_history
   for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
 
 -- departments (Master Departemen) -------------------------------------------------------------

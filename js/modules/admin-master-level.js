@@ -56,6 +56,13 @@ export async function render(container, user) {
             <label>PPh21 (%) <input type="number" name="pph21_persen" min="0" max="100" step="0.1" required></label>
           </div>
 
+          <div class="form-section-label">Upah Harian (khusus status Karyawan Harian)</div>
+          <div class="form-row two-col">
+            <label>Upah Harian Pokok (Rp/hari) <input type="number" name="upah_harian_pokok" min="0" step="1000" required></label>
+            <label>Kenaikan Upah per Tahun (Rp) <input type="number" name="kenaikan_upah_tahunan" min="0" step="1000" required></label>
+          </div>
+          <p class="small muted field-hint">Kenaikan dibagi otomatis jadi 2 periode: 50% diterapkan Maret, 50% lagi September.</p>
+
           <div class="form-row">
             <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Aktif dipakai</label>
           </div>
@@ -139,6 +146,7 @@ const FIELDS = [
   "upah_lembur_hari_biasa", "upah_lembur_hari_libur",
   "upah_lapor_bpjs", "bpjs_kesehatan_karyawan_persen", "bpjs_kesehatan_perusahaan_persen",
   "bpjs_tk_karyawan_persen", "bpjs_tk_perusahaan_persen", "pph21_persen",
+  "upah_harian_pokok", "kenaikan_upah_tahunan",
 ];
 
 function openModal(existing = null) {
