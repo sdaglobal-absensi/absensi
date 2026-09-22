@@ -312,6 +312,22 @@ export function zonedDayOfWeek(d = new Date()) {
   return dayOfWeekFromDateStr(`${p.year}-${p.month}-${p.day}`);
 }
 
+// Jam:menit (menurut zona kantor) dari sebuah instant/waktu (Date/timestamptz).
+// Dipakai untuk aturan yang bergantung ke JAM ABSOLUT karyawan absen (misal
+// tabel potongan telat/pulang cepat berbasis jam pasti seperti "> 08:00"),
+// beda dengan status telat/tidaknya jadwal kerja yang sudah dihitung terpisah.
+export function zonedMinutesOfDay(d) {
+  const p = zonedParts(new Date(d));
+  return Number(p.hour) * 60 + Number(p.minute);
+}
+
+// Ubah "HH:MM" jadi jumlah menit sejak 00:00, untuk dibandingkan dengan
+// zonedMinutesOfDay().
+export function hmToMinutes(hm) {
+  const [h, m] = hm.split(":").map(Number);
+  return h * 60 + m;
+}
+
 // Bangun timestamp (epoch ms, absolut & timezone-agnostic) untuk jam HH:MM
 // pada tanggal "YYYY-MM-DD" tertentu, DIUKUR menurut zona kantor. Dipakai
 // untuk membandingkan "jam mulai shift kantor" dengan waktu absen karyawan,
