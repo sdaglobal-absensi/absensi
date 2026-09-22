@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, reverseGeocode, fmtTime, fmtDate, todayISO, dateOnlyISO } from "../core.js";
+import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, reverseGeocode, fmtTime, fmtDate, todayISO, dateOnlyISO, zonedDayOfWeek, zonedTimestamp } from "../core.js";
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -110,7 +110,7 @@ async function loadMySchedule(user) {
 }
 
 function scheduleCardHtml(info) {
-  const todayDow = new Date().getDay();
+  const todayDow = zonedDayOfWeek();
   if (!info) {
     return `
       <div class="card" style="margin-bottom:24px;">
@@ -168,7 +168,7 @@ function yesterdayISO(base = new Date()) {
 async function isOvernightContinuation(user, row) {
   if (!row || row.date !== yesterdayISO()) return false;
   if (!user.schedule_id) return false;
-  const dow = new Date(row.check_in).getDay();
+  const dow = zonedDayOfWeek(new Date(row.check_in));
   const { data: day } = await supabase
     .from("work_schedule_days")
     .select("crosses_midnight")
@@ -273,23 +273,20 @@ function retake() {
 // 08:15 sebagai cadangan (perilaku lama) supaya tidak mengganggu yang
 // belum sempat diatur adminnya.
 async function getLateCutoff(user, now) {
+  const todayStr = dateOnlyISO(now); // tanggal "hari ini" menurut zona kantor, bukan device
   if (user.schedule_id) {
-    const dow = now.getDay(); // 0=Minggu ... 6=Sabtu
+    const dow = zonedDayOfWeek(now); // 0=Minggu ... 6=Sabtu, menurut zona kantor
     const [{ data: sched }, { data: day }] = await Promise.all([
       supabase.from("work_schedules").select("*").eq("id", user.schedule_id).maybeSingle(),
       supabase.from("work_schedule_days").select("*").eq("schedule_id", user.schedule_id).eq("day_of_week", dow).maybeSingle(),
     ]);
     if (day?.is_working_day && day.start_time) {
       const [h, m] = day.start_time.split(":").map(Number);
-      const cutoff = new Date(now);
-      cutoff.setHours(h, m, 0, 0);
-      cutoff.setMinutes(cutoff.getMinutes() + (sched?.late_tolerance_minutes || 0));
-      return cutoff;
+      const toleranceMs = (sched?.late_tolerance_minutes || 0) * 60000;
+      return new Date(zonedTimestamp(todayStr, h, m) + toleranceMs);
     }
   }
-  const fallback = new Date(now);
-  fallback.setHours(8, 15, 0, 0);
-  return fallback;
+  return new Date(zonedTimestamp(todayStr, 8, 15));
 }
 
 async function submitAttendance(user, activeRow) {

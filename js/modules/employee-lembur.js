@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtDate, fmtTime, roundOvertimeHours, fmtJam } from "../core.js";
+import { toast, fmtDate, fmtTime, roundOvertimeHours, fmtJam, dayOfWeekFromDateStr } from "../core.js";
 
 export async function render(container, user) {
   container.innerHTML = `
@@ -62,7 +62,7 @@ export async function render(container, user) {
 
 // Tanggal Minggu, atau tanggal yang ada di Master Hari Libur (aktif) -> dianggap hari libur
 async function determineIsHoliday(dateStr) {
-  const dow = new Date(dateStr).getDay();
+  const dow = dayOfWeekFromDateStr(dateStr);
   if (dow === 0) return true;
   const { data } = await supabase.from("holidays").select("id").eq("date", dateStr).eq("is_active", true).maybeSingle();
   return !!data;

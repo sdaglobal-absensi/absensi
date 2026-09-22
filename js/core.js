@@ -255,21 +255,74 @@ export function fmtDateTime(d) {
   return `${fmtDate(d)} ${fmtTime(d)}`;
 }
 
-// PENTING: jangan pakai toISOString().slice(0,10) untuk tanggal "hari ini" —
-// toISOString() selalu berbasis UTC, sedangkan WIB/WITA/WIT lebih cepat dari
-// UTC. Akibatnya dari tengah malam sampai jam 07:00 WIB (misalnya), tanggal
-// yang dihasilkan masih tanggal KEMARIN karena UTC belum ganti hari. Fungsi
-// di bawah ini selalu pakai komponen tanggal LOKAL perangkat (getFullYear/
-// getMonth/getDate), yang mencerminkan tanggal sebenarnya di lokasi karyawan.
-export function dateOnlyISO(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+// ---------------------------------------------------------------------
+// ZONA WAKTU KANTOR
+// ---------------------------------------------------------------------
+// Semua perhitungan tanggal/jam "hari ini", telat/tidak, dsb dipatok ke SATU
+// zona waktu kantor di sini — TIDAK bergantung ke timezone HP/perangkat
+// masing-masing karyawan atau ke UTC. Kalau kantor pindah kota/zona waktu,
+// cukup ubah dua baris ini saja:
+//   WIB  (Jakarta, Surabaya, Bandung, Medan, dst)   -> "Asia/Jakarta"  , offset 7
+//   WITA (Balikpapan, Makassar, Denpasar, dst)      -> "Asia/Makassar" , offset 8
+//   WIT  (Jayapura, Ambon, dst)                     -> "Asia/Jayapura" , offset 9
+// Indonesia tidak menerapkan DST, jadi offset di atas selalu tetap sepanjang
+// tahun — aman dihardcode berpasangan dengan nama zonanya.
+export const APP_TIMEZONE = "Asia/Makassar"; // contoh: kantor di Balikpapan (WITA)
+export const APP_TIMEZONE_OFFSET_HOURS = 8;  // WITA = UTC+8
+
+function zonedParts(d = new Date()) {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TIMEZONE,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  });
+  const p = {};
+  fmt.formatToParts(d).forEach(x => { if (x.type !== "literal") p[x.type] = x.value; });
+  return p; // { year, month, day, hour, minute, second }
+}
+
+// Tanggal "hari ini" (atau tanggal dari Date apa pun) menurut zona kantor,
+// format YYYY-MM-DD. Pengganti toISOString().slice(0,10)/getFullYear() dkk
+// yang keduanya salah kalau dipakai untuk ini (lihat catatan di atas).
+export function dateOnlyISO(d = new Date()) {
+  const p = zonedParts(d);
+  return `${p.year}-${p.month}-${p.day}`;
 }
 
 export function todayISO() {
   return dateOnlyISO(new Date());
+}
+
+// Hari dalam minggu (0=Minggu..6=Sabtu) dari tanggal kalender "YYYY-MM-DD".
+// Murni dari angka Y/M/D, sama sekali tidak menyentuh timezone apa pun —
+// jadi selalu benar untuk tanggal kalender (mis. dari <input type="date">).
+export function dayOfWeekFromDateStr(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+// Hari dalam minggu (0=Minggu..6=Sabtu) dari sebuah instant/waktu (Date),
+// menurut zona kantor. Pengganti Date#getDay(), yang memakai timezone
+// perangkat. Untuk tanggal kalender murni (string "YYYY-MM-DD" tanpa jam),
+// pakai dayOfWeekFromDateStr di atas.
+export function zonedDayOfWeek(d = new Date()) {
+  const p = zonedParts(d);
+  return dayOfWeekFromDateStr(`${p.year}-${p.month}-${p.day}`);
+}
+
+// Bangun timestamp (epoch ms, absolut & timezone-agnostic) untuk jam HH:MM
+// pada tanggal "YYYY-MM-DD" tertentu, DIUKUR menurut zona kantor. Dipakai
+// untuk membandingkan "jam mulai shift kantor" dengan waktu absen karyawan,
+// supaya hasilnya konsisten di HP mana pun / timezone device apa pun.
+export function zonedTimestamp(dateStr, hh, mm, ss = 0) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return Date.UTC(y, m - 1, d, hh - APP_TIMEZONE_OFFSET_HOURS, mm, ss);
+}
+
+// Waktu sekarang, sudah diformat sesuai zona kantor (untuk ditampilkan).
+export function fmtNowInOfficeZone() {
+  return new Date().toLocaleString("id-ID", { timeZone: APP_TIMEZONE, dateStyle: "full", timeStyle: "short" });
 }
 
 export function fmtRupiah(n) {
