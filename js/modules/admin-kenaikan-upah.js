@@ -69,7 +69,7 @@ export async function render(container, user) {
             <label id="emp-name-label-harian" style="font-weight:600;"></label>
           </div>
           <div class="form-row two-col">
-            <label>Upah Harian Baru (Rp) <input type="number" name="daily_wage" min="0" step="1000" required></label>
+            <label>Upah Harian Baru (Rp) <input type="number" name="daily_wage" min="0" step="1" required></label>
             <label>Berlaku Mulai <input type="date" name="effective_date" required></label>
           </div>
           <div class="form-row">
@@ -105,8 +105,8 @@ export async function render(container, user) {
             <label id="emp-name-label-bulanan" style="font-weight:600;"></label>
           </div>
           <div class="form-row two-col">
-            <label>Gaji Bulanan Baru (Rp) <input type="number" name="monthly_salary" min="0" step="1000" required></label>
-            <label>Kenaikan per Tahun (Rp) <input type="number" name="annual_increase" min="0" step="1000" required></label>
+            <label>Gaji Bulanan Baru (Rp) <input type="number" name="monthly_salary" min="0" step="1" required></label>
+            <label>Kenaikan per Tahun (Rp) <input type="number" name="annual_increase" min="0" step="1" required></label>
           </div>
           <div class="form-row two-col">
             <label>Berlaku Mulai <input type="date" name="effective_date" required></label>

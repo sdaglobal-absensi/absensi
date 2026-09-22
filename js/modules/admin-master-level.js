@@ -29,37 +29,37 @@ export async function render(container, user) {
 
           <div class="form-section-label">Denda &amp; Tunjangan</div>
           <div class="form-row two-col">
-            <label>Denda Terlambat &amp; Pulang Cepat (Rp) <input type="number" name="denda_terlambat" min="0" step="1000" required></label>
-            <label>Uang Perjalanan Dinas (Rp) <input type="number" name="uang_perjalanan_dinas" min="0" step="1000" required></label>
+            <label>Denda Terlambat &amp; Pulang Cepat (Rp) <input type="number" name="denda_terlambat" min="0" step="1" required></label>
+            <label>Uang Perjalanan Dinas (Rp) <input type="number" name="uang_perjalanan_dinas" min="0" step="1" required></label>
           </div>
           <div class="form-row two-col">
-            <label>Upah Lembur Hari Biasa (Rp/jam) <input type="number" name="upah_lembur_hari_biasa" min="0" step="1000" required></label>
-            <label>Upah Lembur Hari Libur (Rp/jam) <input type="number" name="upah_lembur_hari_libur" min="0" step="1000" required></label>
+            <label>Upah Lembur Hari Biasa (Rp/jam) <input type="number" name="upah_lembur_hari_biasa" min="0" step="1" required></label>
+            <label>Upah Lembur Hari Libur (Rp/jam) <input type="number" name="upah_lembur_hari_libur" min="0" step="1" required></label>
           </div>
 
           <div class="form-section-label">BPJS Kesehatan</div>
           <div class="form-row three-col">
-            <label>Upah Lapor BPJS (Rp) <input type="number" name="upah_lapor_bpjs" min="0" step="1000" required></label>
-            <label>% Ditanggung Karyawan <input type="number" name="bpjs_kesehatan_karyawan_persen" min="0" max="100" step="0.1" required></label>
-            <label>% Ditanggung Perusahaan <input type="number" name="bpjs_kesehatan_perusahaan_persen" min="0" max="100" step="0.1" required></label>
+            <label>Upah Lapor BPJS (Rp) <input type="number" name="upah_lapor_bpjs" min="0" step="1" required></label>
+            <label>% Ditanggung Karyawan <input type="number" name="bpjs_kesehatan_karyawan_persen" min="0" max="100" step="0.01" required></label>
+            <label>% Ditanggung Perusahaan <input type="number" name="bpjs_kesehatan_perusahaan_persen" min="0" max="100" step="0.01" required></label>
           </div>
 
           <div class="form-section-label">BPJS Ketenagakerjaan</div>
           <div class="form-row two-col">
-            <label>% Ditanggung Karyawan <input type="number" name="bpjs_tk_karyawan_persen" min="0" max="100" step="0.1" required></label>
-            <label>% Ditanggung Perusahaan <input type="number" name="bpjs_tk_perusahaan_persen" min="0" max="100" step="0.1" required></label>
+            <label>% Ditanggung Karyawan <input type="number" name="bpjs_tk_karyawan_persen" min="0" max="100" step="0.01" required></label>
+            <label>% Ditanggung Perusahaan <input type="number" name="bpjs_tk_perusahaan_persen" min="0" max="100" step="0.01" required></label>
           </div>
           <p class="small muted field-hint">Upah lapor BPJS Kesehatan di atas juga dipakai sebagai dasar perhitungan BPJS Ketenagakerjaan.</p>
 
           <div class="form-section-label">Pajak</div>
           <div class="form-row">
-            <label>PPh21 (%) <input type="number" name="pph21_persen" min="0" max="100" step="0.1" required></label>
+            <label>PPh21 (%) <input type="number" name="pph21_persen" min="0" max="100" step="0.01" required></label>
           </div>
 
           <div class="form-section-label">Upah Harian (khusus status Karyawan Harian)</div>
           <div class="form-row two-col">
-            <label>Upah Harian Pokok (Rp/hari) <input type="number" name="upah_harian_pokok" min="0" step="1000" required></label>
-            <label>Kenaikan Upah per Tahun (Rp) <input type="number" name="kenaikan_upah_tahunan" min="0" step="1000" required></label>
+            <label>Upah Harian Pokok (Rp/hari) <input type="number" name="upah_harian_pokok" min="0" step="1" required></label>
+            <label>Kenaikan Upah per Tahun (Rp) <input type="number" name="kenaikan_upah_tahunan" min="0" step="1" required></label>
           </div>
           <p class="small muted field-hint">Kenaikan dibagi otomatis jadi 2 periode: 50% diterapkan Maret, 50% lagi September.</p>
 
