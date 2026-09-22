@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, reverseGeocode, fmtTime, fmtDate, todayISO } from "../core.js";
+import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, reverseGeocode, fmtTime, fmtDate, todayISO, dateOnlyISO } from "../core.js";
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -162,7 +162,7 @@ function scheduleCardHtml(info) {
 function yesterdayISO(base = new Date()) {
   const d = new Date(base);
   d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
+  return dateOnlyISO(d);
 }
 
 async function isOvernightContinuation(user, row) {

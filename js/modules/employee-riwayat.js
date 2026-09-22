@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { fmtDate, fmtTime } from "../core.js";
+import { fmtDate, fmtTime, dateOnlyISO } from "../core.js";
 
 export async function render(container, user) {
   const now = new Date();
@@ -7,7 +7,7 @@ export async function render(container, user) {
     <div class="page-header">
       <h1>Riwayat Absensi Saya</h1>
       <label class="inline-field">Bulan
-        <input type="month" id="filter-month" value="${now.toISOString().slice(0, 7)}">
+        <input type="month" id="filter-month" value="${dateOnlyISO(now).slice(0, 7)}">
       </label>
     </div>
     <div id="summary-cards" class="status-grid"></div>
@@ -21,7 +21,7 @@ export async function render(container, user) {
 async function load(user) {
   const month = document.getElementById("filter-month").value; // "2026-09"
   const start = `${month}-01`;
-  const end = new Date(new Date(start).getFullYear(), new Date(start).getMonth() + 1, 0).toISOString().slice(0, 10);
+  const end = dateOnlyISO(new Date(new Date(start).getFullYear(), new Date(start).getMonth() + 1, 0));
 
   const { data, error } = await supabase
     .from("attendance")

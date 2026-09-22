@@ -255,8 +255,21 @@ export function fmtDateTime(d) {
   return `${fmtDate(d)} ${fmtTime(d)}`;
 }
 
+// PENTING: jangan pakai toISOString().slice(0,10) untuk tanggal "hari ini" —
+// toISOString() selalu berbasis UTC, sedangkan WIB/WITA/WIT lebih cepat dari
+// UTC. Akibatnya dari tengah malam sampai jam 07:00 WIB (misalnya), tanggal
+// yang dihasilkan masih tanggal KEMARIN karena UTC belum ganti hari. Fungsi
+// di bawah ini selalu pakai komponen tanggal LOKAL perangkat (getFullYear/
+// getMonth/getDate), yang mencerminkan tanggal sebenarnya di lokasi karyawan.
+export function dateOnlyISO(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return dateOnlyISO(new Date());
 }
 
 export function fmtRupiah(n) {

@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { exportCSV, fmtDate } from "../core.js";
+import { exportCSV, fmtDate, dateOnlyISO } from "../core.js";
 
 export async function render(container) {
   const now = new Date();
@@ -7,7 +7,7 @@ export async function render(container) {
     <div class="page-header">
       <h1>Laporan Bulanan</h1>
       <div class="filter-row">
-        <input type="month" id="filter-month" value="${now.toISOString().slice(0, 7)}">
+        <input type="month" id="filter-month" value="${dateOnlyISO(now).slice(0, 7)}">
         <button id="btn-export" class="btn-secondary">Export CSV</button>
       </div>
     </div>
@@ -24,7 +24,7 @@ let lastRows = [];
 async function load() {
   const month = document.getElementById("filter-month").value;
   const start = `${month}-01`;
-  const end = new Date(new Date(start).getFullYear(), new Date(start).getMonth() + 1, 0).toISOString().slice(0, 10);
+  const end = dateOnlyISO(new Date(new Date(start).getFullYear(), new Date(start).getMonth() + 1, 0));
 
   const [{ data: profiles }, { data: attendance }, { data: leaves }] = await Promise.all([
     supabase.from("profiles").select("id, full_name, department").eq("is_active", true),

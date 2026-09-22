@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtRupiah, fmtDate, fmtDateTime, confirmDialog } from "../core.js";
+import { toast, fmtRupiah, fmtDate, fmtDateTime, confirmDialog, todayISO } from "../core.js";
 
 // ---------------------------------------------------------------------
 // Periode kenaikan — Harian: 2x setahun (Maret & September)
@@ -248,7 +248,7 @@ function openModalHarian(userId) {
   document.getElementById("emp-name-label-harian").textContent = `${emp.full_name} (Grade ${emp.grade || "-"})`;
   document.getElementById("modal-title-harian").textContent = w ? "Sesuaikan Upah" : "Set Upah Awal";
   form.daily_wage.value = w ? w.daily_wage : (level?.upah_harian_pokok || "");
-  form.effective_date.value = new Date().toISOString().slice(0, 10);
+  form.effective_date.value = todayISO();
   form.reason.value = w ? "Penyesuaian Manual" : "Upah Awal";
   document.getElementById("modal-wage-harian").classList.remove("hidden");
 }
@@ -332,7 +332,7 @@ async function confirmApplyHarian(period, list) {
   });
   if (!ok) return;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISO();
   const rows = list.map(r => ({
     user_id: r.user_id,
     effective_date: today,
@@ -413,7 +413,7 @@ function openModalBulanan(userId) {
   document.getElementById("emp-name-label-bulanan").textContent = `${emp.full_name} (Grade ${emp.grade || "-"})`;
   document.getElementById("modal-title-bulanan").textContent = s ? "Sesuaikan Gaji" : "Set Gaji Awal";
   form.monthly_salary.value = s ? s.monthly_salary : "";
-  form.effective_date.value = new Date().toISOString().slice(0, 10);
+  form.effective_date.value = todayISO();
   form.reason.value = s ? "Penyesuaian Manual" : "Gaji Awal";
   document.getElementById("modal-wage-bulanan").classList.remove("hidden");
 }
@@ -531,7 +531,7 @@ async function confirmApplyBulanan(period, list) {
   });
   if (!ok) return;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISO();
   const rows = rowsToApply.map(r => ({
     user_id: r.user_id,
     effective_date: today,
