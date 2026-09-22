@@ -32,10 +32,7 @@ export async function render(container, user) {
             <label>Denda Terlambat &amp; Pulang Cepat (Rp) <input type="number" name="denda_terlambat" min="0" step="1" required></label>
             <label>Uang Perjalanan Dinas (Rp) <input type="number" name="uang_perjalanan_dinas" min="0" step="1" required></label>
           </div>
-          <div class="form-row two-col">
-            <label>Tunjangan Jabatan (Rp/bulan) <input type="number" name="tunjangan_jabatan" min="0" step="1" value="0" required></label>
-            <label>Tunjangan Loyalitas (Rp/bulan) <input type="number" name="tunjangan_loyalitas" min="0" step="1" value="0" required></label>
-          </div>
+          <p class="small muted field-hint">Tunjangan Jabatan &amp; Tunjangan Loyalitas diatur per karyawan (nominalnya beda-beda tiap orang), lewat menu "Master Tunjangan" — bukan di sini.</p>
           <div class="form-row two-col">
             <label>Upah Lembur Hari Biasa (Rp/jam) <input type="number" name="upah_lembur_hari_biasa" min="0" step="1" required></label>
             <label>Upah Lembur Hari Libur (Rp/jam) <input type="number" name="upah_lembur_hari_libur" min="0" step="1" required></label>
@@ -100,43 +97,38 @@ async function loadTable(canEdit) {
   if (!data.length) { el.innerHTML = `<p class="muted">Belum ada data master level.</p>`; return; }
 
   el.innerHTML = `
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Grade</th><th>Level</th>
-          <th>Denda Telat &amp; Pulang Cepat</th>
-          <th>Tunjangan Jabatan</th>
-          <th>Tunjangan Loyalitas</th>
-          <th>Lembur Biasa</th><th>Lembur Libur</th>
-          <th>Uang Dinas</th>
-          <th>Upah Lapor BPJS</th>
-          <th>BPJS Kesehatan<br><span class="th-sub">Karyawan / Perusahaan</span></th>
-          <th>BPJS Ketenagakerjaan<br><span class="th-sub">Karyawan / Perusahaan</span></th>
-          <th>PPh21</th>
-          <th>Status</th>${canEdit ? "<th></th>" : ""}
-        </tr>
-      </thead>
-      <tbody>
-        ${data.map(r => `
-          <tr>
-            <td>${r.grade}</td>
-            <td>${r.level}</td>
-            <td>${fmtRupiah(r.denda_terlambat)}</td>
-            <td>${fmtRupiah(r.tunjangan_jabatan)}</td>
-            <td>${fmtRupiah(r.tunjangan_loyalitas)}</td>
-            <td>${fmtRupiah(r.upah_lembur_hari_biasa)}/jam</td>
-            <td>${fmtRupiah(r.upah_lembur_hari_libur)}/jam</td>
-            <td>${fmtRupiah(r.uang_perjalanan_dinas)}</td>
-            <td>${fmtRupiah(r.upah_lapor_bpjs)}</td>
-            <td>${r.bpjs_kesehatan_karyawan_persen}% / ${r.bpjs_kesehatan_perusahaan_persen}%</td>
-            <td>${r.bpjs_tk_karyawan_persen}% / ${r.bpjs_tk_perusahaan_persen}%</td>
-            <td>${r.pph21_persen}%</td>
-            <td><span class="badge badge-${r.is_active ? "ok" : "danger"}">${r.is_active ? "Aktif" : "Nonaktif"}</span></td>
-            ${canEdit ? `<td><button class="btn-link btn-edit" data-id="${r.id}">Edit</button></td>` : ""}
-          </tr>
-        `).join("")}
-      </tbody>
-    </table>
+    <div class="level-card-grid">
+      ${data.map(r => `
+        <div class="level-card">
+          <div class="level-card-head">
+            <div>
+              <h3>${r.grade} — ${r.level}</h3>
+              <span class="badge badge-${r.is_active ? "ok" : "danger"}">${r.is_active ? "Aktif" : "Nonaktif"}</span>
+            </div>
+            ${canEdit ? `<button class="btn-link btn-edit" data-id="${r.id}">Edit</button>` : ""}
+          </div>
+          <div class="level-card-body">
+            <div class="level-card-section-label">Denda &amp; Dinas</div>
+            <div class="level-card-line"><span>Denda Telat &amp; Pulang Cepat</span><span>${fmtRupiah(r.denda_terlambat)}</span></div>
+            <div class="level-card-line"><span>Uang Perjalanan Dinas</span><span>${fmtRupiah(r.uang_perjalanan_dinas)}</span></div>
+
+            <div class="level-card-section-label">Lembur</div>
+            <div class="level-card-line"><span>Hari Biasa</span><span>${fmtRupiah(r.upah_lembur_hari_biasa)}/jam</span></div>
+            <div class="level-card-line"><span>Hari Libur</span><span>${fmtRupiah(r.upah_lembur_hari_libur)}/jam</span></div>
+
+            <div class="level-card-section-label">BPJS &amp; Pajak</div>
+            <div class="level-card-line"><span>Upah Lapor BPJS</span><span>${fmtRupiah(r.upah_lapor_bpjs)}</span></div>
+            <div class="level-card-line"><span>BPJS Kesehatan (Karyawan/Perusahaan)</span><span>${r.bpjs_kesehatan_karyawan_persen}% / ${r.bpjs_kesehatan_perusahaan_persen}%</span></div>
+            <div class="level-card-line"><span>BPJS Ketenagakerjaan (Karyawan/Perusahaan)</span><span>${r.bpjs_tk_karyawan_persen}% / ${r.bpjs_tk_perusahaan_persen}%</span></div>
+            <div class="level-card-line"><span>PPh21</span><span>${r.pph21_persen}%</span></div>
+
+            <div class="level-card-section-label">Upah Harian (khusus Karyawan Harian)</div>
+            <div class="level-card-line"><span>Upah Harian Pokok</span><span>${fmtRupiah(r.upah_harian_pokok)}/hari</span></div>
+            <div class="level-card-line"><span>Kenaikan per Tahun</span><span>${fmtRupiah(r.kenaikan_upah_tahunan)}</span></div>
+          </div>
+        </div>
+      `).join("")}
+    </div>
   `;
 
   if (canEdit) {
@@ -151,7 +143,6 @@ async function loadTable(canEdit) {
 
 const FIELDS = [
   "grade", "level", "denda_terlambat", "uang_perjalanan_dinas",
-  "tunjangan_jabatan", "tunjangan_loyalitas",
   "upah_lembur_hari_biasa", "upah_lembur_hari_libur",
   "upah_lapor_bpjs", "bpjs_kesehatan_karyawan_persen", "bpjs_kesehatan_perusahaan_persen",
   "bpjs_tk_karyawan_persen", "bpjs_tk_perusahaan_persen", "pph21_persen",

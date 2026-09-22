@@ -5,8 +5,9 @@ import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exp
 // SLIP GAJI — dihitung otomatis dari data yang sudah ada di sistem:
 //   - Gaji pokok: Riwayat Upah Harian (x hari hadir) / Riwayat Gaji Bulanan
 //   - Uang lembur: Pengajuan Lembur yang disetujui x tarif di Master Level
-//   - Tunjangan Jabatan & Tunjangan Loyalitas: nominal tetap per grade/level
-//     di Master Level, otomatis ditambahkan tiap slip.
+//   - Tunjangan (Jabatan, Loyalitas, dst): nominal per karyawan yang diatur
+//     di menu "Master Tunjangan" (beda-beda tiap orang, bukan per level),
+//     otomatis ditambahkan tiap slip selama statusnya aktif.
 //   - Denda keterlambatan & pulang cepat: tabel jam bertingkat, diatur
 //     manual di menu "Master Denda Telat" (tabel late_penalty_rules).
 //     Tier bertipe % dikalikan "Denda Terlambat & Pulang Cepat" (Rp) di
@@ -67,6 +68,7 @@ let salaryByUser = {};
 let attendanceByUser = {};
 let overtimeByUser = {};
 let adjByUser = {};
+let allowancesByUser = {}; // { [userId]: [{ nama, nominal }] } — dari Master Tunjangan (aktif saja)
 let penaltyRules = { telat: { weekday: [], saturday: [] }, pulang_cepat: { weekday: [], saturday: [] } };
 let currentSlip = null; // slip yang sedang dibuka di modal detail
 
@@ -155,7 +157,7 @@ async function loadData(p) {
   const [y, m] = p.split("-").map(Number);
   const end = dateOnlyISO(new Date(y, m, 0)); // tanggal terakhir bulan tsb
 
-  const [{ data: emp, error: errEmp }, { data: levels }, { data: wages }, { data: salaries }, { data: att }, { data: ot }, { data: adj }, { data: rules }] = await Promise.all([
+  const [{ data: emp, error: errEmp }, { data: levels }, { data: wages }, { data: salaries }, { data: att }, { data: ot }, { data: adj }, { data: rules }, { data: types }, { data: alw }] = await Promise.all([
     supabase.from("profiles").select("*").eq("is_active", true).order("full_name"),
     supabase.from("job_levels").select("*"),
     supabase.from("wage_history").select("*").lte("effective_date", end).order("effective_date", { ascending: false }),
@@ -164,6 +166,8 @@ async function loadData(p) {
     supabase.from("overtime_requests").select("*").eq("status", "approved").gte("date", start).lte("date", end),
     supabase.from("payroll_adjustments").select("*").eq("period", p),
     supabase.from("late_penalty_rules").select("*").eq("is_active", true).order("jam", { ascending: true }),
+    supabase.from("allowance_types").select("*").eq("is_active", true),
+    supabase.from("employee_allowances").select("*").eq("is_active", true),
   ]);
 
   if (errEmp) { toast("Gagal memuat data karyawan: " + errEmp.message, "error"); }
@@ -185,6 +189,15 @@ async function loadData(p) {
 
   penaltyRules = { telat: { weekday: [], saturday: [] }, pulang_cepat: { weekday: [], saturday: [] } };
   (rules || []).forEach(r => { (penaltyRules[r.jenis]?.[r.day_type] ?? []).push(r); });
+
+  const typeNameById = {};
+  (types || []).forEach(t => { typeNameById[t.id] = t.nama; });
+  allowancesByUser = {};
+  (alw || []).forEach(a => {
+    const nama = typeNameById[a.allowance_type_id];
+    if (!nama) return; // jenisnya sudah dinonaktifkan, jangan dihitung
+    (allowancesByUser[a.user_id] ??= []).push({ nama, nominal: a.nominal || 0 });
+  });
 }
 
 function groupByUserSorted(rows) {
@@ -241,10 +254,10 @@ function computeSlip(emp) {
   const rateLemburLibur = level?.upah_lembur_hari_libur || 0;
   const uangLembur = jamLemburBiasa * rateLemburBiasa + jamLemburLibur * rateLemburLibur;
   const uangDinas = (adj.hari_dinas || 0) * (level?.uang_perjalanan_dinas || 0);
-  const tunjanganJabatan = level?.tunjangan_jabatan || 0;
-  const tunjanganLoyalitas = level?.tunjangan_loyalitas || 0;
+  const tunjanganList = allowancesByUser[emp.id] || []; // dari Master Tunjangan, per karyawan
+  const tunjanganTambahan = tunjanganList.reduce((s, t) => s + (t.nominal || 0), 0);
   const tunjanganLain = adj.tunjangan_lain || 0;
-  const totalPendapatan = gajiPokok + uangLembur + uangDinas + tunjanganJabatan + tunjanganLoyalitas + tunjanganLain;
+  const totalPendapatan = gajiPokok + uangLembur + uangDinas + tunjanganTambahan + tunjanganLain;
 
   const upahLapor = level?.upah_lapor_bpjs || 0;
   const bpjsKesKaryawan = upahLapor * (level?.bpjs_kesehatan_karyawan_persen || 0) / 100;
@@ -257,7 +270,7 @@ function computeSlip(emp) {
 
   return {
     emp, level, adj, hariHadir, hariTelat, jamLemburBiasa, jamLemburLibur,
-    gajiPokok, gajiPokokLabel, rateLemburBiasa, rateLemburLibur, uangLembur, uangDinas, tunjanganJabatan, tunjanganLoyalitas, tunjanganLain, totalPendapatan,
+    gajiPokok, gajiPokokLabel, rateLemburBiasa, rateLemburLibur, uangLembur, uangDinas, tunjanganList, tunjanganTambahan, tunjanganLain, totalPendapatan,
     dendaKeterlambatan, dendaPulangCepat, upahLapor, bpjsKesKaryawan, bpjsTkKaryawan, pph21, potonganLain, totalPotongan, gajiBersih,
   };
 }
@@ -376,8 +389,7 @@ function renderSlipContent(s) {
           <div class="slip-line"><span>${s.gajiPokokLabel}</span><span>${fmtRupiah(s.gajiPokok)}</span></div>
           <div class="slip-line"><span>Uang Lembur (${fmtJam(s.jamLemburBiasa)} biasa + ${fmtJam(s.jamLemburLibur)} libur)</span><span>${fmtRupiah(s.uangLembur)}</span></div>
           <div class="slip-line"><span>Uang Perjalanan Dinas (${s.adj.hari_dinas || 0} hari)</span><span>${fmtRupiah(s.uangDinas)}</span></div>
-          <div class="slip-line"><span>Tunjangan Jabatan</span><span>${fmtRupiah(s.tunjanganJabatan)}</span></div>
-          <div class="slip-line"><span>Tunjangan Loyalitas</span><span>${fmtRupiah(s.tunjanganLoyalitas)}</span></div>
+          ${s.tunjanganList.map(t => `<div class="slip-line"><span>${t.nama}</span><span>${fmtRupiah(t.nominal)}</span></div>`).join("")}
           <div class="slip-line"><span>${s.adj.keterangan_tunjangan || "Tunjangan Lain"}</span><span>${fmtRupiah(s.tunjanganLain)}</span></div>
           <div class="slip-line total"><span>Total Pendapatan</span><span>${fmtRupiah(s.totalPendapatan)}</span></div>
         </div>
@@ -473,8 +485,8 @@ function doExport() {
     "Gaji Pokok": s.gajiPokok,
     "Uang Lembur": s.uangLembur,
     "Uang Dinas": s.uangDinas,
-    "Tunjangan Jabatan": s.tunjanganJabatan,
-    "Tunjangan Loyalitas": s.tunjanganLoyalitas,
+    "Tunjangan Tambahan (Total)": s.tunjanganTambahan,
+    "Rincian Tunjangan Tambahan": s.tunjanganList.map(t => `${t.nama}: ${fmtRupiah(t.nominal)}`).join("; ") || "-",
     "Tunjangan Lain": s.tunjanganLain,
     "Total Pendapatan": s.totalPendapatan,
     "Denda Keterlambatan": s.dendaKeterlambatan,

@@ -207,6 +207,17 @@ button { font-family: 'Inter'; cursor: pointer; }
 
 /* ---------------- Tables ---------------- */
 .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+
+/* ---------------- Master Level — kartu (biar tidak perlu geser ke kanan) ---------------- */
+.level-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.level-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+.level-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.level-card-head h3 { font-size: 1rem; margin-bottom: 4px; }
+.level-card-section-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); font-weight: 600; margin: 12px 0 4px; }
+.level-card-section-label:first-child { margin-top: 0; }
+.level-card-line { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 0.85rem; }
+.level-card-line span:first-child { color: var(--muted); }
+.level-card-line span:last-child { font-weight: 600; text-align: right; }
 .table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 .table th { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.02em; white-space: nowrap; }
 .th-sub { text-transform: none; font-weight: 400; font-size: 0.72rem; letter-spacing: 0; }

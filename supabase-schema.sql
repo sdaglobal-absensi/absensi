@@ -137,8 +137,6 @@ create table if not exists public.job_levels (
   grade                    text not null,
   level                    text not null,
   denda_terlambat          numeric not null default 0,   -- Rp, denda per keterlambatan & pulang cepat
-  tunjangan_jabatan        numeric not null default 0,   -- Rp/bulan, tunjangan jabatan per grade/level
-  tunjangan_loyalitas      numeric not null default 0,   -- Rp/bulan, tunjangan loyalitas per grade/level
   upah_lembur_hari_biasa   numeric not null default 0,   -- Rp per jam
   upah_lembur_hari_libur   numeric not null default 0,   -- Rp per jam
   uang_perjalanan_dinas    numeric not null default 0,   -- Rp per perjalanan/hari
@@ -166,8 +164,14 @@ alter table public.job_levels add column if not exists bpjs_tk_perusahaan_persen
 alter table public.job_levels add column if not exists pph21_persen numeric not null default 5;
 alter table public.job_levels add column if not exists upah_harian_pokok numeric not null default 0;
 alter table public.job_levels add column if not exists kenaikan_upah_tahunan numeric not null default 0;
-alter table public.job_levels add column if not exists tunjangan_jabatan numeric not null default 0;    -- Rp/bulan, tunjangan jabatan per grade/level
-alter table public.job_levels add column if not exists tunjangan_loyalitas numeric not null default 0;  -- Rp/bulan, tunjangan loyalitas per grade/level
+
+-- Tunjangan Jabatan & Tunjangan Loyalitas ternyata beda-beda per karyawan
+-- (bukan per grade/level), jadi kolom di job_levels ini tidak dipakai lagi
+-- — datanya sekarang di allowance_types + employee_allowances (Master
+-- Tunjangan) di bawah. Baris ini membersihkan kolom lama kalau sempat
+-- dibuat di database (aman dijalankan ulang meski kolomnya belum ada).
+alter table public.job_levels drop column if exists tunjangan_jabatan;
+alter table public.job_levels drop column if exists tunjangan_loyalitas;
 
 -- ---------------------------------------------------------------------
 -- 4b2. TABEL: wage_history (Riwayat Upah Harian)
@@ -351,6 +355,41 @@ insert into public.late_penalty_rules (day_type, jenis, jam, tipe, nominal, pers
   ('saturday', 'pulang_cepat', '11:00', 'percent', 0,     100, 'Pulang < 11:00 (100% denda)'),
   ('saturday', 'pulang_cepat', '12:00', 'percent', 0,     50,  'Pulang 11:00–12:00 (50% denda)')
 on conflict (day_type, jenis, jam) do nothing;
+
+-- ---------------------------------------------------------------------
+-- 4i. TABEL: allowance_types & employee_allowances (Master Tunjangan)
+--     Tunjangan seperti "Tunjangan Jabatan" atau "Tunjangan Loyalitas"
+--     nominalnya beda-beda per karyawan (bukan per grade/level), dan
+--     admin bisa membuat jenis tunjangan sendiri secara bebas (tidak
+--     terbatas cuma 2 nama itu). allowance_types = daftar jenis
+--     tunjangan yang tersedia; employee_allowances = nominal tunjangan
+--     tertentu untuk karyawan tertentu (berlaku terus tiap bulan sampai
+--     diubah/dinonaktifkan, tidak perlu diisi ulang tiap periode).
+-- ---------------------------------------------------------------------
+create table if not exists public.allowance_types (
+  id          uuid primary key default gen_random_uuid(),
+  nama        text not null unique,
+  keterangan  text,
+  is_active   boolean not null default true,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+insert into public.allowance_types (nama, keterangan) values
+  ('Tunjangan Jabatan', 'Tunjangan sesuai jabatan/tanggung jawab karyawan'),
+  ('Tunjangan Loyalitas', 'Tunjangan berdasarkan masa kerja/loyalitas karyawan')
+on conflict (nama) do nothing;
+
+create table if not exists public.employee_allowances (
+  id                 uuid primary key default gen_random_uuid(),
+  user_id            uuid not null references public.profiles(id) on delete cascade,
+  allowance_type_id  uuid not null references public.allowance_types(id) on delete cascade,
+  nominal            numeric not null default 0,  -- Rp/bulan
+  is_active          boolean not null default true,
+  updated_by         uuid references public.profiles(id),
+  updated_at         timestamptz not null default now(),
+  unique (user_id, allowance_type_id)
+);
 
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
@@ -585,6 +624,36 @@ create policy "late_penalty_rules_select" on public.late_penalty_rules
 
 drop policy if exists "late_penalty_rules_admin_write" on public.late_penalty_rules;
 create policy "late_penalty_rules_admin_write" on public.late_penalty_rules
+  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+
+-- allowance_types & employee_allowances (Master Tunjangan) -------------------------------------------------------------
+drop trigger if exists trg_allowance_types_updated_at on public.allowance_types;
+create trigger trg_allowance_types_updated_at
+  before update on public.allowance_types
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_employee_allowances_updated_at on public.employee_allowances;
+create trigger trg_employee_allowances_updated_at
+  before update on public.employee_allowances
+  for each row execute function public.set_updated_at();
+
+alter table public.allowance_types enable row level security;
+alter table public.employee_allowances enable row level security;
+
+drop policy if exists "allowance_types_select" on public.allowance_types;
+create policy "allowance_types_select" on public.allowance_types
+  for select using ( public.is_admin_or_hr() );
+
+drop policy if exists "allowance_types_admin_write" on public.allowance_types;
+create policy "allowance_types_admin_write" on public.allowance_types
+  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+
+drop policy if exists "employee_allowances_select" on public.employee_allowances;
+create policy "employee_allowances_select" on public.employee_allowances
+  for select using ( user_id = auth.uid() or public.is_admin_or_hr() );
+
+drop policy if exists "employee_allowances_admin_write" on public.employee_allowances;
+create policy "employee_allowances_admin_write" on public.employee_allowances
   for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
 
 
