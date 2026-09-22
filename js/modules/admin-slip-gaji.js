@@ -1,13 +1,16 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtRupiah, fmtJam, fmtDate, fmtTime, dateOnlyISO, roundOvertimeHours, exportXLSX, dayOfWeekFromDateStr, zonedMinutesOfDay, hmToMinutes } from "../core.js";
+import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exportXLSX, dayOfWeekFromDateStr, zonedMinutesOfDay, hmToMinutes } from "../core.js";
 
 // =======================================================================
 // SLIP GAJI — dihitung otomatis dari data yang sudah ada di sistem:
 //   - Gaji pokok: Riwayat Upah Harian (x hari hadir) / Riwayat Gaji Bulanan
 //   - Uang lembur: Pengajuan Lembur yang disetujui x tarif di Master Level
-//   - Denda keterlambatan & pulang cepat: tabel jam bertingkat di bawah,
-//     persentasenya dikalikan "Denda Terlambat & Pulang Cepat" (Rp) di
-//     Master Level masing-masing grade/level.
+//   - Denda keterlambatan & pulang cepat: tabel jam bertingkat, diatur
+//     manual di menu "Master Denda Telat" (tabel late_penalty_rules).
+//     Tier bertipe % dikalikan "Denda Terlambat & Pulang Cepat" (Rp) di
+//     Master Level masing-masing grade/level; tier bertipe nominal tetap
+//     tidak tergantung denda level. Rincian per-hari tidak ditampilkan di
+//     slip gaji karyawan, hanya totalnya.
 //   - BPJS, PPh21, uang dinas: tarif di Master Level
 // Komponen yang tidak tercatat otomatis (dinas, tunjangan/potongan lain)
 // diisi manual per periode lewat "Edit Tunjangan/Potongan" dan disimpan
@@ -15,61 +18,40 @@ import { toast, fmtRupiah, fmtJam, fmtDate, fmtTime, dateOnlyISO, roundOvertimeH
 // =======================================================================
 
 // ---------------------------------------------------------------------
-// TABEL POTONGAN KETERLAMBATAN & PULANG CEPAT
-// Senin–Jumat dan Sabtu punya jam batas berbeda. "denda" (base) di bawah
-// mengacu ke kolom "Denda Terlambat & Pulang Cepat" pada Master Level.
+// POTONGAN KETERLAMBATAN & PULANG CEPAT
+// Aturan (jam & persen/nominal) diambil dari tabel late_penalty_rules
+// (di-load ke penaltyRules saat loadData), bukan hardcode lagi di sini.
 // ---------------------------------------------------------------------
 
-// Keterlambatan: diurutkan naik (jam paling pagi -> paling siang). Yang
-// dipakai adalah aturan PALING TERAKHIR yang jam absennya sudah terlampaui
-// (jadi makin siang datangnya, makin besar potongannya).
-const TELAT_RULES = {
-  weekday: [ // Senin - Jumat
-    { after: "08:00", type: "flat", amount: 50000, label: "Telat > 08:00" },
-    { after: "10:00", type: "percent", percent: 50, label: "Telat > 10:00 (50% denda)" },
-    { after: "12:00", type: "percent", percent: 100, label: "Telat > 12:00 (100% denda)" },
-  ],
-  saturday: [ // Sabtu
-    { after: "08:00", type: "flat", amount: 50000, label: "Telat > 08:00" },
-    { after: "09:00", type: "percent", percent: 50, label: "Telat > 09:00 (50% denda)" },
-    { after: "10:00", type: "percent", percent: 100, label: "Telat > 10:00 (100% denda)" },
-  ],
-};
-
-// Pulang cepat: diurutkan naik (jam paling pagi -> paling siang). Yang
-// dipakai adalah aturan PERTAMA yang jam pulangnya masih di bawah batas
-// (jadi makin awal pulangnya, makin besar potongannya).
-const PULANG_CEPAT_RULES = {
-  weekday: [ // Senin - Jumat
-    { before: "13:00", percent: 100, label: "Pulang < 13:00 (100% denda)" },
-    { before: "14:00", percent: 50, label: "Pulang 13:00–14:00 (50% denda)" },
-  ],
-  saturday: [ // Sabtu
-    { before: "11:00", percent: 100, label: "Pulang < 11:00 (100% denda)" },
-    { before: "12:00", percent: 50, label: "Pulang 11:00–12:00 (50% denda)" },
-  ],
-};
-
+// Keterlambatan: tier diurutkan naik (jam paling pagi -> paling siang).
+// Yang dipakai adalah tier PALING TERAKHIR yang jam absennya sudah
+// terlampaui (jadi makin siang datangnya, makin besar potongannya).
 function hitungDendaTelat(checkInAt, dayOfWeek, dendaDasar) {
   if (!checkInAt || dayOfWeek < 1 || dayOfWeek > 6) return null; // Minggu/tidak absen: tidak ada aturan
-  const rules = dayOfWeek === 6 ? TELAT_RULES.saturday : TELAT_RULES.weekday;
+  const dayType = dayOfWeek === 6 ? "saturday" : "weekday";
+  const rules = penaltyRules.telat[dayType] || [];
   const mins = zonedMinutesOfDay(checkInAt);
   let picked = null;
   for (const r of rules) {
-    if (mins > hmToMinutes(r.after)) picked = r;
+    if (mins > hmToMinutes(r.jam)) picked = r;
   }
   if (!picked) return null;
-  const amount = picked.type === "flat" ? picked.amount : dendaDasar * picked.percent / 100;
+  const amount = picked.tipe === "flat" ? picked.nominal : dendaDasar * picked.persen / 100;
   return { amount, label: picked.label };
 }
 
+// Pulang cepat: tier diurutkan naik (jam paling pagi -> paling siang).
+// Yang dipakai adalah tier PERTAMA yang jam pulangnya masih di bawah
+// batas (jadi makin awal pulangnya, makin besar potongannya).
 function hitungDendaPulangCepat(checkOutAt, dayOfWeek, dendaDasar) {
   if (!checkOutAt || dayOfWeek < 1 || dayOfWeek > 6) return null;
-  const rules = dayOfWeek === 6 ? PULANG_CEPAT_RULES.saturday : PULANG_CEPAT_RULES.weekday;
+  const dayType = dayOfWeek === 6 ? "saturday" : "weekday";
+  const rules = penaltyRules.pulang_cepat[dayType] || [];
   const mins = zonedMinutesOfDay(checkOutAt);
   for (const r of rules) {
-    if (mins < hmToMinutes(r.before)) {
-      return { amount: dendaDasar * r.percent / 100, label: r.label };
+    if (mins < hmToMinutes(r.jam)) {
+      const amount = r.tipe === "flat" ? r.nominal : dendaDasar * r.persen / 100;
+      return { amount, label: r.label };
     }
   }
   return null;
@@ -83,6 +65,7 @@ let salaryByUser = {};
 let attendanceByUser = {};
 let overtimeByUser = {};
 let adjByUser = {};
+let penaltyRules = { telat: { weekday: [], saturday: [] }, pulang_cepat: { weekday: [], saturday: [] } };
 let currentSlip = null; // slip yang sedang dibuka di modal detail
 
 export async function render(container, user) {
@@ -170,7 +153,7 @@ async function loadData(p) {
   const [y, m] = p.split("-").map(Number);
   const end = dateOnlyISO(new Date(y, m, 0)); // tanggal terakhir bulan tsb
 
-  const [{ data: emp, error: errEmp }, { data: levels }, { data: wages }, { data: salaries }, { data: att }, { data: ot }, { data: adj }] = await Promise.all([
+  const [{ data: emp, error: errEmp }, { data: levels }, { data: wages }, { data: salaries }, { data: att }, { data: ot }, { data: adj }, { data: rules }] = await Promise.all([
     supabase.from("profiles").select("*").eq("is_active", true).order("full_name"),
     supabase.from("job_levels").select("*"),
     supabase.from("wage_history").select("*").lte("effective_date", end).order("effective_date", { ascending: false }),
@@ -178,6 +161,7 @@ async function loadData(p) {
     supabase.from("attendance").select("*").gte("date", start).lte("date", end),
     supabase.from("overtime_requests").select("*").eq("status", "approved").gte("date", start).lte("date", end),
     supabase.from("payroll_adjustments").select("*").eq("period", p),
+    supabase.from("late_penalty_rules").select("*").eq("is_active", true).order("jam", { ascending: true }),
   ]);
 
   if (errEmp) { toast("Gagal memuat data karyawan: " + errEmp.message, "error"); }
@@ -196,6 +180,9 @@ async function loadData(p) {
 
   adjByUser = {};
   (adj || []).forEach(a => { adjByUser[a.user_id] = a; });
+
+  penaltyRules = { telat: { weekday: [], saturday: [] }, pulang_cepat: { weekday: [], saturday: [] } };
+  (rules || []).forEach(r => { (penaltyRules[r.jenis]?.[r.day_type] ?? []).push(r); });
 }
 
 function groupByUserSorted(rows) {
@@ -219,27 +206,20 @@ function computeSlip(emp) {
   const jamLemburLibur = otRows.filter(o => o.is_hari_libur).reduce((s, o) => s + jamHari(o), 0);
 
   // Denda keterlambatan & pulang cepat — dihitung per hari dari jam
-  // check-in/check-out asli terhadap tabel jam bertingkat (bukan dari
-  // status telat/tepat-waktu jadwal kerja, yang dipakai untuk keperluan
-  // monitoring absensi saja).
-  const rincianDenda = [];
+  // check-in/check-out asli terhadap tabel jam bertingkat di Master Denda
+  // Telat (bukan dari status telat/tepat-waktu jadwal kerja, yang dipakai
+  // untuk keperluan monitoring absensi saja). Hanya totalnya yang tampil
+  // di slip gaji karyawan, rincian per hari tidak dicetak.
   let dendaKeterlambatan = 0;
   let dendaPulangCepat = 0;
   const dendaDasar = level?.denda_terlambat || 0;
   for (const a of attRows) {
     const dow = dayOfWeekFromDateStr(a.date);
     const telat = hitungDendaTelat(a.check_in, dow, dendaDasar);
-    if (telat) {
-      dendaKeterlambatan += telat.amount;
-      rincianDenda.push({ date: a.date, jenis: "Keterlambatan", jam: fmtTime(a.check_in), keterangan: telat.label, amount: telat.amount });
-    }
+    if (telat) dendaKeterlambatan += telat.amount;
     const cepat = hitungDendaPulangCepat(a.check_out, dow, dendaDasar);
-    if (cepat) {
-      dendaPulangCepat += cepat.amount;
-      rincianDenda.push({ date: a.date, jenis: "Pulang Cepat", jam: fmtTime(a.check_out), keterangan: cepat.label, amount: cepat.amount });
-    }
+    if (cepat) dendaPulangCepat += cepat.amount;
   }
-  rincianDenda.sort((a, b) => a.date.localeCompare(b.date));
 
   const adj = adjByUser[emp.id] || { hari_dinas: 0, tunjangan_lain: 0, keterangan_tunjangan: "", potongan_lain: 0, keterangan_potongan: "" };
 
@@ -274,7 +254,7 @@ function computeSlip(emp) {
   return {
     emp, level, adj, hariHadir, hariTelat, jamLemburBiasa, jamLemburLibur,
     gajiPokok, gajiPokokLabel, rateLemburBiasa, rateLemburLibur, uangLembur, uangDinas, tunjanganLain, totalPendapatan,
-    dendaKeterlambatan, dendaPulangCepat, rincianDenda, upahLapor, bpjsKesKaryawan, bpjsTkKaryawan, pph21, potonganLain, totalPotongan, gajiBersih,
+    dendaKeterlambatan, dendaPulangCepat, upahLapor, bpjsKesKaryawan, bpjsTkKaryawan, pph21, potonganLain, totalPotongan, gajiBersih,
   };
 }
 
@@ -406,25 +386,6 @@ function renderSlipContent(s) {
           <div class="slip-line total"><span>Total Potongan</span><span>${fmtRupiah(s.totalPotongan)}</span></div>
         </div>
       </div>
-
-      ${s.rincianDenda.length ? `
-      <div style="margin-top:22px;">
-        <h4 style="font-size:0.78rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); margin-bottom:10px;">Rincian Denda Keterlambatan &amp; Pulang Cepat</h4>
-        <table class="table">
-          <thead><tr><th>Tanggal</th><th>Jenis</th><th>Jam</th><th>Keterangan</th><th>Nominal</th></tr></thead>
-          <tbody>
-            ${s.rincianDenda.map(r => `
-              <tr>
-                <td>${fmtDate(r.date)}</td>
-                <td>${r.jenis}</td>
-                <td>${r.jam}</td>
-                <td>${r.keterangan}</td>
-                <td>${fmtRupiah(r.amount)}</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </div>` : ""}
 
       <div class="slip-net">
         <span class="label">Gaji Bersih (Take Home Pay)</span>

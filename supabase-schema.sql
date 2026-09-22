@@ -297,6 +297,57 @@ create table if not exists public.payroll_adjustments (
   unique (user_id, period)
 );
 
+-- ---------------------------------------------------------------------
+-- 4h. TABEL: late_penalty_rules (Master Denda Terlambat & Pulang Cepat)
+--     Dulu tabel jam bertingkat ini "hardcode" di kode Slip Gaji, sekarang
+--     jadi setting manual yang bisa diubah admin/HR lewat menu Master Data
+--     tanpa perlu ubah kode. Satu baris = satu tingkatan (tier) jam untuk
+--     satu jenis (telat / pulang_cepat) pada satu kelompok hari
+--     (weekday = Senin-Jumat, saturday = Sabtu).
+--
+--     - jenis = 'telat'        -> jam = batas jam MULAI dianggap telat
+--                                  ("lebih dari jam ..."). Yang dipakai saat
+--                                  hitung slip adalah tier PALING TERAKHIR
+--                                  yang jam check-in-nya sudah terlampaui.
+--     - jenis = 'pulang_cepat' -> jam = batas jam pulang ("kurang dari jam
+--                                  ..."). Yang dipakai adalah tier PERTAMA
+--                                  (jam paling pagi) yang jam check-out-nya
+--                                  masih di bawah batas.
+--     - tipe = 'flat'    -> potongan = nominal (Rp tetap), tidak tergantung
+--                            "Denda Terlambat & Pulang Cepat" di Master Level.
+--     - tipe = 'percent' -> potongan = persen% x "Denda Terlambat & Pulang
+--                            Cepat" (Rp) pada Master Level karyawan ybs.
+-- ---------------------------------------------------------------------
+create table if not exists public.late_penalty_rules (
+  id          uuid primary key default gen_random_uuid(),
+  day_type    text not null check (day_type in ('weekday','saturday')),
+  jenis       text not null check (jenis in ('telat','pulang_cepat')),
+  jam         time not null,
+  tipe        text not null check (tipe in ('flat','percent')) default 'percent',
+  nominal     numeric not null default 0,  -- dipakai kalau tipe='flat'
+  persen      numeric not null default 0,  -- dipakai kalau tipe='percent'
+  label       text,
+  is_active   boolean not null default true,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique (day_type, jenis, jam)
+);
+
+-- Seed nilai default (persis konsep awal) supaya perhitungan tidak berubah
+-- setelah migrasi. Aman dijalankan ulang (on conflict do nothing).
+insert into public.late_penalty_rules (day_type, jenis, jam, tipe, nominal, persen, label) values
+  ('weekday',  'telat',        '08:00', 'flat',    50000, 0,   'Telat > 08:00'),
+  ('weekday',  'telat',        '10:00', 'percent', 0,     50,  'Telat > 10:00 (50% denda)'),
+  ('weekday',  'telat',        '12:00', 'percent', 0,     100, 'Telat > 12:00 (100% denda)'),
+  ('saturday', 'telat',        '08:00', 'flat',    50000, 0,   'Telat > 08:00'),
+  ('saturday', 'telat',        '09:00', 'percent', 0,     50,  'Telat > 09:00 (50% denda)'),
+  ('saturday', 'telat',        '10:00', 'percent', 0,     100, 'Telat > 10:00 (100% denda)'),
+  ('weekday',  'pulang_cepat', '13:00', 'percent', 0,     100, 'Pulang < 13:00 (100% denda)'),
+  ('weekday',  'pulang_cepat', '14:00', 'percent', 0,     50,  'Pulang 13:00–14:00 (50% denda)'),
+  ('saturday', 'pulang_cepat', '11:00', 'percent', 0,     100, 'Pulang < 11:00 (100% denda)'),
+  ('saturday', 'pulang_cepat', '12:00', 'percent', 0,     50,  'Pulang 11:00–12:00 (50% denda)')
+on conflict (day_type, jenis, jam) do nothing;
+
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
 begin
@@ -514,6 +565,22 @@ drop policy if exists "holidays_select" on public.holidays;
 create policy "holidays_select" on public.holidays for select using ( true );
 drop policy if exists "holidays_admin_write" on public.holidays;
 create policy "holidays_admin_write" on public.holidays
+  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+
+-- late_penalty_rules (Master Denda Terlambat & Pulang Cepat) -------------------------------------------------------------
+drop trigger if exists trg_late_penalty_rules_updated_at on public.late_penalty_rules;
+create trigger trg_late_penalty_rules_updated_at
+  before update on public.late_penalty_rules
+  for each row execute function public.set_updated_at();
+
+alter table public.late_penalty_rules enable row level security;
+
+drop policy if exists "late_penalty_rules_select" on public.late_penalty_rules;
+create policy "late_penalty_rules_select" on public.late_penalty_rules
+  for select using ( public.is_admin_or_hr() );
+
+drop policy if exists "late_penalty_rules_admin_write" on public.late_penalty_rules;
+create policy "late_penalty_rules_admin_write" on public.late_penalty_rules
   for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
 
 
