@@ -86,6 +86,8 @@ export async function render(container, user) {
   loadTable(canEdit);
 }
 
+// Satu baris tabel = satu grade/level, kolomnya = field-field denda/BPJS/dst.
+// Rapi untuk dibaca berurutan; scroll ke samping kalau kolomnya banyak.
 async function loadTable(canEdit) {
   const { data, error } = await supabase
     .from("job_levels")
@@ -97,38 +99,46 @@ async function loadTable(canEdit) {
   if (!data.length) { el.innerHTML = `<p class="muted">Belum ada data master level.</p>`; return; }
 
   el.innerHTML = `
-    <div class="level-card-grid">
-      ${data.map(r => `
-        <div class="level-card">
-          <div class="level-card-head">
-            <div>
-              <h3>${r.grade} — ${r.level}</h3>
-              <span class="badge badge-${r.is_active ? "ok" : "danger"}">${r.is_active ? "Aktif" : "Nonaktif"}</span>
-            </div>
-            ${canEdit ? `<button class="btn-link btn-edit" data-id="${r.id}">Edit</button>` : ""}
-          </div>
-          <div class="level-card-body">
-            <div class="level-card-section-label">Denda &amp; Dinas</div>
-            <div class="level-card-line"><span>Denda Telat &amp; Pulang Cepat</span><span>${fmtRupiah(r.denda_terlambat)}</span></div>
-            <div class="level-card-line"><span>Uang Perjalanan Dinas</span><span>${fmtRupiah(r.uang_perjalanan_dinas)}</span></div>
-
-            <div class="level-card-section-label">Lembur</div>
-            <div class="level-card-line"><span>Hari Biasa</span><span>${fmtRupiah(r.upah_lembur_hari_biasa)}/jam</span></div>
-            <div class="level-card-line"><span>Hari Libur</span><span>${fmtRupiah(r.upah_lembur_hari_libur)}/jam</span></div>
-
-            <div class="level-card-section-label">BPJS &amp; Pajak</div>
-            <div class="level-card-line"><span>Upah Lapor BPJS</span><span>${fmtRupiah(r.upah_lapor_bpjs)}</span></div>
-            <div class="level-card-line"><span>BPJS Kesehatan (Karyawan/Perusahaan)</span><span>${r.bpjs_kesehatan_karyawan_persen}% / ${r.bpjs_kesehatan_perusahaan_persen}%</span></div>
-            <div class="level-card-line"><span>BPJS Ketenagakerjaan (Karyawan/Perusahaan)</span><span>${r.bpjs_tk_karyawan_persen}% / ${r.bpjs_tk_perusahaan_persen}%</span></div>
-            <div class="level-card-line"><span>PPh21</span><span>${r.pph21_persen}%</span></div>
-
-            <div class="level-card-section-label">Upah Harian (khusus Karyawan Harian)</div>
-            <div class="level-card-line"><span>Upah Harian Pokok</span><span>${fmtRupiah(r.upah_harian_pokok)}/hari</span></div>
-            <div class="level-card-line"><span>Kenaikan per Tahun</span><span>${fmtRupiah(r.kenaikan_upah_tahunan)}</span></div>
-          </div>
-        </div>
-      `).join("")}
-    </div>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Grade</th>
+          <th>Level</th>
+          <th>Status</th>
+          <th>Denda Telat &amp; Pulang Cepat</th>
+          <th>Uang Perjalanan Dinas</th>
+          <th>Lembur Hari Biasa</th>
+          <th>Lembur Hari Libur</th>
+          <th>Upah Lapor BPJS</th>
+          <th>BPJS Kesehatan (Karyawan/Perusahaan)</th>
+          <th>BPJS Ketenagakerjaan (Karyawan/Perusahaan)</th>
+          <th>PPh21</th>
+          <th>Upah Harian Pokok</th>
+          <th>Kenaikan/Tahun</th>
+          ${canEdit ? "<th></th>" : ""}
+        </tr>
+      </thead>
+      <tbody>
+        ${data.map(r => `
+          <tr>
+            <td>${r.grade}</td>
+            <td>${r.level}</td>
+            <td><span class="badge badge-${r.is_active ? "ok" : "danger"}">${r.is_active ? "Aktif" : "Nonaktif"}</span></td>
+            <td>${fmtRupiah(r.denda_terlambat)}</td>
+            <td>${fmtRupiah(r.uang_perjalanan_dinas)}</td>
+            <td>${fmtRupiah(r.upah_lembur_hari_biasa)}/jam</td>
+            <td>${fmtRupiah(r.upah_lembur_hari_libur)}/jam</td>
+            <td>${fmtRupiah(r.upah_lapor_bpjs)}</td>
+            <td>${r.bpjs_kesehatan_karyawan_persen}% / ${r.bpjs_kesehatan_perusahaan_persen}%</td>
+            <td>${r.bpjs_tk_karyawan_persen}% / ${r.bpjs_tk_perusahaan_persen}%</td>
+            <td>${r.pph21_persen}%</td>
+            <td>${fmtRupiah(r.upah_harian_pokok)}/hari</td>
+            <td>${fmtRupiah(r.kenaikan_upah_tahunan)}</td>
+            ${canEdit ? `<td><button class="btn-link btn-edit" data-id="${r.id}">Edit</button></td>` : ""}
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
   `;
 
   if (canEdit) {

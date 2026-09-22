@@ -17,7 +17,6 @@ let canEdit = false;
 let allowanceTypes = [];
 let employees = [];
 let employeeAllowanceByUser = {}; // { [typeId]: { [userId]: row } }
-let selectedTypeId = "";
 
 export async function render(container, user) {
   canEdit = user.role === "admin";
@@ -35,10 +34,7 @@ export async function render(container, user) {
     <div id="type-table" class="table-wrap" style="margin-bottom:32px;"><p class="muted">Memuat…</p></div>
 
     <h3 style="margin-bottom:4px;">Atur Nominal per Karyawan</h3>
-    <p class="muted small" style="margin-top:0; margin-bottom:14px;">Pilih jenis tunjangan, lalu atur nominalnya untuk masing-masing karyawan.</p>
-    <div class="filter-row" style="margin-bottom:14px;">
-      <select id="filter-type"></select>
-    </div>
+    <p class="muted small" style="margin-top:0; margin-bottom:14px;">Satu tabel untuk semua jenis tunjangan sekaligus — kalau ada jenis tunjangan baru ditambahkan di atas, kolomnya otomatis muncul di sini juga.</p>
     <div id="employee-table" class="table-wrap"></div>
 
     ${canEdit ? `
@@ -64,27 +60,6 @@ export async function render(container, user) {
         </form>
       </div>
     </div>
-
-    <!-- Modal: atur nominal per karyawan -->
-    <div id="modal-nominal" class="modal hidden">
-      <div class="modal-box">
-        <h3>Atur Nominal</h3>
-        <p class="muted small" id="nominal-emp-label" style="margin-top:-4px;"></p>
-        <form id="form-nominal">
-          <input type="hidden" name="user_id">
-          <div class="form-row">
-            <label>Nominal (Rp/bulan) <input type="number" name="nominal" min="0" step="1" required></label>
-          </div>
-          <div class="form-row">
-            <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Aktif (dihitung di Slip Gaji)</label>
-          </div>
-          <div class="modal-actions">
-            <button type="button" id="btn-cancel-nominal" class="btn-secondary">Batal</button>
-            <button type="submit" class="btn-primary">Simpan</button>
-          </div>
-        </form>
-      </div>
-    </div>
     ` : ""}
   `;
 
@@ -92,14 +67,7 @@ export async function render(container, user) {
     document.getElementById("btn-new-type").addEventListener("click", () => openTypeModal());
     document.getElementById("btn-cancel-type").addEventListener("click", closeTypeModal);
     document.getElementById("form-type").addEventListener("submit", onSubmitType);
-    document.getElementById("btn-cancel-nominal").addEventListener("click", closeNominalModal);
-    document.getElementById("form-nominal").addEventListener("submit", onSubmitNominal);
   }
-
-  document.getElementById("filter-type").addEventListener("change", e => {
-    selectedTypeId = e.target.value;
-    renderEmployeeTable();
-  });
 
   await loadAll();
 }
@@ -121,12 +89,7 @@ async function loadAll() {
     (employeeAllowanceByUser[row.allowance_type_id] ??= {})[row.user_id] = row;
   });
 
-  if (!selectedTypeId || !allowanceTypes.some(t => t.id === selectedTypeId)) {
-    selectedTypeId = allowanceTypes[0]?.id || "";
-  }
-
   renderTypeTable();
-  renderTypeFilter();
   renderEmployeeTable();
 }
 
@@ -206,35 +169,62 @@ async function onSubmitType(e) {
 
 // -----------------------------------------------------------------------
 // NOMINAL PER KARYAWAN
+// Satu tabel gabungan: baris = karyawan, kolom = tiap jenis tunjangan
+// (dibuat dari allowanceTypes). Kalau admin menambah jenis tunjangan baru
+// di bagian atas, kolomnya otomatis muncul di sini juga — tidak perlu
+// pilih jenis satu-satu lagi.
 // -----------------------------------------------------------------------
-function renderTypeFilter() {
-  const sel = document.getElementById("filter-type");
-  if (!allowanceTypes.length) { sel.innerHTML = `<option value="">Belum ada jenis tunjangan</option>`; sel.disabled = true; return; }
-  sel.disabled = false;
-  sel.innerHTML = allowanceTypes.map(t => `<option value="${t.id}" ${t.id === selectedTypeId ? "selected" : ""}>${t.nama}${t.is_active ? "" : " (nonaktif)"}</option>`).join("");
-}
-
 function renderEmployeeTable() {
   const el = document.getElementById("employee-table");
-  if (!selectedTypeId) { el.innerHTML = `<p class="muted">Buat jenis tunjangan dulu di atas.</p>`; return; }
+  if (!allowanceTypes.length) { el.innerHTML = `<p class="muted">Buat jenis tunjangan dulu di atas.</p>`; return; }
   if (!employees.length) { el.innerHTML = `<p class="muted">Belum ada karyawan aktif.</p>`; return; }
-
-  const rowsForType = employeeAllowanceByUser[selectedTypeId] || {};
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Nama</th><th>Kode</th><th>Grade/Level</th><th>Nominal</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead>
+      <thead>
+        <tr>
+          <th>Nama</th>
+          <th>Kode</th>
+          <th>Grade/Level</th>
+          ${allowanceTypes.map(t => `<th>${t.nama}${t.is_active ? "" : " (nonaktif)"}</th>`).join("")}
+          ${canEdit ? "<th></th>" : ""}
+        </tr>
+      </thead>
       <tbody>
         ${employees.map(emp => {
-          const row = rowsForType[emp.id];
+          const gradeLevel = emp.grade ? `${emp.grade} — ${emp.level || "-"}` : "-";
+
+          if (!canEdit) {
+            return `
+              <tr>
+                <td>${emp.full_name}</td>
+                <td>${emp.employee_code || "-"}</td>
+                <td>${gradeLevel}</td>
+                ${allowanceTypes.map(t => {
+                  const row = (employeeAllowanceByUser[t.id] || {})[emp.id];
+                  return `<td>${row ? `${fmtRupiah(row.nominal)} <span class="badge badge-${row.is_active ? "ok" : "danger"}" style="margin-left:6px;">${row.is_active ? "Aktif" : "Nonaktif"}</span>` : `<span class="muted">-</span>`}</td>`;
+                }).join("")}
+              </tr>
+            `;
+          }
+
           return `
-            <tr>
+            <tr data-row-user="${emp.id}">
               <td>${emp.full_name}</td>
               <td>${emp.employee_code || "-"}</td>
-              <td>${emp.grade ? `${emp.grade} — ${emp.level || "-"}` : "-"}</td>
-              <td>${row ? fmtRupiah(row.nominal) : `<span class="muted">Belum diatur</span>`}</td>
-              <td>${row ? `<span class="badge badge-${row.is_active ? "ok" : "danger"}">${row.is_active ? "Aktif" : "Nonaktif"}</span>` : "-"}</td>
-              ${canEdit ? `<td><button class="btn-link btn-set-nominal" data-id="${emp.id}">${row ? "Ubah" : "Atur"}</button></td>` : ""}
+              <td>${gradeLevel}</td>
+              ${allowanceTypes.map(t => {
+                const row = (employeeAllowanceByUser[t.id] || {})[emp.id];
+                return `
+                  <td>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                      <input type="number" class="input-nominal" data-type-id="${t.id}" min="0" step="1" style="width:130px;" value="${row ? row.nominal : 0}">
+                      <label class="checkbox-row" style="font-size:0.78rem;"><input type="checkbox" class="chk-active" data-type-id="${t.id}" ${row ? (row.is_active ? "checked" : "") : "checked"}> Aktif</label>
+                    </div>
+                  </td>
+                `;
+              }).join("")}
+              <td><button class="btn-link btn-save-row" data-id="${emp.id}">Simpan</button></td>
             </tr>
           `;
         }).join("")}
@@ -243,46 +233,35 @@ function renderEmployeeTable() {
   `;
 
   if (canEdit) {
-    el.querySelectorAll(".btn-set-nominal").forEach(btn => {
-      btn.addEventListener("click", () => openNominalModal(btn.dataset.id));
+    el.querySelectorAll(".btn-save-row").forEach(btn => {
+      btn.addEventListener("click", () => saveRowAllowances(btn));
     });
   }
 }
 
-function openNominalModal(userId) {
-  const emp = employees.find(e => e.id === userId);
-  const row = (employeeAllowanceByUser[selectedTypeId] || {})[userId];
-  const type = allowanceTypes.find(t => t.id === selectedTypeId);
-  const form = document.getElementById("form-nominal");
-  form.reset();
-  form.user_id.value = userId;
-  document.getElementById("nominal-emp-label").textContent = `${emp.full_name} — ${type.nama}`;
-  form.nominal.value = row ? row.nominal : 0;
-  form.is_active.checked = row ? row.is_active : true;
-  document.getElementById("modal-nominal").classList.remove("hidden");
-}
+async function saveRowAllowances(btn) {
+  const userId = btn.dataset.id;
+  const tr = btn.closest("tr");
 
-function closeNominalModal() {
-  document.getElementById("modal-nominal").classList.add("hidden");
-}
+  const payloads = allowanceTypes.map(t => {
+    const inputEl = tr.querySelector(`.input-nominal[data-type-id="${t.id}"]`);
+    const chkEl = tr.querySelector(`.chk-active[data-type-id="${t.id}"]`);
+    return {
+      user_id: userId,
+      allowance_type_id: t.id,
+      nominal: Number(inputEl.value) || 0,
+      is_active: chkEl.checked,
+    };
+  });
 
-async function onSubmitNominal(e) {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const payload = {
-    user_id: fd.get("user_id"),
-    allowance_type_id: selectedTypeId,
-    nominal: Number(fd.get("nominal")) || 0,
-    is_active: fd.get("is_active") === "on",
-  };
-
+  btn.disabled = true;
   try {
-    const { error } = await supabase.from("employee_allowances").upsert(payload, { onConflict: "user_id,allowance_type_id" });
+    const { error } = await supabase.from("employee_allowances").upsert(payloads, { onConflict: "user_id,allowance_type_id" });
     if (error) throw error;
-    toast("Nominal tunjangan tersimpan", "success");
-    closeNominalModal();
+    toast("Tunjangan tersimpan", "success");
     await loadAll();
   } catch (err) {
     toast("Gagal menyimpan: " + err.message, "error");
+    btn.disabled = false;
   }
 }
