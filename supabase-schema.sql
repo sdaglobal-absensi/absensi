@@ -182,6 +182,25 @@ create table if not exists public.wage_history (
 );
 
 -- ---------------------------------------------------------------------
+-- 4b3. TABEL: salary_history (Riwayat Gaji Bulanan)
+--      Satu baris = satu perubahan gaji bulanan karyawan yang berlaku
+--      mulai tanggal tertentu. Berbeda dari upah harian, gaji bulanan
+--      & kenaikan tahunannya individual per karyawan (bukan per grade),
+--      jadi annual_increase disimpan per-baris supaya bisa disesuaikan
+--      tiap kali admin mengubah gaji seseorang.
+-- ---------------------------------------------------------------------
+create table if not exists public.salary_history (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null references public.profiles(id) on delete cascade,
+  effective_date  date not null,
+  monthly_salary  numeric not null,
+  annual_increase numeric not null default 0,  -- kenaikan/tahun (Rp) yang berlaku utk karyawan ini
+  reason          text not null,  -- "Gaji Awal", "Kenaikan Tahun 2027", "Penyesuaian Manual", dst
+  created_by      uuid references public.profiles(id),
+  created_at      timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------------
 -- 4c. TABEL: departments (Master Departemen — Departemen, Bagian, Jabatan)
 -- ---------------------------------------------------------------------
 create table if not exists public.departments (
@@ -405,6 +424,17 @@ create policy "wage_history_select" on public.wage_history
 
 drop policy if exists "wage_history_admin_write" on public.wage_history;
 create policy "wage_history_admin_write" on public.wage_history
+  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+
+-- salary_history (Riwayat Gaji Bulanan) -------------------------------------------------------------
+alter table public.salary_history enable row level security;
+
+drop policy if exists "salary_history_select" on public.salary_history;
+create policy "salary_history_select" on public.salary_history
+  for select using ( user_id = auth.uid() or public.is_admin_or_hr() );
+
+drop policy if exists "salary_history_admin_write" on public.salary_history;
+create policy "salary_history_admin_write" on public.salary_history
   for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
 
 -- departments (Master Departemen) -------------------------------------------------------------

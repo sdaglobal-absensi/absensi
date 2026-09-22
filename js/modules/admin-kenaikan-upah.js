@@ -1,7 +1,10 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, fmtRupiah, fmtDate, confirmDialog } from "../core.js";
 
-function getCurrentPeriod(date = new Date()) {
+// ---------------------------------------------------------------------
+// Periode kenaikan — Harian: 2x setahun (Maret & September)
+// ---------------------------------------------------------------------
+function getCurrentPeriodHarian(date = new Date()) {
   const month = date.getMonth() + 1; // 1-12
   const year = date.getFullYear();
   if (month >= 3 && month <= 8) {
@@ -11,29 +14,59 @@ function getCurrentPeriod(date = new Date()) {
   return { label: `Periode 2 ${periodYear}`, rangeLabel: `September ${periodYear}–Februari ${periodYear + 1}` };
 }
 
-let employees = [], levels = [], historyByUser = {};
+// Bulanan: 1x setahun, kenaikannya individual per karyawan (bukan per grade)
+function getCurrentPeriodBulanan(date = new Date()) {
+  const year = date.getFullYear();
+  return { label: `Kenaikan Tahun ${year}`, rangeLabel: `Tahun ${year}` };
+}
+
+let activeTab = "harian";
+let employeesHarian = [], levels = [], historyHarian = {};
+let employeesBulanan = [], historyBulanan = {};
 
 export async function render(container, user) {
-  const period = getCurrentPeriod();
+  const periodHarian = getCurrentPeriodHarian();
+  const periodBulanan = getCurrentPeriodBulanan();
 
   container.innerHTML = `
     <div class="page-header">
       <div>
-        <h1>Kenaikan Upah Harian</h1>
-        <p class="muted">Riwayat & pengaturan upah harian untuk karyawan berstatus "Harian". Kenaikan diterapkan 2x setahun (50% + 50%) sesuai Kenaikan Upah per Tahun di Master Level.</p>
+        <h1>Kenaikan Upah &amp; Gaji</h1>
+        <p class="muted">Riwayat &amp; pengaturan upah/gaji karyawan, termasuk penerapan kenaikan berkala.</p>
       </div>
-      <button id="btn-apply-period" class="btn-primary">Terapkan Kenaikan — ${period.label}</button>
     </div>
-    <p class="small muted" style="margin-top:-16px;">Periode berjalan saat ini: <strong>${period.rangeLabel}</strong></p>
-    <div id="wage-table" class="table-wrap" style="margin-top:16px;"><p class="muted">Memuat…</p></div>
 
-    <div id="modal-wage" class="modal hidden">
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="harian">Karyawan Harian</button>
+      <button class="tab-btn" data-tab="bulanan">Karyawan Bulanan</button>
+    </div>
+
+    <div id="panel-harian">
+      <div class="page-header">
+        <p class="muted small" style="max-width:70ch;">Upah harian untuk karyawan berstatus "Harian". Kenaikan diterapkan 2x setahun (50% + 50%) sesuai Kenaikan Upah per Tahun di Master Level.</p>
+        <button id="btn-apply-period-harian" class="btn-primary">Terapkan Kenaikan — ${periodHarian.label}</button>
+      </div>
+      <p class="small muted" style="margin-top:-16px;">Periode berjalan saat ini: <strong>${periodHarian.rangeLabel}</strong></p>
+      <div id="wage-table-harian" class="table-wrap" style="margin-top:16px;"><p class="muted">Memuat…</p></div>
+    </div>
+
+    <div id="panel-bulanan" class="hidden">
+      <div class="page-header">
+        <p class="muted small" style="max-width:70ch;">Gaji bulanan untuk karyawan berstatus "Bulanan". Gaji pokok &amp; besaran kenaikan tahunan bersifat individual per karyawan (bukan per grade) — atur lewat "Set Gaji Awal"/"Sesuaikan", lalu terapkan setiap tahun lewat tombol di bawah.</p>
+        <button id="btn-apply-period-bulanan" class="btn-primary">Terapkan Kenaikan — ${periodBulanan.label}</button>
+      </div>
+      <p class="small muted" style="margin-top:-16px;">Periode berjalan saat ini: <strong>${periodBulanan.rangeLabel}</strong></p>
+      <div id="wage-table-bulanan" class="table-wrap" style="margin-top:16px;"><p class="muted">Memuat…</p></div>
+    </div>
+
+    <!-- Modal: set/sesuaikan upah harian -->
+    <div id="modal-wage-harian" class="modal hidden">
       <div class="modal-box">
-        <h3 id="modal-title">Atur Upah</h3>
-        <form id="form-wage">
+        <h3 id="modal-title-harian">Atur Upah</h3>
+        <form id="form-wage-harian">
           <input type="hidden" name="user_id">
           <div class="form-row">
-            <label id="emp-name-label" style="font-weight:600;"></label>
+            <label id="emp-name-label-harian" style="font-weight:600;"></label>
           </div>
           <div class="form-row two-col">
             <label>Upah Harian Baru (Rp) <input type="number" name="daily_wage" min="0" step="1000" required></label>
@@ -43,72 +76,134 @@ export async function render(container, user) {
             <label>Alasan <input name="reason" required placeholder="Contoh: Upah Awal / Penyesuaian Manual"></label>
           </div>
           <div class="modal-actions">
-            <button type="button" id="btn-cancel-modal" class="btn-secondary">Batal</button>
+            <button type="button" class="btn-secondary btn-cancel-wage-harian">Batal</button>
             <button type="submit" class="btn-primary">Simpan</button>
           </div>
         </form>
       </div>
     </div>
 
-    <div id="modal-preview" class="modal hidden">
+    <div id="modal-preview-harian" class="modal hidden">
       <div class="modal-box modal-box-lg">
-        <h3>Pratinjau Kenaikan — ${period.label}</h3>
+        <h3>Pratinjau Kenaikan — ${periodHarian.label}</h3>
         <p class="muted small">Periksa dulu sebelum diterapkan. Karyawan yang sudah pernah menerima kenaikan periode ini tidak akan ditampilkan/diulang.</p>
-        <div id="preview-content" class="table-wrap" style="margin:16px 0;"></div>
+        <div id="preview-content-harian" class="table-wrap" style="margin:16px 0;"></div>
         <div class="modal-actions">
-          <button type="button" id="btn-cancel-preview" class="btn-secondary">Batal</button>
-          <button type="button" id="btn-confirm-preview" class="btn-primary">Terapkan ke Semua</button>
+          <button type="button" class="btn-secondary btn-cancel-preview-harian">Batal</button>
+          <button type="button" id="btn-confirm-preview-harian" class="btn-primary">Terapkan ke Semua</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: set/sesuaikan gaji bulanan -->
+    <div id="modal-wage-bulanan" class="modal hidden">
+      <div class="modal-box">
+        <h3 id="modal-title-bulanan">Atur Gaji</h3>
+        <form id="form-wage-bulanan">
+          <input type="hidden" name="user_id">
+          <div class="form-row">
+            <label id="emp-name-label-bulanan" style="font-weight:600;"></label>
+          </div>
+          <div class="form-row two-col">
+            <label>Gaji Bulanan Baru (Rp) <input type="number" name="monthly_salary" min="0" step="1000" required></label>
+            <label>Kenaikan per Tahun (Rp) <input type="number" name="annual_increase" min="0" step="1000" required></label>
+          </div>
+          <div class="form-row two-col">
+            <label>Berlaku Mulai <input type="date" name="effective_date" required></label>
+            <label>Alasan <input name="reason" required placeholder="Contoh: Gaji Awal / Penyesuaian Manual"></label>
+          </div>
+          <p class="small muted field-hint">Kenaikan per tahun ini individual untuk karyawan ini, dipakai saat tombol "Terapkan Kenaikan" tahunan ditekan.</p>
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary btn-cancel-wage-bulanan">Batal</button>
+            <button type="submit" class="btn-primary">Simpan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="modal-preview-bulanan" class="modal hidden">
+      <div class="modal-box modal-box-lg">
+        <h3>Pratinjau Kenaikan — ${periodBulanan.label}</h3>
+        <p class="muted small">Periksa dulu sebelum diterapkan. Karyawan yang sudah pernah menerima kenaikan tahun ini, atau belum punya gaji awal/kenaikan per tahun, tidak akan ditampilkan.</p>
+        <div id="preview-content-bulanan" class="table-wrap" style="margin:16px 0;"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary btn-cancel-preview-bulanan">Batal</button>
+          <button type="button" id="btn-confirm-preview-bulanan" class="btn-primary">Terapkan ke Semua</button>
         </div>
       </div>
     </div>
   `;
 
-  document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
-  document.getElementById("form-wage").addEventListener("submit", e => onSubmitWage(e, user));
-  document.getElementById("btn-apply-period").addEventListener("click", () => openPreview(user));
-  document.getElementById("btn-cancel-preview").addEventListener("click", closePreview);
+  // Tabs
+  container.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+  });
 
-  await loadAll();
-  renderTable();
+  // Harian wiring
+  container.querySelectorAll(".btn-cancel-wage-harian").forEach(b => b.addEventListener("click", closeModalHarian));
+  document.getElementById("form-wage-harian").addEventListener("submit", e => onSubmitWageHarian(e, user));
+  document.getElementById("btn-apply-period-harian").addEventListener("click", () => openPreviewHarian());
+  container.querySelectorAll(".btn-cancel-preview-harian").forEach(b => b.addEventListener("click", closePreviewHarian));
+
+  // Bulanan wiring
+  container.querySelectorAll(".btn-cancel-wage-bulanan").forEach(b => b.addEventListener("click", closeModalBulanan));
+  document.getElementById("form-wage-bulanan").addEventListener("submit", e => onSubmitWageBulanan(e, user));
+  document.getElementById("btn-apply-period-bulanan").addEventListener("click", () => openPreviewBulanan());
+  container.querySelectorAll(".btn-cancel-preview-bulanan").forEach(b => b.addEventListener("click", closePreviewBulanan));
+
+  await loadHarian();
+  renderTableHarian();
+  await loadBulanan();
+  renderTableBulanan();
 }
 
-async function loadAll() {
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  document.getElementById("panel-harian").classList.toggle("hidden", tab !== "harian");
+  document.getElementById("panel-bulanan").classList.toggle("hidden", tab !== "bulanan");
+}
+
+// =======================================================================
+// KARYAWAN HARIAN
+// =======================================================================
+async function loadHarian() {
   const [{ data: emp }, { data: lvl }, { data: hist }] = await Promise.all([
     supabase.from("profiles").select("id, full_name, grade, status_karyawan").eq("status_karyawan", "harian").eq("is_active", true).order("full_name"),
     supabase.from("job_levels").select("grade, upah_harian_pokok, kenaikan_upah_tahunan"),
     supabase.from("wage_history").select("*").order("effective_date", { ascending: false }).order("created_at", { ascending: false }),
   ]);
-  employees = emp || [];
+  employeesHarian = emp || [];
   levels = lvl || [];
-  historyByUser = {};
+  historyHarian = {};
   (hist || []).forEach(h => {
-    if (!historyByUser[h.user_id]) historyByUser[h.user_id] = [];
-    historyByUser[h.user_id].push(h);
+    if (!historyHarian[h.user_id]) historyHarian[h.user_id] = [];
+    historyHarian[h.user_id].push(h);
   });
 }
 
-function latestWage(userId) {
-  const rows = historyByUser[userId];
+function latestWageHarian(userId) {
+  const rows = historyHarian[userId];
   return rows && rows.length ? rows[0] : null;
 }
 
-function renderTable() {
-  const el = document.getElementById("wage-table");
-  if (!employees.length) { el.innerHTML = `<p class="muted">Belum ada karyawan berstatus Harian.</p>`; return; }
+function renderTableHarian() {
+  const el = document.getElementById("wage-table-harian");
+  if (!employeesHarian.length) { el.innerHTML = `<p class="muted">Belum ada karyawan berstatus Harian.</p>`; return; }
 
   el.innerHTML = `
     <table class="table">
       <thead><tr><th>Nama</th><th>Grade</th><th>Upah Saat Ini</th><th>Terakhir Diperbarui</th><th></th></tr></thead>
       <tbody>
-        ${employees.map(emp => {
-          const w = latestWage(emp.id);
+        ${employeesHarian.map(emp => {
+          const w = latestWageHarian(emp.id);
           return `
             <tr>
               <td>${emp.full_name}</td>
               <td>${emp.grade || "-"}</td>
               <td>${w ? fmtRupiah(w.daily_wage) : `<span class="muted">Belum diatur</span>`}</td>
               <td>${w ? `${fmtDate(w.effective_date)} — ${w.reason}` : "-"}</td>
-              <td><button class="btn-link btn-set-wage" data-id="${emp.id}">${w ? "Sesuaikan" : "Set Upah Awal"}</button></td>
+              <td><button class="btn-link btn-set-wage-harian" data-id="${emp.id}">${w ? "Sesuaikan" : "Set Upah Awal"}</button></td>
             </tr>
           `;
         }).join("")}
@@ -116,31 +211,31 @@ function renderTable() {
     </table>
   `;
 
-  el.querySelectorAll(".btn-set-wage").forEach(btn => {
-    btn.addEventListener("click", () => openModal(btn.dataset.id));
+  el.querySelectorAll(".btn-set-wage-harian").forEach(btn => {
+    btn.addEventListener("click", () => openModalHarian(btn.dataset.id));
   });
 }
 
-function openModal(userId) {
-  const emp = employees.find(e => e.id === userId);
+function openModalHarian(userId) {
+  const emp = employeesHarian.find(e => e.id === userId);
   const level = levels.find(l => l.grade === emp.grade);
-  const w = latestWage(userId);
-  const form = document.getElementById("form-wage");
+  const w = latestWageHarian(userId);
+  const form = document.getElementById("form-wage-harian");
   form.reset();
   form.user_id.value = userId;
-  document.getElementById("emp-name-label").textContent = `${emp.full_name} (Grade ${emp.grade || "-"})`;
-  document.getElementById("modal-title").textContent = w ? "Sesuaikan Upah" : "Set Upah Awal";
+  document.getElementById("emp-name-label-harian").textContent = `${emp.full_name} (Grade ${emp.grade || "-"})`;
+  document.getElementById("modal-title-harian").textContent = w ? "Sesuaikan Upah" : "Set Upah Awal";
   form.daily_wage.value = w ? w.daily_wage : (level?.upah_harian_pokok || "");
   form.effective_date.value = new Date().toISOString().slice(0, 10);
   form.reason.value = w ? "Penyesuaian Manual" : "Upah Awal";
-  document.getElementById("modal-wage").classList.remove("hidden");
+  document.getElementById("modal-wage-harian").classList.remove("hidden");
 }
 
-function closeModal() {
-  document.getElementById("modal-wage").classList.add("hidden");
+function closeModalHarian() {
+  document.getElementById("modal-wage-harian").classList.add("hidden");
 }
 
-async function onSubmitWage(e, user) {
+async function onSubmitWageHarian(e, user) {
   e.preventDefault();
   const fd = new FormData(e.target);
   const payload = {
@@ -153,21 +248,18 @@ async function onSubmitWage(e, user) {
   const { error } = await supabase.from("wage_history").insert(payload);
   if (error) { toast("Gagal menyimpan: " + error.message, "error"); return; }
   toast("Upah tersimpan", "success");
-  closeModal();
-  await loadAll();
-  renderTable();
+  closeModalHarian();
+  await loadHarian();
+  renderTableHarian();
 }
 
-// ---------------------------------------------------------------------
-// Terapkan kenaikan periode berjalan ke semua karyawan harian yang eligible
-// ---------------------------------------------------------------------
-function buildPreviewList() {
-  const period = getCurrentPeriod();
+function buildPreviewListHarian() {
+  const period = getCurrentPeriodHarian();
   const list = [];
-  for (const emp of employees) {
+  for (const emp of employeesHarian) {
     const level = levels.find(l => l.grade === emp.grade);
     if (!level || !level.kenaikan_upah_tahunan) continue;
-    const rows = historyByUser[emp.id] || [];
+    const rows = historyHarian[emp.id] || [];
     if (!rows.length) continue; // belum ada upah awal, tidak bisa dihitung kenaikannya
     const already = rows.some(h => h.reason === period.label);
     if (already) continue; // sudah pernah diterapkan periode ini
@@ -178,13 +270,13 @@ function buildPreviewList() {
   return { period, list };
 }
 
-function openPreview() {
-  const { period, list } = buildPreviewList();
-  const content = document.getElementById("preview-content");
+function openPreviewHarian() {
+  const { period, list } = buildPreviewListHarian();
+  const content = document.getElementById("preview-content-harian");
 
   if (!list.length) {
     content.innerHTML = `<p class="muted">Tidak ada karyawan yang perlu diterapkan kenaikannya untuk ${period.label} — semua sudah pernah diterapkan, atau belum punya upah awal/kenaikan tahunan di Master Level.</p>`;
-    document.getElementById("btn-confirm-preview").classList.add("hidden");
+    document.getElementById("btn-confirm-preview-harian").classList.add("hidden");
   } else {
     content.innerHTML = `
       <table class="table">
@@ -199,18 +291,18 @@ function openPreview() {
         </tbody>
       </table>
     `;
-    document.getElementById("btn-confirm-preview").classList.remove("hidden");
+    document.getElementById("btn-confirm-preview-harian").classList.remove("hidden");
   }
 
-  document.getElementById("modal-preview").classList.remove("hidden");
-  document.getElementById("btn-confirm-preview").onclick = () => confirmApply(period, list);
+  document.getElementById("modal-preview-harian").classList.remove("hidden");
+  document.getElementById("btn-confirm-preview-harian").onclick = () => confirmApplyHarian(period, list);
 }
 
-function closePreview() {
-  document.getElementById("modal-preview").classList.add("hidden");
+function closePreviewHarian() {
+  document.getElementById("modal-preview-harian").classList.add("hidden");
 }
 
-async function confirmApply(period, list) {
+async function confirmApplyHarian(period, list) {
   const ok = await confirmDialog({
     title: `Terapkan kenaikan ${period.label} ke ${list.length} karyawan?`,
     message: "Tindakan ini akan menambah baris riwayat upah baru untuk semua karyawan di daftar. Tidak bisa dibatalkan otomatis setelah tersimpan.",
@@ -229,7 +321,170 @@ async function confirmApply(period, list) {
   const { error } = await supabase.from("wage_history").insert(rows);
   if (error) { toast("Gagal menerapkan: " + error.message, "error"); return; }
   toast(`Kenaikan ${period.label} diterapkan ke ${list.length} karyawan`, "success");
-  closePreview();
-  await loadAll();
-  renderTable();
+  closePreviewHarian();
+  await loadHarian();
+  renderTableHarian();
+}
+
+// =======================================================================
+// KARYAWAN BULANAN
+// =======================================================================
+async function loadBulanan() {
+  const [{ data: emp }, { data: hist }] = await Promise.all([
+    supabase.from("profiles").select("id, full_name, grade, status_karyawan").eq("status_karyawan", "bulanan").eq("is_active", true).order("full_name"),
+    supabase.from("salary_history").select("*").order("effective_date", { ascending: false }).order("created_at", { ascending: false }),
+  ]);
+  employeesBulanan = emp || [];
+  historyBulanan = {};
+  (hist || []).forEach(h => {
+    if (!historyBulanan[h.user_id]) historyBulanan[h.user_id] = [];
+    historyBulanan[h.user_id].push(h);
+  });
+}
+
+function latestSalaryBulanan(userId) {
+  const rows = historyBulanan[userId];
+  return rows && rows.length ? rows[0] : null;
+}
+
+function renderTableBulanan() {
+  const el = document.getElementById("wage-table-bulanan");
+  if (!employeesBulanan.length) { el.innerHTML = `<p class="muted">Belum ada karyawan berstatus Bulanan.</p>`; return; }
+
+  el.innerHTML = `
+    <table class="table">
+      <thead><tr><th>Nama</th><th>Grade</th><th>Gaji Saat Ini</th><th>Kenaikan/Tahun</th><th>Terakhir Diperbarui</th><th></th></tr></thead>
+      <tbody>
+        ${employeesBulanan.map(emp => {
+          const s = latestSalaryBulanan(emp.id);
+          return `
+            <tr>
+              <td>${emp.full_name}</td>
+              <td>${emp.grade || "-"}</td>
+              <td>${s ? fmtRupiah(s.monthly_salary) : `<span class="muted">Belum diatur</span>`}</td>
+              <td>${s ? fmtRupiah(s.annual_increase) : "-"}</td>
+              <td>${s ? `${fmtDate(s.effective_date)} — ${s.reason}` : "-"}</td>
+              <td><button class="btn-link btn-set-wage-bulanan" data-id="${emp.id}">${s ? "Sesuaikan" : "Set Gaji Awal"}</button></td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+
+  el.querySelectorAll(".btn-set-wage-bulanan").forEach(btn => {
+    btn.addEventListener("click", () => openModalBulanan(btn.dataset.id));
+  });
+}
+
+function openModalBulanan(userId) {
+  const emp = employeesBulanan.find(e => e.id === userId);
+  const s = latestSalaryBulanan(userId);
+  const form = document.getElementById("form-wage-bulanan");
+  form.reset();
+  form.user_id.value = userId;
+  document.getElementById("emp-name-label-bulanan").textContent = `${emp.full_name} (Grade ${emp.grade || "-"})`;
+  document.getElementById("modal-title-bulanan").textContent = s ? "Sesuaikan Gaji" : "Set Gaji Awal";
+  form.monthly_salary.value = s ? s.monthly_salary : "";
+  form.annual_increase.value = s ? s.annual_increase : "";
+  form.effective_date.value = new Date().toISOString().slice(0, 10);
+  form.reason.value = s ? "Penyesuaian Manual" : "Gaji Awal";
+  document.getElementById("modal-wage-bulanan").classList.remove("hidden");
+}
+
+function closeModalBulanan() {
+  document.getElementById("modal-wage-bulanan").classList.add("hidden");
+}
+
+async function onSubmitWageBulanan(e, user) {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const payload = {
+    user_id: fd.get("user_id"),
+    monthly_salary: Number(fd.get("monthly_salary")),
+    annual_increase: Number(fd.get("annual_increase")),
+    effective_date: fd.get("effective_date"),
+    reason: fd.get("reason"),
+    created_by: user.id,
+  };
+  const { error } = await supabase.from("salary_history").insert(payload);
+  if (error) { toast("Gagal menyimpan: " + error.message, "error"); return; }
+  toast("Gaji tersimpan", "success");
+  closeModalBulanan();
+  await loadBulanan();
+  renderTableBulanan();
+}
+
+function buildPreviewListBulanan() {
+  const period = getCurrentPeriodBulanan();
+  const list = [];
+  for (const emp of employeesBulanan) {
+    const rows = historyBulanan[emp.id] || [];
+    if (!rows.length) continue; // belum ada gaji awal
+    const latest = rows[0];
+    if (!latest.annual_increase) continue; // tidak ada kenaikan tahunan yang diatur
+    const already = rows.some(h => h.reason === period.label);
+    if (already) continue; // sudah pernah diterapkan tahun ini
+    const current = latest.monthly_salary;
+    const increase = latest.annual_increase;
+    list.push({ user_id: emp.id, name: emp.full_name, grade: emp.grade, current, increase, newSalary: current + increase });
+  }
+  return { period, list };
+}
+
+function openPreviewBulanan() {
+  const { period, list } = buildPreviewListBulanan();
+  const content = document.getElementById("preview-content-bulanan");
+
+  if (!list.length) {
+    content.innerHTML = `<p class="muted">Tidak ada karyawan yang perlu diterapkan kenaikannya untuk ${period.label} — semua sudah pernah diterapkan tahun ini, atau belum punya gaji awal/kenaikan per tahun.</p>`;
+    document.getElementById("btn-confirm-preview-bulanan").classList.add("hidden");
+  } else {
+    content.innerHTML = `
+      <table class="table">
+        <thead><tr><th>Nama</th><th>Grade</th><th>Gaji Sekarang</th><th>Kenaikan</th><th>Gaji Baru</th></tr></thead>
+        <tbody>
+          ${list.map(r => `
+            <tr>
+              <td>${r.name}</td><td>${r.grade || "-"}</td>
+              <td>${fmtRupiah(r.current)}</td><td>+${fmtRupiah(r.increase)}</td><td><strong>${fmtRupiah(r.newSalary)}</strong></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+    document.getElementById("btn-confirm-preview-bulanan").classList.remove("hidden");
+  }
+
+  document.getElementById("modal-preview-bulanan").classList.remove("hidden");
+  document.getElementById("btn-confirm-preview-bulanan").onclick = () => confirmApplyBulanan(period, list);
+}
+
+function closePreviewBulanan() {
+  document.getElementById("modal-preview-bulanan").classList.add("hidden");
+}
+
+async function confirmApplyBulanan(period, list) {
+  const ok = await confirmDialog({
+    title: `Terapkan kenaikan ${period.label} ke ${list.length} karyawan?`,
+    message: "Tindakan ini akan menambah baris riwayat gaji baru untuk semua karyawan di daftar. Tidak bisa dibatalkan otomatis setelah tersimpan.",
+    confirmLabel: "Ya, Terapkan",
+  });
+  if (!ok) return;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = list.map(r => ({
+    user_id: r.user_id,
+    effective_date: today,
+    monthly_salary: r.newSalary,
+    annual_increase: r.increase,
+    reason: period.label,
+  }));
+
+  const { error } = await supabase.from("salary_history").insert(rows);
+  if (error) { toast("Gagal menerapkan: " + error.message, "error"); return; }
+  toast(`Kenaikan ${period.label} diterapkan ke ${list.length} karyawan`, "success");
+  closePreviewBulanan();
+  await loadBulanan();
+  renderTableBulanan();
 }
