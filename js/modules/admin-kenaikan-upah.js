@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtRupiah, fmtDate, confirmDialog } from "../core.js";
+import { toast, fmtRupiah, fmtDate, fmtDateTime, confirmDialog } from "../core.js";
 
 // ---------------------------------------------------------------------
 // Periode kenaikan — Harian: 2x setahun (Maret & September)
@@ -135,7 +135,20 @@ export async function render(container, user) {
         </div>
       </div>
     </div>
+
+    <!-- Modal: riwayat lengkap (dipakai untuk Harian & Bulanan) -->
+    <div id="modal-history" class="modal hidden">
+      <div class="modal-box modal-box-lg">
+        <h3 id="history-title">Riwayat</h3>
+        <div id="history-content" class="table-wrap" style="margin:16px 0;"></div>
+        <div class="modal-actions">
+          <button type="button" id="btn-close-history" class="btn-secondary">Tutup</button>
+        </div>
+      </div>
+    </div>
   `;
+
+  document.getElementById("btn-close-history").addEventListener("click", closeHistoryModal);
 
   // Tabs
   container.querySelectorAll(".tab-btn").forEach(btn => {
@@ -206,7 +219,10 @@ function renderTableHarian() {
               <td>${emp.grade || "-"}</td>
               <td>${w ? fmtRupiah(w.daily_wage) : `<span class="muted">Belum diatur</span>`}</td>
               <td>${w ? `${fmtDate(w.effective_date)} — ${w.reason}` : "-"}</td>
-              <td><button class="btn-link btn-set-wage-harian" data-id="${emp.id}">${w ? "Sesuaikan" : "Set Upah Awal"}</button></td>
+              <td>
+                <button class="btn-link btn-set-wage-harian" data-id="${emp.id}">${w ? "Sesuaikan" : "Set Upah Awal"}</button>
+                ${w ? `<button class="btn-link btn-history-harian" data-id="${emp.id}" style="margin-left:10px;">Riwayat</button>` : ""}
+              </td>
             </tr>
           `;
         }).join("")}
@@ -216,6 +232,9 @@ function renderTableHarian() {
 
   el.querySelectorAll(".btn-set-wage-harian").forEach(btn => {
     btn.addEventListener("click", () => openModalHarian(btn.dataset.id));
+  });
+  el.querySelectorAll(".btn-history-harian").forEach(btn => {
+    btn.addEventListener("click", () => openHistoryHarian(btn.dataset.id));
   });
 }
 
@@ -366,7 +385,10 @@ function renderTableBulanan() {
               <td>${emp.grade || "-"}</td>
               <td>${s ? fmtRupiah(s.monthly_salary) : `<span class="muted">Belum diatur</span>`}</td>
               <td>${s ? `${fmtDate(s.effective_date)} — ${s.reason}` : "-"}</td>
-              <td><button class="btn-link btn-set-wage-bulanan" data-id="${emp.id}">${s ? "Sesuaikan" : "Set Gaji Awal"}</button></td>
+              <td>
+                <button class="btn-link btn-set-wage-bulanan" data-id="${emp.id}">${s ? "Sesuaikan" : "Set Gaji Awal"}</button>
+                ${s ? `<button class="btn-link btn-history-bulanan" data-id="${emp.id}" style="margin-left:10px;">Riwayat</button>` : ""}
+              </td>
             </tr>
           `;
         }).join("")}
@@ -376,6 +398,9 @@ function renderTableBulanan() {
 
   el.querySelectorAll(".btn-set-wage-bulanan").forEach(btn => {
     btn.addEventListener("click", () => openModalBulanan(btn.dataset.id));
+  });
+  el.querySelectorAll(".btn-history-bulanan").forEach(btn => {
+    btn.addEventListener("click", () => openHistoryBulanan(btn.dataset.id));
   });
 }
 
@@ -521,4 +546,63 @@ async function confirmApplyBulanan(period, list) {
   closePreviewBulanan();
   await loadBulanan();
   renderTableBulanan();
+}
+
+// =======================================================================
+// MODAL RIWAYAT (dipakai bersama Harian & Bulanan)
+// =======================================================================
+function openHistoryHarian(userId) {
+  const emp = employeesHarian.find(e => e.id === userId);
+  const rows = historyHarian[userId] || [];
+  document.getElementById("history-title").textContent = `Riwayat Upah — ${emp.full_name}`;
+  document.getElementById("history-content").innerHTML = `
+    <table class="table">
+      <thead><tr><th>Tanggal Berlaku</th><th>Upah Harian</th><th>Alasan</th><th>Dicatat</th></tr></thead>
+      <tbody>
+        ${rows.map((r, i) => {
+          const prev = rows[i + 1]; // baris sesudahnya = lebih lama, karena urut desc
+          const delta = prev ? r.daily_wage - prev.daily_wage : null;
+          return `
+            <tr>
+              <td>${fmtDate(r.effective_date)}</td>
+              <td>${fmtRupiah(r.daily_wage)}${delta ? ` <span class="muted small">(${delta > 0 ? "+" : ""}${fmtRupiah(delta)})</span>` : ""}</td>
+              <td>${r.reason}</td>
+              <td>${fmtDateTime(r.created_at)}</td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+  document.getElementById("modal-history").classList.remove("hidden");
+}
+
+function openHistoryBulanan(userId) {
+  const emp = employeesBulanan.find(e => e.id === userId);
+  const rows = historyBulanan[userId] || [];
+  document.getElementById("history-title").textContent = `Riwayat Gaji — ${emp.full_name}`;
+  document.getElementById("history-content").innerHTML = `
+    <table class="table">
+      <thead><tr><th>Tanggal Berlaku</th><th>Gaji Bulanan</th><th>Alasan</th><th>Dicatat</th></tr></thead>
+      <tbody>
+        ${rows.map((r, i) => {
+          const prev = rows[i + 1];
+          const delta = prev ? r.monthly_salary - prev.monthly_salary : null;
+          return `
+            <tr>
+              <td>${fmtDate(r.effective_date)}</td>
+              <td>${fmtRupiah(r.monthly_salary)}${delta ? ` <span class="muted small">(${delta > 0 ? "+" : ""}${fmtRupiah(delta)})</span>` : ""}</td>
+              <td>${r.reason}</td>
+              <td>${fmtDateTime(r.created_at)}</td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+  document.getElementById("modal-history").classList.remove("hidden");
+}
+
+function closeHistoryModal() {
+  document.getElementById("modal-history").classList.add("hidden");
 }
