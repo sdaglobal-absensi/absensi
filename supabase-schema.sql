@@ -274,6 +274,29 @@ create table if not exists public.overtime_requests (
 -- Kolom total jam lembur (hasil pembulatan otomatis saat pengajuan dikirim)
 alter table public.overtime_requests add column if not exists total_jam numeric;
 
+-- ---------------------------------------------------------------------
+-- 4g. TABEL: payroll_adjustments (Slip Gaji — komponen manual per periode)
+--     Satu baris = penyesuaian manual (dinas, tunjangan lain, potongan
+--     lain) untuk satu karyawan pada satu periode "YYYY-MM". Komponen
+--     lain di slip gaji (gaji pokok, lembur, denda telat, BPJS, PPh21)
+--     dihitung otomatis dari data yang sudah ada (absensi, lembur,
+--     riwayat upah/gaji, Master Level) — ini hanya untuk yang tidak
+--     tercatat otomatis di sistem.
+-- ---------------------------------------------------------------------
+create table if not exists public.payroll_adjustments (
+  id                    uuid primary key default gen_random_uuid(),
+  user_id               uuid not null references public.profiles(id) on delete cascade,
+  period                text not null,  -- format 'YYYY-MM'
+  hari_dinas            integer not null default 0,   -- dikali "Uang Perjalanan Dinas" di Master Level
+  tunjangan_lain        numeric not null default 0,
+  keterangan_tunjangan  text,
+  potongan_lain         numeric not null default 0,
+  keterangan_potongan   text,
+  updated_by            uuid references public.profiles(id),
+  updated_at            timestamptz not null default now(),
+  unique (user_id, period)
+);
+
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
 begin
@@ -389,6 +412,17 @@ create policy "overtime_insert_self" on public.overtime_requests
 drop policy if exists "overtime_update" on public.overtime_requests;
 create policy "overtime_update" on public.overtime_requests
   for update using ( user_id = auth.uid() or public.is_admin_or_hr() );
+
+-- payroll_adjustments (Slip Gaji — komponen manual) -------------------------------------------------------------
+alter table public.payroll_adjustments enable row level security;
+
+drop policy if exists "payroll_adjustments_select" on public.payroll_adjustments;
+create policy "payroll_adjustments_select" on public.payroll_adjustments
+  for select using ( user_id = auth.uid() or public.is_admin_or_hr() );
+
+drop policy if exists "payroll_adjustments_admin_write" on public.payroll_adjustments;
+create policy "payroll_adjustments_admin_write" on public.payroll_adjustments
+  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
 
 -- office_locations -------------------------------------------------------------
 drop policy if exists "office_select_all" on public.office_locations;
@@ -517,9 +551,8 @@ do $$ begin
   end if;
 end $$;
 
-insert into public.office_locations (name, lat, lng, radius_meters)
-values ('Kantor Pusat', -7.257472, 112.752088, 150)
-on conflict (name) do nothing;
+-- (Contoh lokasi "Kantor Pusat" bawaan sudah dihapus — tambahkan lokasi
+-- kantor/cabang asli lewat menu Master Lokasi Kantor di panel admin.)
 
 -- ---------------------------------------------------------------------
 -- Contoh data jadwal kerja sesuai kondisi saat ini (silakan edit/hapus lewat panel admin)
