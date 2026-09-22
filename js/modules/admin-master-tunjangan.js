@@ -18,6 +18,16 @@ let allowanceTypes = [];
 let employees = [];
 let employeeAllowanceByUser = {}; // { [typeId]: { [userId]: row } }
 
+// Tampilan input nominal pakai titik ribuan (mis. "100.000") biar gampang
+// dibaca; disimpan tetap sebagai angka biasa.
+function formatRibuan(n) {
+  return (Number(n) || 0).toLocaleString("id-ID");
+}
+
+function parseRibuan(str) {
+  return Number(String(str).replace(/\D/g, "")) || 0;
+}
+
 export async function render(container, user) {
   canEdit = user.role === "admin";
 
@@ -218,7 +228,7 @@ function renderEmployeeTable() {
                 return `
                   <td>
                     <div style="display:flex; flex-direction:column; gap:4px;">
-                      <input type="number" class="input-nominal" data-type-id="${t.id}" min="0" step="1" style="width:130px;" value="${row ? row.nominal : 0}">
+                      <input type="text" inputmode="numeric" class="input-nominal" data-type-id="${t.id}" style="width:130px;" value="${formatRibuan(row ? row.nominal : 0)}">
                       <label class="checkbox-row" style="font-size:0.78rem;"><input type="checkbox" class="chk-active" data-type-id="${t.id}" ${row ? (row.is_active ? "checked" : "") : "checked"}> Aktif</label>
                     </div>
                   </td>
@@ -236,6 +246,11 @@ function renderEmployeeTable() {
     el.querySelectorAll(".btn-save-row").forEach(btn => {
       btn.addEventListener("click", () => saveRowAllowances(btn));
     });
+    el.querySelectorAll(".input-nominal").forEach(inp => {
+      inp.addEventListener("input", () => {
+        inp.value = formatRibuan(parseRibuan(inp.value));
+      });
+    });
   }
 }
 
@@ -249,7 +264,7 @@ async function saveRowAllowances(btn) {
     return {
       user_id: userId,
       allowance_type_id: t.id,
-      nominal: Number(inputEl.value) || 0,
+      nominal: parseRibuan(inputEl.value),
       is_active: chkEl.checked,
     };
   });
