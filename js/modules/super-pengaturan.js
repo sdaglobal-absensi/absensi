@@ -48,22 +48,25 @@ export async function render(container, user) {
 
     <h3 style="margin-bottom:10px;">Periode Cut-Off Slip Gaji</h3>
     <p class="muted small" style="margin-top:-6px; margin-bottom:14px;">
-      Berlaku global untuk semua karyawan. Isi <strong>1</strong> kalau periode gajian mengikuti
-      kalender biasa (tanggal 1 s/d akhir bulan). Isi tanggal lain (mis. <strong>21</strong>) kalau
-      perusahaan pakai cut-off — angka yang kamu isi adalah <strong>tanggal mulai</strong> periode;
-      periode berakhir sehari sebelum tanggal itu di bulan berikutnya.
+      Berlaku global untuk semua karyawan, berulang tiap bulan. Pilih <strong>tanggal mulai</strong>
+      periode yang sedang berjalan (lengkap tanggal/bulan/tahun biar jelas) — tanggal selesai
+      terisi otomatis, dan aturan ini otomatis berlaku sama untuk bulan-bulan berikutnya juga.
+      Khusus tanggal 1 - 28 (supaya konsisten walau di bulan Februari).
     </p>
-    <form id="form-cutoff" class="form-row two-col" style="align-items:end; max-width:520px;">
-      <label>Tanggal Mulai Periode (Cut-Off)
-        <input type="number" name="cutoff_start_day" min="1" max="28" required>
+    <form id="form-cutoff" class="form-row two-col" style="align-items:end; max-width:420px;">
+      <label>Tanggal Mulai (periode berjalan)
+        <input type="date" id="cutoff-start" required>
       </label>
-      <button type="submit" class="btn-primary">Simpan</button>
+      <label>Tanggal Selesai <span class="muted small">(otomatis)</span>
+        <input type="date" id="cutoff-end" disabled>
+      </label>
     </form>
     <p class="muted small" id="cutoff-preview" style="margin-top:10px;"></p>
+    <button type="submit" form="form-cutoff" class="btn-primary" style="margin-top:14px;">Simpan</button>
   `;
 
+  document.getElementById("cutoff-start").addEventListener("input", updateCutoffPreview);
   document.getElementById("form-cutoff").addEventListener("submit", e => onSubmitCutoff(e, user));
-  document.getElementById("form-cutoff").cutoff_start_day.addEventListener("input", updateCutoffPreview);
 
   await loadPermissions(user);
   await loadCutoff();
@@ -124,31 +127,53 @@ async function onTogglePermission(checkbox, user) {
 }
 
 // -----------------------------------------------------------------------
+function toISODateLocal(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 async function loadCutoff() {
   const { data, error } = await supabase.from("payroll_settings").select("cutoff_start_day").eq("id", 1).single();
-  const form = document.getElementById("form-cutoff");
-  form.cutoff_start_day.value = error || !data ? 1 : (data.cutoff_start_day || 1);
+  const day = error || !data ? 1 : (data.cutoff_start_day || 1);
+  // Tampilkan tanggal mulai periode yang SEDANG BERJALAN hari ini (lengkap
+  // tanggal/bulan/tahun), bukan cuma angka tanggalnya — biar langsung
+  // kebayang periode konkret yang aktif sekarang.
+  const { start } = payrollPeriodRange(currentActivePeriod(day), day);
+  document.getElementById("cutoff-start").value = start;
   updateCutoffPreview();
 }
 
-// Contoh nyata rentang tanggal periode BERJALAN (yang aktif hari ini),
-// dihitung ulang tiap angka cut-off diketik, supaya langsung kelihatan
-// efeknya sebelum diklik Simpan.
+// Tanggal Selesai + contoh rentang periode, dihitung ulang tiap Tanggal
+// Mulai diganti. Aturan cut-off ini BERULANG tiap bulan — tanggal & bulan
+// yang dipilih cuma dipakai untuk menentukan tanggal berapa dalam sebulan
+// yang jadi patokan (tahunnya cuma buat tampilan, tidak disimpan).
 function updateCutoffPreview() {
-  const el = document.getElementById("cutoff-preview");
-  if (!el) return;
-  const day = Number(document.getElementById("form-cutoff").cutoff_start_day.value);
-  if (!day || day < 1 || day > 28) { el.textContent = ""; return; }
+  const startEl = document.getElementById("cutoff-start");
+  const endEl = document.getElementById("cutoff-end");
+  const previewEl = document.getElementById("cutoff-preview");
+  const startVal = startEl.value; // "YYYY-MM-DD"
 
-  const { start, end } = payrollPeriodRange(currentActivePeriod(day), day);
-  el.innerHTML = day === 1
-    ? `Contoh: periode bulan ini = <strong>${fmtDate(start)} – ${fmtDate(end)}</strong> (kalender biasa).`
-    : `Contoh: periode yang sedang berjalan hari ini = <strong>${fmtDate(start)} – ${fmtDate(end)}</strong>.`;
+  if (!startVal) { endEl.value = ""; previewEl.textContent = ""; return; }
+
+  const [y, m, d] = startVal.split("-").map(Number);
+  if (d > 28) {
+    previewEl.innerHTML = `<span style="color:#c0392b;">Pilih tanggal 1 - 28 saja supaya aturannya tetap konsisten walau di bulan Februari.</span>`;
+    endEl.value = "";
+    return;
+  }
+
+  const m0 = m - 1; // 0-indexed
+  const endDate = d === 1 ? new Date(y, m0 + 1, 0) : new Date(y, m0 + 1, d - 1);
+  endEl.value = toISODateLocal(endDate);
+
+  previewEl.innerHTML = d === 1
+    ? `Periode: <strong>${fmtDate(startVal)} – ${fmtDate(endEl.value)}</strong> (kalender biasa, tiap bulan).`
+    : `Periode berjalan: <strong>${fmtDate(startVal)} – ${fmtDate(endEl.value)}</strong>. Aturan ini berulang tiap bulan (tanggal ${d} s/d ${d - 1} bulan berikutnya).`;
 }
 
 // Periode mana (dalam format "YYYY-MM", dilabeli bulan AKHIR-nya, sesuai
 // payrollPeriodRange) yang sedang aktif hari ini untuk tanggal cut-off
-// tertentu — dipakai cuma untuk preview di atas.
+// tertentu — dipakai untuk nampilkan tanggal mulai periode berjalan
+// lengkap dengan bulan & tahunnya saat halaman ini dibuka.
 function currentActivePeriod(cutoffD) {
   const now = new Date();
   const y = now.getFullYear();
@@ -160,8 +185,10 @@ function currentActivePeriod(cutoffD) {
 
 async function onSubmitCutoff(e, user) {
   e.preventDefault();
-  const day = Number(new FormData(e.target).get("cutoff_start_day"));
-  if (!day || day < 1 || day > 28) { toast("Tanggal harus antara 1 - 28", "error"); return; }
+  const startVal = document.getElementById("cutoff-start").value;
+  if (!startVal) { toast("Isi tanggal mulai dulu", "error"); return; }
+  const day = Number(startVal.split("-")[2]);
+  if (!day || day < 1 || day > 28) { toast("Tanggal mulai harus 1 - 28 supaya konsisten walau di bulan Februari", "error"); return; }
 
   const { error } = await supabase
     .from("payroll_settings")
