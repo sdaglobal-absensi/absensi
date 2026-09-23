@@ -497,39 +497,80 @@ create trigger trg_on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ---------------------------------------------------------------------
--- 6b. TABEL: role_permissions (menu mana yang boleh dibuka role admin_hr)
+-- 6b. TABEL: role_permissions (menu mana yang boleh dibuka role admin_hr
+--     ATAU role karyawan — sekarang per-role lewat kolom `role`, jadi
+--     Admin HR dan Karyawan punya toggle masing-masing yang independen).
 --     Diatur lewat menu "Pengaturan Sistem" (khusus super_admin &
---     super_admin_hr). Kalau menu_id tidak ada barisnya di sini, dianggap
---     TIDAK diizinkan (fail-closed / restrictive by default).
+--     super_admin_hr). Kalau (role, menu_id) tidak ada barisnya di sini,
+--     dianggap TIDAK diizinkan (fail-closed / restrictive by default).
 -- ---------------------------------------------------------------------
 create table if not exists public.role_permissions (
-  menu_id     text primary key,
+  role        text not null check (role in ('admin_hr', 'karyawan')),
+  menu_id     text not null,
   enabled     boolean not null default false,
   updated_by  uuid references public.profiles(id),
-  updated_at  timestamptz not null default now()
+  updated_at  timestamptz not null default now(),
+  primary key (role, menu_id)
 );
 
-comment on table public.role_permissions is 'Kontrol menu mana yang bisa diakses role admin_hr. super_admin & super_admin_hr selalu full akses, tidak dicek ke tabel ini.';
+comment on table public.role_permissions is 'Kontrol menu mana yang bisa diakses role admin_hr dan role karyawan (satu baris per (role, menu_id)). super_admin & super_admin_hr selalu full akses, tidak dicek ke tabel ini.';
 
--- Default setelah migrasi: yang sudah jadi kerjaan harian HR sebelumnya
--- (monitor, approval, laporan) tetap menyala; data sensitif (karyawan,
--- gaji, master data) dimatikan dulu -- Super Admin bisa nyalakan manual.
-insert into public.role_permissions (menu_id, enabled) values
-  ('karyawan', false),
-  ('absensi-monitor', true),
-  ('izin-approval', true),
-  ('lembur-approval', true),
-  ('kenaikan-upah', false),
-  ('slip-gaji', false),
-  ('laporan', true),
-  ('master-level', false),
-  ('master-tunjangan', false),
-  ('master-denda', false),
-  ('master-departemen', false),
-  ('master-jadwal', false),
-  ('master-libur', false),
-  ('master-lokasi', false)
-on conflict (menu_id) do nothing;
+-- Migrasi dari versi lama (role_permissions tanpa kolom `role`, PK di
+-- menu_id saja, semua baris implisit untuk admin_hr): aman dijalankan
+-- ulang di project yang sudah ada -- kalau kolom `role` belum ada, kolom
+-- ditambahkan, baris lama diberi label 'admin_hr', lalu primary key diganti
+-- jadi (role, menu_id).
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'role_permissions' and column_name = 'role'
+  ) then
+    alter table public.role_permissions add column role text;
+    update public.role_permissions set role = 'admin_hr' where role is null;
+    alter table public.role_permissions alter column role set not null;
+    alter table public.role_permissions add constraint role_permissions_role_check check (role in ('admin_hr', 'karyawan'));
+    alter table public.role_permissions drop constraint if exists role_permissions_pkey;
+    alter table public.role_permissions add primary key (role, menu_id);
+  end if;
+end $$;
+
+-- Default Admin HR setelah migrasi: yang sudah jadi kerjaan harian HR
+-- sebelumnya (monitor, approval, laporan) tetap menyala; data sensitif
+-- (karyawan, gaji, master data) dimatikan dulu -- Super Admin bisa
+-- nyalakan manual. Menu pribadi (absensi/izin/lembur/riwayat) dinyalakan
+-- default karena Admin HR juga karyawan yang perlu absen sendiri.
+insert into public.role_permissions (role, menu_id, enabled) values
+  ('admin_hr', 'karyawan', false),
+  ('admin_hr', 'absensi-monitor', true),
+  ('admin_hr', 'izin-approval', true),
+  ('admin_hr', 'lembur-approval', true),
+  ('admin_hr', 'kenaikan-upah', false),
+  ('admin_hr', 'slip-gaji', false),
+  ('admin_hr', 'laporan', true),
+  ('admin_hr', 'master-level', false),
+  ('admin_hr', 'master-tunjangan', false),
+  ('admin_hr', 'master-denda', false),
+  ('admin_hr', 'master-departemen', false),
+  ('admin_hr', 'master-jadwal', false),
+  ('admin_hr', 'master-libur', false),
+  ('admin_hr', 'master-lokasi', false),
+  ('admin_hr', 'absensi', true),
+  ('admin_hr', 'izin', true),
+  ('admin_hr', 'lembur', true),
+  ('admin_hr', 'riwayat', true)
+on conflict (role, menu_id) do nothing;
+
+-- Default Karyawan: sama seperti perilaku lama (semua 4 menu pribadi
+-- menyala) -- Super Admin sekarang bisa mematikan satu-satu lewat
+-- Pengaturan Sistem kalau perlu (mis. matikan "Pengajuan Lembur" kalau
+-- lembur hanya boleh diajukan atasan).
+insert into public.role_permissions (role, menu_id, enabled) values
+  ('karyawan', 'absensi', true),
+  ('karyawan', 'izin', true),
+  ('karyawan', 'lembur', true),
+  ('karyawan', 'riwayat', true)
+on conflict (role, menu_id) do nothing;
 
 -- ---------------------------------------------------------------------
 -- 6c. TABEL: payroll_settings (periode cut-off Slip Gaji, satu baris global)
@@ -572,16 +613,19 @@ returns boolean language sql security definer stable set search_path = public as
 $$;
 
 -- true kalau user sekarang boleh MENGELOLA (tulis) resource yang terkait
--- menu tsb: selalu true untuk super_admin/super_admin_hr, untuk admin_hr
--- baru true kalau menu_id itu enabled=true di role_permissions.
+-- menu tsb: selalu true untuk super_admin/super_admin_hr; untuk admin_hr
+-- ATAU karyawan, baru true kalau ada baris (role, menu_id) yang enabled=true
+-- di role_permissions untuk role akun yang sedang login. Ini generic per-role
+-- (bukan cuma admin_hr lagi) supaya dipakai juga untuk menu pribadi karyawan
+-- (absensi/izin/lembur) yang sekarang toggle-nya diatur di Pengaturan Sistem.
 create or replace function public.has_menu_access(p_menu_id text)
 returns boolean language sql security definer stable set search_path = public as $$
   select
     public.is_super()
-    or (
-      (select role from public.profiles where id = auth.uid()) = 'admin_hr'
-      and coalesce((select enabled from public.role_permissions where menu_id = p_menu_id), false)
-    );
+    or coalesce((
+      select enabled from public.role_permissions
+      where role = public.my_role() and menu_id = p_menu_id
+    ), false);
 $$;
 
 -- ---------------------------------------------------------------------
@@ -613,11 +657,15 @@ create policy "profiles_admin_all" on public.profiles
     public.is_super() or ( public.has_menu_access('karyawan') and role = 'karyawan' )
   );
 
--- role_permissions & payroll_settings — khusus super_admin/super_admin_hr,
--- TIDAK bisa didelegasikan lewat toggle apapun (beda dari menu lain).
+-- role_permissions: staff (super_admin/super_admin_hr/admin_hr) boleh lihat
+-- semua baris (perlu untuk halaman Pengaturan Sistem); karyawan cuma boleh
+-- lihat baris role='karyawan' miliknya sendiri (perlu untuk sidebar-nya
+-- tahu menu pribadi mana yang dinyalakan). Yang MENULIS tabel ini tetap
+-- khusus super_admin/super_admin_hr, TIDAK bisa didelegasikan lewat toggle
+-- apapun (beda dari menu lain) — lihat "role_permissions_super_write".
 drop policy if exists "role_permissions_select" on public.role_permissions;
 create policy "role_permissions_select" on public.role_permissions
-  for select using ( public.is_staff() );
+  for select using ( public.is_staff() or role = public.my_role() );
 
 drop policy if exists "role_permissions_super_write" on public.role_permissions;
 create policy "role_permissions_super_write" on public.role_permissions
@@ -638,7 +686,7 @@ create policy "attendance_select" on public.attendance
 
 drop policy if exists "attendance_insert_self" on public.attendance;
 create policy "attendance_insert_self" on public.attendance
-  for insert with check ( user_id = auth.uid() );
+  for insert with check ( user_id = auth.uid() and public.has_menu_access('absensi') );
 
 drop policy if exists "attendance_update_self" on public.attendance;
 create policy "attendance_update_self" on public.attendance
@@ -651,7 +699,7 @@ create policy "leave_select" on public.leave_requests
 
 drop policy if exists "leave_insert_self" on public.leave_requests;
 create policy "leave_insert_self" on public.leave_requests
-  for insert with check ( user_id = auth.uid() );
+  for insert with check ( user_id = auth.uid() and public.has_menu_access('izin') );
 
 drop policy if exists "leave_update" on public.leave_requests;
 create policy "leave_update" on public.leave_requests
@@ -666,7 +714,7 @@ create policy "overtime_select" on public.overtime_requests
 
 drop policy if exists "overtime_insert_self" on public.overtime_requests;
 create policy "overtime_insert_self" on public.overtime_requests
-  for insert with check ( user_id = auth.uid() );
+  for insert with check ( user_id = auth.uid() and public.has_menu_access('lembur') );
 
 drop policy if exists "overtime_update" on public.overtime_requests;
 create policy "overtime_update" on public.overtime_requests

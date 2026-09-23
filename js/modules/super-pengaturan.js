@@ -12,6 +12,8 @@ import { toast, invalidatePermissionCache, invalidatePayrollSettingsCache, payro
 // tetap tertahan di tabel yang menu-nya belum diizinkan.
 // =======================================================================
 
+// Menu staff (approval, laporan, master data, dst) — dipakai untuk toggle
+// akses Admin HR.
 const MENU_LABELS = {
   "karyawan": "Data Karyawan",
   "absensi-monitor": "Monitor Absensi",
@@ -29,6 +31,16 @@ const MENU_LABELS = {
   "master-lokasi": "Master Lokasi Kantor",
 };
 
+// Menu pribadi (absensi/izin/lembur/riwayat sendiri) — dipakai untuk toggle
+// akses Admin HR (menu tambahan di sidebarnya) MAUPUN toggle akses Karyawan
+// (dua baris independen di role_permissions, satu per role, menu_id sama).
+const PERSONAL_MENU_LABELS = {
+  "absensi": "Absensi (Check-in/Check-out Pribadi)",
+  "izin": "Pengajuan Izin Pribadi",
+  "lembur": "Pengajuan Lembur Pribadi",
+  "riwayat": "Riwayat Absensi Pribadi",
+};
+
 export async function render(container, user) {
   container.innerHTML = `
     <div class="page-header">
@@ -40,11 +52,21 @@ export async function render(container, user) {
 
     <h3 style="margin-bottom:10px;">Kelola Akses Admin HR</h3>
     <p class="muted small" style="margin-top:-6px; margin-bottom:14px;">
-      Nyalakan menu yang boleh dibuka akun ber-role <strong>Admin HR</strong>. Menu yang dimatikan
-      otomatis hilang dari sidebar mereka, dan aksesnya tetap ditolak di sisi server walau dicoba
-      lewat cara lain.
+      Nyalakan menu yang boleh dibuka akun ber-role <strong>Admin HR</strong> — termasuk menu
+      staff (approval, laporan, master data, dst) dan menu pribadi (absensi/izin/lembur sendiri,
+      karena Admin HR juga karyawan). Menu yang dimatikan otomatis hilang dari sidebar mereka, dan
+      aksesnya tetap ditolak di sisi server walau dicoba lewat cara lain.
     </p>
-    <div id="perm-list" class="table-wrap" style="margin-bottom:32px;"><p class="muted">Memuat…</p></div>
+    <div id="perm-list-admin_hr" class="table-wrap" style="margin-bottom:32px;"><p class="muted">Memuat…</p></div>
+
+    <h3 style="margin-bottom:10px;">Kelola Akses Karyawan</h3>
+    <p class="muted small" style="margin-top:-6px; margin-bottom:14px;">
+      Nyalakan/matikan menu pribadi yang boleh dibuka akun ber-role <strong>Karyawan</strong>.
+      Defaultnya semua menyala (sama seperti sebelumnya); matikan salah satu kalau memang tidak
+      ingin karyawan bisa mengajukan sendiri, misalnya matikan <em>Pengajuan Lembur</em> kalau
+      lembur hanya boleh diajukan atasan.
+    </p>
+    <div id="perm-list-karyawan" class="table-wrap" style="margin-bottom:32px;"><p class="muted">Memuat…</p></div>
 
     <h3 style="margin-bottom:10px;">Periode Cut-Off Slip Gaji</h3>
     <p class="muted small" style="margin-top:-6px; margin-bottom:14px;">
@@ -68,28 +90,34 @@ export async function render(container, user) {
   document.getElementById("cutoff-start").addEventListener("input", updateCutoffPreview);
   document.getElementById("form-cutoff").addEventListener("submit", e => onSubmitCutoff(e, user));
 
-  await loadPermissions(user);
+  // Admin HR: gabungan menu staff + menu pribadi, satu tabel toggle.
+  await loadPermissions(user, "admin_hr", "perm-list-admin_hr", { ...MENU_LABELS, ...PERSONAL_MENU_LABELS });
+  // Karyawan: cuma menu pribadi yang relevan buat mereka.
+  await loadPermissions(user, "karyawan", "perm-list-karyawan", PERSONAL_MENU_LABELS);
   await loadCutoff();
 }
 
 // -----------------------------------------------------------------------
-async function loadPermissions(user) {
-  const el = document.getElementById("perm-list");
-  const { data, error } = await supabase.from("role_permissions").select("*").order("menu_id");
+// role: "admin_hr" atau "karyawan" — role_permissions sekarang satu baris
+// per (role, menu_id), jadi toggle Admin HR & Karyawan independen walau
+// menu_id-nya sama (mis. "absensi").
+async function loadPermissions(user, role, containerId, labels) {
+  const el = document.getElementById(containerId);
+  const { data, error } = await supabase.from("role_permissions").select("*").eq("role", role).order("menu_id");
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
 
-  const rows = (data || []).filter(r => MENU_LABELS[r.menu_id]);
+  const rows = (data || []).filter(r => labels[r.menu_id]);
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Menu</th><th>Akses Admin HR</th></tr></thead>
+      <thead><tr><th>Menu</th><th>Akses ${roleDisplayName(role)}</th></tr></thead>
       <tbody>
         ${rows.map(r => `
           <tr>
-            <td>${MENU_LABELS[r.menu_id] || r.menu_id}</td>
+            <td>${labels[r.menu_id] || r.menu_id}</td>
             <td>
               <label class="checkbox-row">
-                <input type="checkbox" class="perm-toggle" data-menu="${r.menu_id}" ${r.enabled ? "checked" : ""}>
+                <input type="checkbox" class="perm-toggle" data-role="${role}" data-menu="${r.menu_id}" ${r.enabled ? "checked" : ""}>
                 <span>${r.enabled ? "Diizinkan" : "Tidak diizinkan"}</span>
               </label>
             </td>
@@ -100,11 +128,16 @@ async function loadPermissions(user) {
   `;
 
   el.querySelectorAll(".perm-toggle").forEach(cb => {
-    cb.addEventListener("change", () => onTogglePermission(cb, user));
+    cb.addEventListener("change", () => onTogglePermission(cb, user, labels));
   });
 }
 
-async function onTogglePermission(checkbox, user) {
+function roleDisplayName(role) {
+  return role === "karyawan" ? "Karyawan" : "Admin HR";
+}
+
+async function onTogglePermission(checkbox, user, labels) {
+  const role = checkbox.dataset.role;
   const menuId = checkbox.dataset.menu;
   const enabled = checkbox.checked;
   checkbox.disabled = true;
@@ -112,6 +145,7 @@ async function onTogglePermission(checkbox, user) {
   const { error } = await supabase
     .from("role_permissions")
     .update({ enabled, updated_by: user.id, updated_at: new Date().toISOString() })
+    .eq("role", role)
     .eq("menu_id", menuId);
 
   checkbox.disabled = false;
@@ -123,7 +157,7 @@ async function onTogglePermission(checkbox, user) {
 
   checkbox.closest("tr").querySelector("span").textContent = enabled ? "Diizinkan" : "Tidak diizinkan";
   invalidatePermissionCache();
-  toast(`Akses "${MENU_LABELS[menuId] || menuId}" untuk Admin HR ${enabled ? "diaktifkan" : "dimatikan"}`, "success");
+  toast(`Akses "${labels[menuId] || menuId}" untuk ${roleDisplayName(role)} ${enabled ? "diaktifkan" : "dimatikan"}`, "success");
 }
 
 // -----------------------------------------------------------------------

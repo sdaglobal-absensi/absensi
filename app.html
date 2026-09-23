@@ -28,7 +28,7 @@
 
   <script type="module">
     import { requireAuth, logout } from "./js/auth.js";
-    import { renderSidebar } from "./js/core.js";
+    import { renderSidebar, isSuper } from "./js/core.js";
 
     const DEFAULT_TAB_KARYAWAN = "absensi";
 
@@ -59,8 +59,7 @@
 
     function isTabAllowed(tabId) {
       if (!MODULE_MAP[tabId]) return false;
-      if (currentUser.role === "karyawan") return ["absensi", "izin", "lembur", "riwayat"].includes(tabId);
-      if (!allowedTabIds) return true; // super_admin / super_admin_hr
+      if (!allowedTabIds) return true; // super_admin / super_admin_hr — All Akses, tidak difilter
       return allowedTabIds.has(tabId);
     }
 
@@ -95,9 +94,13 @@
       if (!currentUser) return;
 
       const menu = await renderSidebar(currentUser, null); // activeId diisi ulang di loadTab lewat startTab
-      allowedTabIds = currentUser.role === "karyawan" ? null : new Set(menu.map(m => m.id));
+      // Super Admin/Super Admin HR = All Akses, tidak difilter (null). Semua
+      // role lain (admin_hr & karyawan) dibatasi ke menu yang benar-benar
+      // muncul di sidebar-nya, hasil dari resolveMenu() (yang sudah menyaring
+      // lewat toggle Pengaturan Sistem masing-masing role).
+      allowedTabIds = isSuper(currentUser.role) ? null : new Set(menu.map(m => m.id));
 
-      const fallbackTab = currentUser.role === "karyawan" ? DEFAULT_TAB_KARYAWAN : (menu[0]?.id || DEFAULT_TAB_KARYAWAN);
+      const fallbackTab = menu[0]?.id || DEFAULT_TAB_KARYAWAN;
       const hashTab = location.hash.replace("#", "");
       const startTab = hashTab && isTabAllowed(hashTab) ? hashTab : fallbackTab;
 

@@ -32,18 +32,26 @@ export function isSuper(role) {
   return SUPER_ROLES.includes(role);
 }
 
-// Menu yang bisa dinyalakan/dimatikan untuk role admin_hr lewat menu
-// "Pengaturan Sistem". "pengaturan-sistem" itu sendiri sengaja TIDAK ada di
-// sini — cuma super_admin/super_admin_hr yang boleh mengatur akses, tidak
-// bisa didelegasikan ke admin_hr walau lewat toggle sekalipun.
-let cachedPermissions = null; // Set<menu_id> yang enabled=true untuk admin_hr, di-cache per sesi halaman
+// Menu yang bisa dinyalakan/dimatikan untuk role admin_hr ATAU role
+// karyawan lewat menu "Pengaturan Sistem" (satu toggle set per role, jadi
+// independen satu sama lain). "pengaturan-sistem" itu sendiri sengaja
+// TIDAK ada di sini — cuma super_admin/super_admin_hr yang boleh mengatur
+// akses, tidak bisa didelegasikan ke role lain walau lewat toggle sekalipun.
+const RESTRICTED_ROLES = ["admin_hr", "karyawan"];
+let cachedPermissions = null; // Set<menu_id> enabled=true untuk role user ini, di-cache per sesi halaman
+let cachedPermissionsRole = null; // role yang lagi di-cache, buat jaga-jaga kalau role user berubah di sesi yang sama
 export async function getAllowedMenus(user) {
   if (isSuper(user.role)) return null; // null = semua menu, tidak difilter
-  if (user.role !== "admin_hr") return new Set(); // karyawan: tidak ada menu staff
+  if (!RESTRICTED_ROLES.includes(user.role)) return new Set();
 
-  if (cachedPermissions) return cachedPermissions;
-  const { data, error } = await supabase.from("role_permissions").select("menu_id").eq("enabled", true);
+  if (cachedPermissions && cachedPermissionsRole === user.role) return cachedPermissions;
+  const { data, error } = await supabase
+    .from("role_permissions")
+    .select("menu_id")
+    .eq("role", user.role)
+    .eq("enabled", true);
   cachedPermissions = new Set(error ? [] : (data || []).map(r => r.menu_id));
+  cachedPermissionsRole = user.role;
   return cachedPermissions;
 }
 
@@ -56,13 +64,22 @@ export function invalidatePermissionCache() {
 // =====================================================================
 // SIDEBAR — menu berbeda tergantung role
 // =====================================================================
+// Menu pribadi (absensi/izin/lembur/riwayat sendiri) — dulu cuma dipakai
+// role karyawan, sekarang ditampilkan juga di sidebar super_admin,
+// super_admin_hr, dan admin_hr (semua orang, apapun rolenya, tetap perlu
+// absen/ajukan izin & lembur untuk dirinya sendiri). Untuk admin_hr &
+// karyawan, masing-masing disaring lewat getAllowedMenus() (toggle
+// independen per role di Pengaturan Sistem); untuk super_admin/super_admin_hr
+// selalu tampil semua (All Akses).
+const EMPLOYEE_SELF_MENUS = [
+  { id: "absensi", label: "Absensi", icon: "clock" },
+  { id: "izin", label: "Pengajuan Izin", icon: "file" },
+  { id: "lembur", label: "Pengajuan Lembur", icon: "file" },
+  { id: "riwayat", label: "Riwayat Saya", icon: "history" },
+];
+
 const MENUS = {
-  karyawan: [
-    { id: "absensi", label: "Absensi", icon: "clock" },
-    { id: "izin", label: "Pengajuan Izin", icon: "file" },
-    { id: "lembur", label: "Pengajuan Lembur", icon: "file" },
-    { id: "riwayat", label: "Riwayat Saya", icon: "history" },
-  ],
+  karyawan: EMPLOYEE_SELF_MENUS,
   // Dipakai bersama oleh super_admin, super_admin_hr, dan admin_hr — untuk
   // admin_hr, daftar ini disaring lewat getAllowedMenus() sebelum ditampilkan.
   staff: [
@@ -100,11 +117,20 @@ const ICONS = {
 };
 
 // Menghitung daftar menu yang akan ditampilkan di sidebar untuk user ini,
-// setelah difilter lewat getAllowedMenus() (kalau admin_hr).
+// setelah difilter lewat getAllowedMenus() (kalau admin_hr atau karyawan).
 export async function resolveMenu(user) {
-  if (user.role === "karyawan") return MENUS.karyawan;
-  const allowed = await getAllowedMenus(user); // null utk super_admin/super_admin_hr = semua
-  const staff = allowed ? MENUS.staff.filter(m => allowed.has(m.id)) : MENUS.staff;
+  const allowed = await getAllowedMenus(user); // null utk super_admin/super_admin_hr = semua, tidak difilter
+
+  if (user.role === "karyawan") {
+    return allowed ? EMPLOYEE_SELF_MENUS.filter(m => allowed.has(m.id)) : EMPLOYEE_SELF_MENUS;
+  }
+
+  // super_admin/super_admin_hr/admin_hr: menu pribadi (grup "Menu Saya")
+  // digabung di atas menu staff, keduanya disaring bareng lewat toggle yang
+  // sama (allowed) untuk admin_hr; untuk super role, allowed = null = semua.
+  const personal = EMPLOYEE_SELF_MENUS.map(m => ({ ...m, section: "Menu Saya" }));
+  const combined = [...personal, ...MENUS.staff];
+  const staff = allowed ? combined.filter(m => allowed.has(m.id)) : combined;
   const extra = isSuper(user.role) ? MENUS.superOnly : [];
   return [...staff, ...extra];
 }

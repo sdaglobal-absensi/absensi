@@ -8,15 +8,22 @@ verifikasi **GPS lokasi** + **foto selfie** saat check-in/check-out. Ada 4 role:
 
 | Role | Akses |
 |---|---|
-| **Super Admin** | All Akses — semua menu, semua data, termasuk mengatur akses Admin HR. |
+| **Super Admin** | All Akses — semua menu, semua data, termasuk mengatur akses Admin HR & Karyawan. |
 | **Super Admin HR** | Setara persis dengan Super Admin (All Akses). Dua role terpisah supaya bisa dipegang orang yang berbeda tanpa harus berbagi satu akun "super admin". |
-| **Admin HR** | Akses dibatasi. Menu mana saja yang boleh dibuka diatur oleh Super Admin/Super Admin HR lewat menu **Pengaturan Sistem**. Secara default: boleh monitor absensi, approve izin & lembur, lihat laporan — tapi *tidak* boleh buka Data Karyawan, Slip Gaji, Kenaikan Upah, atau Master Data sampai dinyalakan manual. |
-| **Karyawan** | Check-in/out, ajukan izin & lembur, lihat riwayat sendiri. |
+| **Admin HR** | Akses dibatasi. Menu mana saja yang boleh dibuka diatur oleh Super Admin/Super Admin HR lewat menu **Pengaturan Sistem** — baik menu staff (approval, laporan, master data, dst) maupun menu pribadi (absensi/izin/lembur sendiri, karena Admin HR juga karyawan). Secara default: boleh monitor absensi, approve izin & lembur, lihat laporan, dan absen/ajukan izin & lembur sendiri — tapi *tidak* boleh buka Data Karyawan, Slip Gaji, Kenaikan Upah, atau Master Data sampai dinyalakan manual. |
+| **Karyawan** | Check-in/out, ajukan izin & lembur, lihat riwayat sendiri. Menu mana saja dari keempat ini yang aktif juga diatur lewat **Pengaturan Sistem** (default: semua menyala, sama seperti sebelumnya). |
 
-Pembatasan akses Admin HR ditegakkan di **dua lapis**: menu disembunyikan di
-sidebar (UI), dan RLS (Row Level Security) di Supabase menolak query langsung
-ke tabel terkait kalau menu itu belum diizinkan — jadi bukan cuma "disembunyikan",
-tapi benar-benar tertutup di sisi server.
+Menu pribadi (Absensi, Pengajuan Izin, Pengajuan Lembur, Riwayat Saya) kini
+muncul di sidebar **semua role** — Super Admin, Super Admin HR, dan Admin HR
+juga bisa absen dan mengajukan izin/lembur untuk diri sendiri, tidak cuma
+role Karyawan.
+
+Pembatasan akses Admin HR **dan** Karyawan ditegakkan di **dua lapis**: menu
+disembunyikan di sidebar (UI), dan RLS (Row Level Security) di Supabase
+menolak query langsung ke tabel terkait kalau menu itu belum diizinkan — jadi
+bukan cuma "disembunyikan", tapi benar-benar tertutup di sisi server. Toggle
+akses Admin HR dan Karyawan disimpan terpisah (per role), jadi mematikan
+suatu menu untuk satu role tidak memengaruhi role lainnya.
 
 ## Fitur
 
@@ -64,12 +71,19 @@ Buka [supabase.com](https://supabase.com) → New Project.
 ### 2. Jalankan schema
 Buka **SQL Editor** di dashboard Supabase → paste isi `supabase-schema.sql` →
 **Run**. Ini akan membuat semua tabel, trigger, RLS policy, storage bucket
-`attendance-photos`, tabel `role_permissions` (default akses Admin HR), dan
-tabel `payroll_settings` (default cut-off = tanggal 1, alias kalender biasa).
+`attendance-photos`, tabel `role_permissions` (default akses Admin HR & akses
+Karyawan, satu baris per role per menu), dan tabel `payroll_settings` (default
+cut-off = tanggal 1, alias kalender biasa).
 
 > Kalau ini upgrade dari versi lama (role `admin`/`hr`), script yang sama aman
 > dijalankan ulang — akun `admin` otomatis jadi `super_admin`, akun `hr`
 > otomatis jadi `admin_hr`, tanpa perlu bikin ulang akun.
+>
+> Kalau ini upgrade dari versi sebelum `role_permissions` punya kolom `role`
+> (toggle akses masih cuma untuk Admin HR), script yang sama juga aman
+> dijalankan ulang — kolom `role` otomatis ditambahkan, baris lama dilabeli
+> `admin_hr`, lalu baris default baru untuk menu pribadi (Admin HR) dan untuk
+> role Karyawan ditambahkan tanpa menimpa pengaturan yang sudah ada.
 
 ### 3. Sambungkan aplikasi ke Supabase
 Buka **Project Settings → API**, salin **Project URL** dan **anon public key**,
@@ -104,11 +118,15 @@ dibuat lewat panel admin. Untuk akun Super Admin pertama:
    menambah karyawan/Admin HR lain lewat menu **Data Karyawan** (otomatis
    membuat akun login untuk mereka).
 
-### 6. Atur akses Admin HR & periode cut-off slip gaji
+### 6. Atur akses Admin HR, akses Karyawan & periode cut-off slip gaji
 Login sebagai Super Admin/Super Admin HR → buka menu **Pengaturan Sistem**:
 - **Kelola Akses Admin HR** — nyalakan menu apa saja yang boleh dibuka akun
-  ber-role Admin HR (default: Monitor Absensi, Approval Izin, Approval Lembur,
-  Laporan — sisanya mati sampai dinyalakan manual).
+  ber-role Admin HR, baik menu staff (default: Monitor Absensi, Approval Izin,
+  Approval Lembur, Laporan — sisanya mati sampai dinyalakan manual) maupun
+  menu pribadi (default: Absensi, Pengajuan Izin, Pengajuan Lembur, Riwayat
+  Saya — default menyala semua).
+- **Kelola Akses Karyawan** — nyalakan/matikan menu pribadi yang boleh dibuka
+  akun ber-role Karyawan (default menyala semua, sama seperti sebelumnya).
 - **Periode Cut-Off Slip Gaji** — isi `1` untuk periode kalender biasa
   (tanggal 1 s/d akhir bulan), atau isi tanggal lain (mis. `26`) kalau
   perusahaan pakai cut-off, misalnya periode berjalan dari tanggal 26 bulan
