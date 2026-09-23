@@ -38,10 +38,14 @@ export function isSuper(role) {
 
 // Menu yang bisa dinyalakan/dimatikan untuk super_admin_hr, admin_hr, dan
 // karyawan lewat menu "Pengaturan Sistem" (satu toggle set per role,
-// independen satu sama lain). "pengaturan-sistem" itu sendiri sengaja TIDAK
-// ada di sini — cuma super_admin (satu-satunya root) yang boleh membuka &
-// mengatur akses, tidak bisa didelegasikan ke role lain walau lewat toggle
-// sekalipun (termasuk ke super_admin_hr).
+// independen satu sama lain). "pengaturan-sistem" (halaman ini sendiri) juga
+// ada di daftar yang bisa ditoggle — defaultnya MATI untuk ketiga role, jadi
+// tidak ada perubahan perilaku sampai super_admin sengaja menyalakannya. Kalau
+// dinyalakan untuk super_admin_hr, dia bisa membuka halaman ini DAN ikut
+// mengelola akses menu (termasuk punya akses dirinya sendiri) serta periode
+// cut-off slip gaji — jadi nyalakan hanya kalau memang mau didelegasikan.
+// super_admin sendiri selalu punya akses penuh, tidak pernah bergantung ke
+// toggle ini (lihat isSuper()/getAllowedMenus() di bawah).
 const TOGGLABLE_ROLES = ["super_admin_hr", "admin_hr", "karyawan"];
 let cachedPermissions = null; // Set<menu_id> enabled=true untuk role user ini, di-cache per sesi halaman
 let cachedPermissionsRole = null; // role yang lagi di-cache, buat jaga-jaga kalau role user berubah di sesi yang sama
@@ -86,7 +90,12 @@ const EMPLOYEE_SELF_MENUS = [
 const MENUS = {
   karyawan: EMPLOYEE_SELF_MENUS,
   // Dipakai bersama oleh super_admin, super_admin_hr, dan admin_hr — untuk
-  // admin_hr, daftar ini disaring lewat getAllowedMenus() sebelum ditampilkan.
+  // super_admin_hr/admin_hr, daftar ini disaring lewat getAllowedMenus()
+  // sebelum ditampilkan. "pengaturan-sistem" ikut di sini juga (bukan lagi
+  // daftar terpisah yang selalu tersembunyi) — untuk super_admin selalu
+  // tampil (allowed = null = tidak difilter), untuk role lain baru tampil
+  // kalau memang dinyalakan lewat toggle "Kelola Akses Menu" (defaultnya
+  // mati untuk semua role selain super_admin).
   staff: [
     { id: "karyawan", label: "Data Karyawan", icon: "users" },
     { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock" },
@@ -102,11 +111,6 @@ const MENUS = {
     { id: "master-jadwal", label: "Master Jadwal Kerja", icon: "clock", section: "Master Data" },
     { id: "master-libur", label: "Master Hari Libur", icon: "file", section: "Master Data" },
     { id: "master-lokasi", label: "Master Lokasi Kantor", icon: "grid", section: "Master Data" },
-  ],
-  // Menu khusus super_admin (satu-satunya root), tidak pernah ditampilkan
-  // ke super_admin_hr/admin_hr/karyawan, dan tidak bisa didelegasikan lewat
-  // toggle apapun.
-  superOnly: [
     { id: "pengaturan-sistem", label: "Pengaturan Sistem", icon: "gear", section: "Super Admin" },
   ],
 };
@@ -135,14 +139,13 @@ export async function resolveMenu(user) {
   }
 
   // super_admin/super_admin_hr/admin_hr: menu pribadi (grup "Menu Saya")
-  // digabung di atas menu staff, keduanya disaring bareng lewat toggle yang
-  // sama (allowed) untuk super_admin_hr & admin_hr; untuk super_admin,
-  // allowed = null = semua.
+  // digabung di atas menu staff (termasuk "Pengaturan Sistem" sekarang),
+  // semuanya disaring bareng lewat toggle yang sama (allowed) untuk
+  // super_admin_hr & admin_hr; untuk super_admin, allowed = null = semua,
+  // jadi "Pengaturan Sistem" selalu tampil untuknya tanpa perlu toggle.
   const personal = EMPLOYEE_SELF_MENUS.map(m => ({ ...m, section: "Menu Saya" }));
   const combined = [...personal, ...MENUS.staff];
-  const staff = allowed ? combined.filter(m => allowed.has(m.id)) : combined;
-  const extra = isSuper(user.role) ? MENUS.superOnly : []; // "Pengaturan Sistem": khusus super_admin
-  return [...staff, ...extra];
+  return allowed ? combined.filter(m => allowed.has(m.id)) : combined;
 }
 
 export async function renderSidebar(user, activeId) {

@@ -2,24 +2,37 @@ import { supabase } from "../supabaseClient.js";
 import { toast, invalidatePermissionCache, invalidatePayrollSettingsCache, payrollPeriodRange, fmtDate } from "../core.js";
 
 // =======================================================================
-// PENGATURAN SISTEM — khusus Super Admin (satu-satunya role "root"; ini
-// halaman satu-satunya jalan mengatur akses role lain, jadi sengaja tidak
-// bisa didelegasikan ke role lain sama sekali, termasuk Super Admin HR):
+// PENGATURAN SISTEM — dibuka default oleh Super Admin (satu-satunya role
+// "root"), tapi sekarang BISA didelegasikan ke Super Admin HR (opsional,
+// lewat baris "Pengaturan Sistem" di tabel Kelola Akses Menu di bawah —
+// defaultnya tetap mati untuk semua role selain Super Admin):
 //   1. Kelola Akses Menu — satu tabel, nyalakan/matikan menu mana saja yang
 //      boleh dibuka role Super Admin HR, Admin HR, dan/atau Karyawan (tiga
 //      kolom checkbox per baris, tersimpan independen di tabel
 //      role_permissions sebagai baris terpisah per (role, menu_id)). Ketiga
-//      role ini diperlakukan SAMA PERSIS — Super Admin HR tidak lagi
-//      istimewa, akses-nya sepenuhnya manual lewat tabel ini juga.
+//      role ini diperlakukan SAMA PERSIS — Super Admin HR tidak istimewa,
+//      akses-nya sepenuhnya manual lewat tabel ini juga — TERMASUK akses ke
+//      halaman "Pengaturan Sistem" ini sendiri, yang sekarang ikut jadi satu
+//      baris yang bisa ditoggle (lihat MENU_LABELS di bawah). Kalau
+//      dinyalakan untuk Super Admin HR, dia ikut bisa membuka & mengubah
+//      tabel ini (termasuk akses role lain, dan akses dirinya sendiri) serta
+//      Periode Cut-Off Slip Gaji — jadi nyalakan hanya kalau memang mau
+//      didelegasikan penuh sebagai admin cadangan.
 //   2. Periode Cut-Off Slip Gaji — atur tanggal mulai periode gajian kalau
 //      perusahaan pakai cut-off (mis. tgl 26 - 25), bukan kalender biasa.
 // RLS di Supabase tetap jadi penjaga utama (bukan cuma sembunyi menu di
 // sidebar) — jadi walau ada yang coba akses langsung lewat API, Super Admin
 // HR, Admin HR, maupun Karyawan tetap tertahan di menu yang belum diizinkan.
-// Hanya Super Admin yang benar-benar tidak bisa ditolak RLS (bypass mutlak).
+// Super Admin sendiri tidak pernah bisa ditolak RLS (bypass mutlak) — jadi
+// walau "Pengaturan Sistem" didelegasikan lalu suatu saat mau ditarik lagi,
+// Super Admin selalu tetap bisa membuka halaman ini untuk mematikannya.
 // =======================================================================
 
-// Menu staff (approval, laporan, master data, dst).
+// Menu staff (approval, laporan, master data, dst). "pengaturan-sistem"
+// sengaja ikut dimasukkan di sini (bukan lagi dikecualikan) supaya baris
+// "Pengaturan Sistem" muncul juga di tabel Kelola Akses Menu — datanya
+// tersimpan seperti menu lain, satu baris per (role, "pengaturan-sistem")
+// di role_permissions, dan defaultnya TIDAK ada baris = dianggap mati.
 const MENU_LABELS = {
   "karyawan": "Data Karyawan",
   "absensi-monitor": "Monitor Absensi",
@@ -35,6 +48,7 @@ const MENU_LABELS = {
   "master-jadwal": "Master Jadwal Kerja",
   "master-libur": "Master Hari Libur",
   "master-lokasi": "Master Lokasi Kantor",
+  "pengaturan-sistem": "Pengaturan Sistem (Kelola Akses & Cut-Off Gaji)",
 };
 
 // Menu pribadi (absensi/izin/lembur/riwayat sendiri).
@@ -52,8 +66,10 @@ const PERSONAL_MENU_LABELS = {
 // memang mau dibuka). Super Admin sendiri TIDAK ada kolomnya di sini — akses
 // Super Admin selalu penuh & tidak bisa dibatasi lewat toggle apapun (satu-
 // satunya role yang benar-benar bypass RLS). "pengaturan-sistem" (halaman
-// ini sendiri) juga sengaja tidak ada di daftar menu — cuma Super Admin yang
-// bisa membukanya, tidak bisa didelegasikan ke role lain sama sekali.
+// ini sendiri) SEKARANG ikut ada di daftar menu (lewat MENU_LABELS di atas)
+// supaya bisa didelegasikan ke Super Admin HR (atau, kalau memang mau,
+// Admin HR/Karyawan juga) — defaultnya tetap mati sampai sengaja dinyalakan
+// oleh Super Admin.
 const ROLES = ["super_admin_hr", "admin_hr", "karyawan"];
 const ALL_MENU_ROWS = [
   ...Object.keys(PERSONAL_MENU_LABELS).map(id => ({ id, label: PERSONAL_MENU_LABELS[id] })),
@@ -79,6 +95,12 @@ export async function render(container, user) {
       akses Super Admin selalu penuh dan tidak bisa dibatasi lewat toggle apapun. Menu yang
       dimatikan otomatis hilang dari sidebar, dan aksesnya tetap ditolak di sisi server walau
       dicoba lewat cara lain.
+      <br><br>
+      <strong>Catatan soal baris "Pengaturan Sistem":</strong> menu ini adalah halaman yang sedang
+      kamu buka sekarang. Menyalakannya untuk sebuah role berarti role itu ikut bisa membuka
+      halaman ini — termasuk mengubah tabel Kelola Akses (punya role lain, maupun punya dirinya
+      sendiri) dan Periode Cut-Off Slip Gaji. Nyalakan hanya kalau memang mau didelegasikan
+      sebagai admin cadangan (biasanya cukup untuk Super Admin HR saja).
     </p>
     <div id="perm-list" class="table-wrap" style="margin-bottom:32px;"><p class="muted">Memuat…</p></div>
 

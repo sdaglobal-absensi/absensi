@@ -501,12 +501,15 @@ create trigger trg_on_auth_user_created
 --     super_admin_hr, admin_hr, ATAU karyawan -- ketiganya lewat kolom
 --     `role`, jadi tiap role punya toggle sendiri yang independen, dan
 --     diperlakukan SAMA PERSIS satu sama lain). Diatur lewat menu
---     "Pengaturan Sistem" (halaman itu sendiri cuma bisa dibuka super_admin
---     -- satu-satunya root -- dan TIDAK ada di tabel ini, jadi tidak pernah
---     bisa dikunci sendiri ataupun didelegasikan ke role lain). Kalau
---     (role, menu_id) tidak ada barisnya di sini, dianggap TIDAK diizinkan
---     (fail-closed / restrictive by default). super_admin sendiri TIDAK
---     pernah punya baris di tabel ini -- selalu full akses lewat is_super().
+--     "Pengaturan Sistem" (dibuka default oleh super_admin -- satu-satunya
+--     root -- tapi SEKARANG BISA didelegasikan ke role lain, termasuk ke
+--     dirinya sendiri yaitu menu_id 'pengaturan-sistem', lewat baris di
+--     tabel ini juga -- lihat has_menu_access()/kebijakan tulis di bawah).
+--     Kalau (role, menu_id) tidak ada barisnya di sini, dianggap TIDAK
+--     diizinkan (fail-closed / restrictive by default) -- termasuk
+--     'pengaturan-sistem' sendiri, jadi delegasi ini murni opt-in. super_admin
+--     sendiri TIDAK pernah punya baris di tabel ini -- selalu full akses
+--     lewat is_super(), apapun isi tabel ini.
 -- ---------------------------------------------------------------------
 create table if not exists public.role_permissions (
   role        text not null check (role in ('super_admin_hr', 'admin_hr', 'karyawan')),
@@ -517,7 +520,7 @@ create table if not exists public.role_permissions (
   primary key (role, menu_id)
 );
 
-comment on table public.role_permissions is 'Kontrol menu mana yang bisa diakses role super_admin_hr, admin_hr, dan karyawan (satu baris per (role, menu_id)) -- ketiganya diperlakukan sama persis, diatur manual lewat Pengaturan Sistem. super_admin TIDAK pernah dicek ke tabel ini -- satu-satunya role yang selalu full akses & tidak bisa dibatasi lewat toggle apapun (lihat is_super()/has_menu_access()). Halaman "pengaturan-sistem" itu sendiri juga sengaja tidak pernah ada di tabel ini, supaya tidak pernah bisa dikunci sendiri dan tidak bisa didelegasikan ke role lain.';
+comment on table public.role_permissions is 'Kontrol menu mana yang bisa diakses role super_admin_hr, admin_hr, dan karyawan (satu baris per (role, menu_id)) -- ketiganya diperlakukan sama persis, diatur manual lewat Pengaturan Sistem. super_admin TIDAK pernah dicek ke tabel ini -- satu-satunya role yang selalu full akses & tidak bisa dibatasi lewat toggle apapun (lihat is_super()/has_menu_access()). Halaman "pengaturan-sistem" itu sendiri sekarang ikut jadi salah satu menu_id yang bisa ditoggle di sini (defaultnya mati untuk semua role), supaya bisa didelegasikan sebagai admin cadangan kalau memang mau -- lihat kebijakan role_permissions_write & payroll_settings_write.';
 
 -- Migrasi dari versi lama (role_permissions tanpa kolom `role`, PK di
 -- menu_id saja, semua baris implisit untuk admin_hr): aman dijalankan
@@ -587,7 +590,8 @@ insert into public.role_permissions (role, menu_id, enabled) values
   ('admin_hr', 'absensi', true),
   ('admin_hr', 'izin', true),
   ('admin_hr', 'lembur', true),
-  ('admin_hr', 'riwayat', true)
+  ('admin_hr', 'riwayat', true),
+  ('admin_hr', 'pengaturan-sistem', false)
 on conflict (role, menu_id) do nothing;
 
 -- Default Karyawan: 4 menu pribadi menyala (sama seperti perilaku lama),
@@ -612,14 +616,19 @@ insert into public.role_permissions (role, menu_id, enabled) values
   ('karyawan', 'master-departemen', false),
   ('karyawan', 'master-jadwal', false),
   ('karyawan', 'master-libur', false),
-  ('karyawan', 'master-lokasi', false)
+  ('karyawan', 'master-lokasi', false),
+  ('karyawan', 'pengaturan-sistem', false)
 on conflict (role, menu_id) do nothing;
 
--- Default Super Admin HR: SEMUA menu menyala dulu -- Super Admin HR tidak
--- lagi istimewa (beda dari super_admin), jadi diberi default "full akses"
--- yang persis sama seperti perilaku lama, tapi sekarang benar-benar cuma
--- default: bisa dimatikan manual satu-satu lewat Pengaturan Sistem kalau
--- Super Admin memang mau membatasi akun Super Admin HR tertentu.
+-- Default Super Admin HR: SEMUA menu operasional menyala dulu -- Super Admin
+-- HR tidak lagi istimewa (beda dari super_admin), jadi diberi default "full
+-- akses" yang persis sama seperti perilaku lama, tapi sekarang benar-benar
+-- cuma default: bisa dimatikan manual satu-satu lewat Pengaturan Sistem
+-- kalau Super Admin memang mau membatasi akun Super Admin HR tertentu.
+-- Pengecualian: 'pengaturan-sistem' TETAP dimulai mati (beda dari menu
+-- lain di daftar ini) -- ini halaman paling sensitif (kelola akses semua
+-- role + periode cut-off gaji global), jadi didelegasikan cuma kalau Super
+-- Admin sengaja menyalakannya manual, bukan otomatis lewat default seed ini.
 insert into public.role_permissions (role, menu_id, enabled) values
   ('super_admin_hr', 'karyawan', true),
   ('super_admin_hr', 'absensi-monitor', true),
@@ -638,7 +647,8 @@ insert into public.role_permissions (role, menu_id, enabled) values
   ('super_admin_hr', 'absensi', true),
   ('super_admin_hr', 'izin', true),
   ('super_admin_hr', 'lembur', true),
-  ('super_admin_hr', 'riwayat', true)
+  ('super_admin_hr', 'riwayat', true),
+  ('super_admin_hr', 'pengaturan-sistem', false)
 on conflict (role, menu_id) do nothing;
 
 -- ---------------------------------------------------------------------
@@ -741,26 +751,35 @@ create policy "profiles_admin_all" on public.profiles
 -- super_admin_hr/admin_hr sendiri bisa tahu menunya sendiri yang mana yang
 -- menyala lewat has_menu_access()); karyawan cuma boleh lihat baris
 -- role='karyawan' miliknya sendiri (perlu untuk sidebar-nya tahu menu mana
--- yang dinyalakan). Yang MENULIS tabel ini tetap khusus super_admin (satu-
--- satunya root), TIDAK bisa didelegasikan ke role lain lewat toggle apapun
--- (termasuk ke super_admin_hr) — lihat "role_permissions_super_write". Ini
--- sengaja tetap hardcoded (bukan lewat has_menu_access) supaya tidak pernah
--- ada skenario Super Admin terkunci total dari halaman Pengaturan Sistem.
+-- yang dinyalakan). Yang MENULIS tabel ini: super_admin (satu-satunya root,
+-- selalu bisa apapun isi tabel ini -- jadi tidak pernah ada skenario Super
+-- Admin terkunci total dari halaman Pengaturan Sistem), ATAU siapa pun yang
+-- sedang punya akses ke menu 'pengaturan-sistem' (lewat has_menu_access() --
+-- default TIDAK ada yang punya, murni opt-in kalau Super Admin sengaja
+-- menyalakan baris "Pengaturan Sistem" untuk role tsb, biasanya
+-- super_admin_hr, di tabel Kelola Akses Menu). payroll_settings pakai
+-- kebijakan yang sama persis, karena satu halaman yang sama.
 drop policy if exists "role_permissions_select" on public.role_permissions;
 create policy "role_permissions_select" on public.role_permissions
   for select using ( public.is_staff() or role = public.my_role() );
 
 drop policy if exists "role_permissions_super_write" on public.role_permissions;
-create policy "role_permissions_super_write" on public.role_permissions
-  for all using ( public.is_super() ) with check ( public.is_super() );
+drop policy if exists "role_permissions_write" on public.role_permissions;
+create policy "role_permissions_write" on public.role_permissions
+  for all
+  using ( public.is_super() or public.has_menu_access('pengaturan-sistem') )
+  with check ( public.is_super() or public.has_menu_access('pengaturan-sistem') );
 
 drop policy if exists "payroll_settings_select" on public.payroll_settings;
 create policy "payroll_settings_select" on public.payroll_settings
   for select using ( public.is_staff() );
 
 drop policy if exists "payroll_settings_super_write" on public.payroll_settings;
-create policy "payroll_settings_super_write" on public.payroll_settings
-  for all using ( public.is_super() ) with check ( public.is_super() );
+drop policy if exists "payroll_settings_write" on public.payroll_settings;
+create policy "payroll_settings_write" on public.payroll_settings
+  for all
+  using ( public.is_super() or public.has_menu_access('pengaturan-sistem') )
+  with check ( public.is_super() or public.has_menu_access('pengaturan-sistem') );
 
 -- attendance -------------------------------------------------------------
 drop policy if exists "attendance_select" on public.attendance;

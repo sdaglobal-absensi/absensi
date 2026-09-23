@@ -8,9 +8,9 @@ verifikasi **GPS lokasi** + **foto selfie** saat check-in/check-out. Ada 4 role:
 
 | Role | Akses |
 |---|---|
-| **Super Admin** | All Akses — semua menu, semua data, termasuk mengatur akses Admin HR & Karyawan. |
-| **Super Admin HR** | Setara persis dengan Super Admin (All Akses). Dua role terpisah supaya bisa dipegang orang yang berbeda tanpa harus berbagi satu akun "super admin". |
-| **Admin HR** | Akses dibatasi. Menu mana saja yang boleh dibuka diatur oleh Super Admin/Super Admin HR lewat menu **Pengaturan Sistem** — baik menu staff (approval, laporan, master data, dst) maupun menu pribadi (absensi/izin/lembur sendiri, karena Admin HR juga karyawan). Secara default: boleh monitor absensi, approve izin & lembur, lihat laporan, dan absen/ajukan izin & lembur sendiri — tapi *tidak* boleh buka Data Karyawan, Slip Gaji, Kenaikan Upah, atau Master Data sampai dinyalakan manual. |
+| **Super Admin** | All Akses — semua menu, semua data, satu-satunya role "root" yang tidak bisa dibatasi lewat toggle apapun. Satu-satunya yang bisa mengatur akses ketiga role lain lewat menu **Pengaturan Sistem** (default) & satu-satunya yang selalu tetap bisa membuka halaman itu apa pun kondisinya. |
+| **Super Admin HR** | TIDAK otomatis All Akses lagi — diperlakukan generik & sama persis seperti Admin HR/Karyawan: menu mana saja yang boleh dibuka diatur satu-satu lewat **Pengaturan Sistem**. Defaultnya menyala untuk hampir semua menu operasional (setara "full akses" versi lama), **kecuali** menu **Pengaturan Sistem** itu sendiri, yang defaultnya mati. Super Admin bisa menyalakan menu itu untuk Super Admin HR kalau memang mau didelegasikan jadi admin cadangan (lihat bagian 6 di bawah). |
+| **Admin HR** | Akses dibatasi. Menu mana saja yang boleh dibuka diatur oleh Super Admin (atau Super Admin HR, kalau sudah didelegasikan) lewat menu **Pengaturan Sistem** — baik menu staff (approval, laporan, master data, dst) maupun menu pribadi (absensi/izin/lembur sendiri, karena Admin HR juga karyawan). Secara default: boleh monitor absensi, approve izin & lembur, lihat laporan, dan absen/ajukan izin & lembur sendiri — tapi *tidak* boleh buka Data Karyawan, Slip Gaji, Kenaikan Upah, Master Data, atau Pengaturan Sistem sampai dinyalakan manual. |
 | **Karyawan** | Check-in/out, ajukan izin & lembur, lihat riwayat sendiri. Menu mana saja dari keempat ini yang aktif juga diatur lewat **Pengaturan Sistem** (default: semua menyala, sama seperti sebelumnya). |
 
 Menu pribadi (Absensi, Pengajuan Izin, Pengajuan Lembur, Riwayat Saya) kini
@@ -118,17 +118,26 @@ dibuat lewat panel admin. Untuk akun Super Admin pertama:
    menambah karyawan/Admin HR lain lewat menu **Data Karyawan** (otomatis
    membuat akun login untuk mereka).
 
-### 6. Atur akses Admin HR, akses Karyawan & periode cut-off slip gaji
-Login sebagai Super Admin/Super Admin HR → buka menu **Pengaturan Sistem**:
-- **Kelola Akses Menu** — satu tabel dengan dua kolom checkbox berdampingan,
-  **Akses Admin HR** dan **Akses Karyawan**, jadi bisa diatur sekaligus di satu
-  tempat. Kedua toggle independen satu sama lain (mematikan menu untuk satu
-  role tidak memengaruhi role lainnya). Menu staff (approval, laporan, master
-  data, dst) cuma berlaku untuk Admin HR — kolom Akses Karyawan di baris itu
-  ditandai "–". Menu pribadi (Absensi, Pengajuan Izin, Pengajuan Lembur,
-  Riwayat Saya) berlaku untuk keduanya — default: menyala semua untuk kedua
-  role (Admin HR karena mereka juga karyawan; Karyawan sama seperti perilaku
-  sebelumnya). Menu staff selain itu, default sesuai tabel Role di atas.
+### 6. Atur akses Super Admin HR, Admin HR, akses Karyawan & periode cut-off slip gaji
+Login sebagai Super Admin (atau Super Admin HR, kalau sudah didelegasikan
+akses ke menu ini — lihat poin terakhir di bawah) → buka menu **Pengaturan
+Sistem**:
+- **Kelola Akses Menu** — satu tabel dengan tiga kolom checkbox berdampingan,
+  **Akses Super Admin HR**, **Akses Admin HR**, dan **Akses Karyawan**, jadi
+  bisa diatur sekaligus di satu tempat. Ketiga toggle independen satu sama
+  lain (mematikan menu untuk satu role tidak memengaruhi role lainnya). Menu
+  pribadi (Absensi, Pengajuan Izin, Pengajuan Lembur, Riwayat Saya) berlaku
+  untuk ketiganya — default: menyala semua (ketiganya juga karyawan yang
+  perlu absen/ajukan izin & lembur sendiri). Menu staff selain itu, default
+  sesuai tabel Role di atas.
+- Salah satu baris di tabel itu adalah **Pengaturan Sistem** — yaitu halaman
+  ini sendiri. Defaultnya mati untuk ketiga role. Nyalakan kolom **Akses
+  Super Admin HR** di baris itu kalau kamu mau mendelegasikan pengelolaan
+  akses & periode cut-off gaji ke Super Admin HR — begitu dinyalakan, akun
+  Super Admin HR bisa buka halaman ini dan ikut mengubah tabel Kelola Akses
+  (termasuk akses role lain, dan akses dirinya sendiri) serta Periode
+  Cut-Off Slip Gaji, persis seperti Super Admin. Super Admin tetap selalu
+  bisa membuka halaman ini untuk mematikannya lagi kapan saja.
 - **Periode Cut-Off Slip Gaji** — isi `1` untuk periode kalender biasa
   (tanggal 1 s/d akhir bulan), atau isi tanggal lain (mis. `26`) kalau
   perusahaan pakai cut-off, misalnya periode berjalan dari tanggal 26 bulan
