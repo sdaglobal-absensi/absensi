@@ -76,6 +76,16 @@ let periodRange = { start: "", end: "" }; // rentang tanggal aktual (hasil cut-o
 
 export async function render(container, user) {
   period = dateOnlyISO(new Date()).slice(0, 7);
+  cutoffDay = await getPayrollCutoffDay();
+
+  // Kalau pakai cut-off (bukan kalender biasa), pakai dropdown yang
+  // labelnya langsung rentang tanggal ("21 Agu 2026 – 20 Sep 2026")
+  // supaya tidak perlu menebak-nebak arti nama bulannya. Kalau kalender
+  // biasa (cutoffDay = 1), input bulan bawaan browser sudah jelas.
+  const periodFilterHtml = cutoffDay > 1
+    ? `<select id="filter-period">${buildPeriodOptions(period, cutoffDay).map(o =>
+        `<option value="${o.value}" ${o.value === period ? "selected" : ""}>${o.label}</option>`).join("")}</select>`
+    : `<input type="month" id="filter-period" value="${period}">`;
 
   container.innerHTML = `
     <div class="page-header">
@@ -84,7 +94,7 @@ export async function render(container, user) {
         <p class="muted">Dihitung otomatis dari absensi, lembur, riwayat upah/gaji, dan Master Level. Tunjangan/potongan yang tidak tercatat otomatis bisa ditambahkan manual per karyawan. Rentang tanggal periode mengikuti pengaturan cut-off di menu Pengaturan Sistem.</p>
       </div>
       <div class="filter-row">
-        <input type="month" id="filter-period" value="${period}">
+        ${periodFilterHtml}
         <button id="btn-export" class="btn-secondary">Export Ringkasan (Excel)</button>
       </div>
     </div>
@@ -347,13 +357,30 @@ function renderTable() {
 // -----------------------------------------------------------------------
 // MODAL DETAIL SLIP
 // -----------------------------------------------------------------------
-function periodLabel(p) {
-  const [y, m] = p.split("-").map(Number);
-  const bulanTahun = new Date(y, m - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" });
-  if (cutoffDay > 1 && periodRange.start && periodRange.end) {
-    return `${bulanTahun} (${fmtDate(periodRange.start)} – ${fmtDate(periodRange.end)})`;
+// Daftar pilihan periode untuk dropdown (dipakai kalau cutoffDay > 1):
+// 2 periode ke depan + 12 periode ke belakang dari bulan berjalan,
+// masing-masing dilabeli langsung dengan rentang tanggal cut-off-nya.
+function buildPeriodOptions(centerPeriod, cutoffD) {
+  const [cy, cm] = centerPeriod.split("-").map(Number);
+  const options = [];
+  for (let offset = 2; offset >= -12; offset--) {
+    const d = new Date(cy, cm - 1 + offset, 1);
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const { start, end } = payrollPeriodRange(value, cutoffD);
+    options.push({ value, label: `${fmtDate(start)} – ${fmtDate(end)}` });
   }
-  return bulanTahun;
+  return options;
+}
+
+function periodLabel(p) {
+  // Kalau pakai cut-off (bukan kalender biasa), tampilkan rentang tanggal
+  // aslinya langsung — nama bulan di dropdown ("September 2026") gampang
+  // disalahartikan karena tidak sama dengan bulan awal periodenya.
+  if (cutoffDay > 1 && periodRange.start && periodRange.end) {
+    return `${fmtDate(periodRange.start)} – ${fmtDate(periodRange.end)}`;
+  }
+  const [y, m] = p.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" });
 }
 
 function openSlipModal(userId) {

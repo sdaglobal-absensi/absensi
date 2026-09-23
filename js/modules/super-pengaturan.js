@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, invalidatePermissionCache, invalidatePayrollSettingsCache } from "../core.js";
+import { toast, invalidatePermissionCache, invalidatePayrollSettingsCache, payrollPeriodRange, fmtDate } from "../core.js";
 
 // =======================================================================
 // PENGATURAN SISTEM — khusus Super Admin & Super Admin HR:
@@ -49,9 +49,9 @@ export async function render(container, user) {
     <h3 style="margin-bottom:10px;">Periode Cut-Off Slip Gaji</h3>
     <p class="muted small" style="margin-top:-6px; margin-bottom:14px;">
       Berlaku global untuk semua karyawan. Isi <strong>1</strong> kalau periode gajian mengikuti
-      kalender biasa (tanggal 1 s/d akhir bulan). Isi tanggal lain (mis. <strong>26</strong>) kalau
-      perusahaan pakai cut-off, misalnya periode berjalan dari tanggal 26 bulan sebelumnya sampai
-      tanggal 25 bulan yang dipilih di Slip Gaji.
+      kalender biasa (tanggal 1 s/d akhir bulan). Isi tanggal lain (mis. <strong>21</strong>) kalau
+      perusahaan pakai cut-off — angka yang kamu isi adalah <strong>tanggal mulai</strong> periode;
+      periode berakhir sehari sebelum tanggal itu di bulan berikutnya.
     </p>
     <form id="form-cutoff" class="form-row two-col" style="align-items:end; max-width:520px;">
       <label>Tanggal Mulai Periode (Cut-Off)
@@ -59,9 +59,11 @@ export async function render(container, user) {
       </label>
       <button type="submit" class="btn-primary">Simpan</button>
     </form>
+    <p class="muted small" id="cutoff-preview" style="margin-top:10px;"></p>
   `;
 
   document.getElementById("form-cutoff").addEventListener("submit", e => onSubmitCutoff(e, user));
+  document.getElementById("form-cutoff").cutoff_start_day.addEventListener("input", updateCutoffPreview);
 
   await loadPermissions(user);
   await loadCutoff();
@@ -126,6 +128,34 @@ async function loadCutoff() {
   const { data, error } = await supabase.from("payroll_settings").select("cutoff_start_day").eq("id", 1).single();
   const form = document.getElementById("form-cutoff");
   form.cutoff_start_day.value = error || !data ? 1 : (data.cutoff_start_day || 1);
+  updateCutoffPreview();
+}
+
+// Contoh nyata rentang tanggal periode BERJALAN (yang aktif hari ini),
+// dihitung ulang tiap angka cut-off diketik, supaya langsung kelihatan
+// efeknya sebelum diklik Simpan.
+function updateCutoffPreview() {
+  const el = document.getElementById("cutoff-preview");
+  if (!el) return;
+  const day = Number(document.getElementById("form-cutoff").cutoff_start_day.value);
+  if (!day || day < 1 || day > 28) { el.textContent = ""; return; }
+
+  const { start, end } = payrollPeriodRange(currentActivePeriod(day), day);
+  el.innerHTML = day === 1
+    ? `Contoh: periode bulan ini = <strong>${fmtDate(start)} – ${fmtDate(end)}</strong> (kalender biasa).`
+    : `Contoh: periode yang sedang berjalan hari ini = <strong>${fmtDate(start)} – ${fmtDate(end)}</strong>.`;
+}
+
+// Periode mana (dalam format "YYYY-MM", dilabeli bulan AKHIR-nya, sesuai
+// payrollPeriodRange) yang sedang aktif hari ini untuk tanggal cut-off
+// tertentu — dipakai cuma untuk preview di atas.
+function currentActivePeriod(cutoffD) {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m0 = now.getMonth(); // 0-indexed
+  const d = now.getDate();
+  const labelDate = cutoffD <= 1 || d < cutoffD ? new Date(y, m0, 1) : new Date(y, m0 + 1, 1);
+  return `${labelDate.getFullYear()}-${String(labelDate.getMonth() + 1).padStart(2, "0")}`;
 }
 
 async function onSubmitCutoff(e, user) {
