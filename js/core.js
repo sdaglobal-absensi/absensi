@@ -98,14 +98,14 @@ const MENUS = {
   // kalau memang dinyalakan lewat toggle "Kelola Akses Menu" (defaultnya
   // mati untuk semua role selain super_admin).
   staff: [
-    { id: "karyawan", label: "Data Karyawan", icon: "users" },
-    { id: "struktur-organisasi", label: "Struktur Organisasi", icon: "layers" },
-    { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock" },
-    { id: "izin-approval", label: "Approval Izin", icon: "check" },
-    { id: "lembur-approval", label: "Approval Lembur", icon: "check" },
-    { id: "kenaikan-upah", label: "Kenaikan Upah & Gaji", icon: "chart" },
-    { id: "slip-gaji", label: "Slip Gaji", icon: "file" },
-    { id: "laporan", label: "Laporan", icon: "chart" },
+    { id: "karyawan", label: "Data Karyawan", icon: "users", section: "Organisasi" },
+    { id: "struktur-organisasi", label: "Struktur Organisasi", icon: "layers", section: "Organisasi" },
+    { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock", section: "Approval & Monitoring" },
+    { id: "izin-approval", label: "Approval Izin", icon: "check", section: "Approval & Monitoring" },
+    { id: "lembur-approval", label: "Approval Lembur", icon: "check", section: "Approval & Monitoring" },
+    { id: "kenaikan-upah", label: "Kenaikan Upah & Gaji", icon: "chart", section: "Payroll & Laporan" },
+    { id: "slip-gaji", label: "Slip Gaji", icon: "file", section: "Payroll & Laporan" },
+    { id: "laporan", label: "Laporan", icon: "chart", section: "Payroll & Laporan" },
     { id: "master-level", label: "Master Level", icon: "layers", section: "Master Data" },
     { id: "master-tunjangan", label: "Master Tunjangan", icon: "chart", section: "Master Data" },
     { id: "master-denda", label: "Master Denda Telat", icon: "file", section: "Master Data" },

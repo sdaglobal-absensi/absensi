@@ -1,5 +1,4 @@
 import { supabase } from "../supabaseClient.js";
-import { toast } from "../core.js";
 
 // =======================================================================
 // STRUKTUR ORGANISASI — halaman baca-saja (tidak ada tombol edit di sini;
@@ -39,7 +38,6 @@ export async function render(container, user) {
         <h1>Struktur Organisasi</h1>
         <p class="muted">Disusun otomatis dari data Karyawan, Departemen/Bagian, dan Lokasi Kantor (Cabang) yang aktif. Untuk mengubah isinya, edit lewat menu Data Karyawan / Master Departemen / Master Lokasi Kantor.</p>
       </div>
-      <button id="btn-print-org" class="btn-secondary no-print">🖨️ Cetak</button>
     </div>
 
     <div id="org-summary" class="status-grid"><p class="muted">Memuat…</p></div>
@@ -54,22 +52,9 @@ export async function render(container, user) {
     <div id="org-tree" class="org-tree"><p class="muted">Memuat…</p></div>
   `;
 
-  document.getElementById("btn-print-org").addEventListener("click", onPrint);
   document.getElementById("org-search").addEventListener("input", e => applyFilter(e.target.value));
 
   await loadAndRender();
-}
-
-// Sebelum cetak, buka semua node dulu (supaya seluruh pohon ikut tercetak,
-// bukan cuma yang lagi di-expand), lalu kembalikan ke kondisi semula
-// setelah dialog cetak ditutup.
-function onPrint() {
-  const nodes = [...document.querySelectorAll("#org-tree .org-node")];
-  const prevOpen = nodes.map(n => n.open);
-  nodes.forEach(n => { n.open = true; });
-  const restore = () => { nodes.forEach((n, i) => { n.open = prevOpen[i]; }); window.removeEventListener("afterprint", restore); };
-  window.addEventListener("afterprint", restore);
-  window.print();
 }
 
 async function loadAndRender() {
