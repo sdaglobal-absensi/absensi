@@ -35,6 +35,7 @@ import { toast, invalidatePermissionCache, invalidatePayrollSettingsCache, payro
 // di role_permissions, dan defaultnya TIDAK ada baris = dianggap mati.
 const MENU_LABELS = {
   "karyawan": "Data Karyawan",
+  "struktur-organisasi": "Struktur Organisasi (Lihat Cabang & Departemen)",
   "absensi-monitor": "Monitor Absensi",
   "izin-approval": "Approval Izin",
   "lembur-approval": "Approval Lembur",

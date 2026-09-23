@@ -270,6 +270,35 @@ button { font-family: 'Inter'; cursor: pointer; }
 .badge-warn { background: var(--warn-bg); color: var(--warn); }
 .badge-danger { background: var(--danger-bg); color: var(--danger); }
 
+/* ---------------- Struktur Organisasi (tree) ---------------- */
+.org-tree { display: flex; flex-direction: column; gap: 12px; }
+.org-node { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.org-node > summary {
+  cursor: pointer; list-style: none; padding: 12px 16px; font-weight: 600;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+}
+.org-node > summary::-webkit-details-marker { display: none; }
+.org-node > summary::before { content: "▸"; color: var(--muted); margin-right: 8px; transition: transform 0.15s ease; display: inline-block; }
+.org-node[open] > summary::before { transform: rotate(90deg); }
+.org-node-cabang > summary { background: var(--primary); color: #F3F1E8; border-radius: var(--radius); }
+.org-node-cabang > summary::before { color: #F3F1E8; }
+.org-node-cabang[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.org-count { font-weight: 400; font-size: 0.78rem; opacity: 0.85; white-space: nowrap; }
+.org-children { padding: 12px 14px 14px 30px; display: flex; flex-direction: column; gap: 10px; }
+.org-node-dept > summary { background: var(--bg); }
+.org-node-dept[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.org-node-bagian > summary { font-weight: 500; font-size: 0.92rem; }
+.org-node-bagian[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.org-emp-list { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px 4px 30px; }
+.org-emp-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+.org-emp-name { font-weight: 600; }
+.org-emp-meta { color: var(--muted); font-size: 0.8rem; }
+.org-hidden { display: none !important; }
+@media print {
+  .no-print { display: none !important; }
+  .org-node { break-inside: avoid; }
+}
+
 /* ---------------- Tables ---------------- */
 .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 

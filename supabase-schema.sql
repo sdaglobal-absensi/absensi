@@ -596,6 +596,7 @@ end $$;
 -- default karena Admin HR juga karyawan yang perlu absen sendiri.
 insert into public.role_permissions (role, menu_id, enabled) values
   ('admin_hr', 'karyawan', false),
+  ('admin_hr', 'struktur-organisasi', true),
   ('admin_hr', 'absensi-monitor', true),
   ('admin_hr', 'izin-approval', true),
   ('admin_hr', 'lembur-approval', true),
@@ -626,6 +627,7 @@ insert into public.role_permissions (role, menu_id, enabled) values
   ('karyawan', 'lembur', true),
   ('karyawan', 'riwayat', true),
   ('karyawan', 'karyawan', false),
+  ('karyawan', 'struktur-organisasi', false),
   ('karyawan', 'absensi-monitor', false),
   ('karyawan', 'izin-approval', false),
   ('karyawan', 'lembur-approval', false),
@@ -653,6 +655,7 @@ on conflict (role, menu_id) do nothing;
 -- Admin sengaja menyalakannya manual, bukan otomatis lewat default seed ini.
 insert into public.role_permissions (role, menu_id, enabled) values
   ('super_admin_hr', 'karyawan', true),
+  ('super_admin_hr', 'struktur-organisasi', true),
   ('super_admin_hr', 'absensi-monitor', true),
   ('super_admin_hr', 'izin-approval', true),
   ('super_admin_hr', 'lembur-approval', true),
@@ -752,12 +755,14 @@ alter table public.leave_requests enable row level security;
 alter table public.office_locations enable row level security;
 
 -- profiles -------------------------------------------------------------
--- has_menu_access('laporan') ditambahkan di sini supaya menu "Laporan" bisa
--- baca nama/departemen karyawan (dipakai buat rekap) walau menu "Data
--- Karyawan" tidak ikut dinyalakan terpisah untuk role yang sama.
+-- has_menu_access('laporan') & has_menu_access('struktur-organisasi')
+-- ditambahkan di sini supaya menu "Laporan" dan "Struktur Organisasi" bisa
+-- baca nama/departemen/bagian/lokasi karyawan (dipakai buat rekap & pohon
+-- organisasi) walau menu "Data Karyawan" tidak ikut dinyalakan terpisah
+-- untuk role yang sama.
 drop policy if exists "profiles_select" on public.profiles;
 create policy "profiles_select" on public.profiles
-  for select using ( id = auth.uid() or public.is_staff() or public.has_menu_access('laporan') );
+  for select using ( id = auth.uid() or public.is_staff() or public.has_menu_access('laporan') or public.has_menu_access('struktur-organisasi') );
 
 drop policy if exists "profiles_update_self" on public.profiles;
 create policy "profiles_update_self" on public.profiles
@@ -827,9 +832,20 @@ create policy "role_permissions_write" on public.role_permissions
   using ( public.is_super() or public.has_menu_access('pengaturan-sistem') )
   with check ( public.is_super() or public.has_menu_access('pengaturan-sistem') );
 
+-- SELECT dibuka untuk SEMUA user yang login (termasuk karyawan), bukan cuma
+-- is_staff() -- cutoff_start_day bukan data sensitif, dan Karyawan WAJIB
+-- bisa membacanya juga, karena dipakai untuk menentukan rentang tanggal
+-- (start/end) yang menghitung slip gaji miliknya sendiri di menu "Slip
+-- Gaji Saya" (lihat admin-slip-gaji.js -> loadData() -> getPayrollCutoffDay()).
+-- Kalau dibatasi ke is_staff() saja, query Karyawan ditolak RLS, lalu
+-- getPayrollCutoffDay() di js/core.js diam-diam fallback ke cutoffDay=1
+-- (kalender biasa) -- bikin tampilan filter DAN rentang tanggal perhitungan
+-- slip gaji Karyawan beda (dan salah) dibanding punya staff untuk periode
+-- yang sama. Menulis (UPDATE) tetap dibatasi lewat payroll_settings_write
+-- di bawah, jadi ini cuma soal baca.
 drop policy if exists "payroll_settings_select" on public.payroll_settings;
 create policy "payroll_settings_select" on public.payroll_settings
-  for select using ( public.is_staff() );
+  for select using ( auth.uid() is not null );
 
 drop policy if exists "payroll_settings_super_write" on public.payroll_settings;
 drop policy if exists "payroll_settings_write" on public.payroll_settings;

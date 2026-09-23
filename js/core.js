@@ -99,6 +99,7 @@ const MENUS = {
   // mati untuk semua role selain super_admin).
   staff: [
     { id: "karyawan", label: "Data Karyawan", icon: "users" },
+    { id: "struktur-organisasi", label: "Struktur Organisasi", icon: "layers" },
     { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock" },
     { id: "izin-approval", label: "Approval Izin", icon: "check" },
     { id: "lembur-approval", label: "Approval Lembur", icon: "check" },
