@@ -1211,3 +1211,74 @@ end $$;
 -- Role yang tersedia: super_admin, super_admin_hr (keduanya All Akses),
 -- admin_hr (akses dibatasi, diatur lewat menu "Pengaturan Sistem" oleh
 -- salah satu dari 2 role di atas), karyawan.
+
+-- =====================================================================
+-- 12. MENU "PROFIL SAYA" + PENGAJUAN PERUBAHAN DATA
+-- =====================================================================
+-- Karyawan boleh mengedit LANGSUNG (tanpa approval) field low-risk milik
+-- sendiri (no HP, alamat, foto profil) lewat policy "profiles_update_self"
+-- yang SUDAH ADA di atas (mengizinkan update semua kolom profiles sendiri
+-- kecuali role). Field yang lebih sensitif/berdampak ke payroll & dokumen
+-- legal (nama, NIK KTP, NPWP, penempatan) TIDAK diizinkan diedit langsung
+-- lewat UI -- karyawan cuma bisa "mengajukan" lewat tabel di bawah, admin
+-- yang menyetujui baru datanya benar-benar berubah di profiles.
+create table if not exists public.profile_change_requests (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references public.profiles(id) on delete cascade,
+  field_key    text not null check (field_key in (
+                 'full_name','nik_ktp','npwp','unit_pt','lokasi_kerja','department','bagian','position'
+               )),
+  field_label  text not null,
+  old_value    text,
+  new_value    text not null,
+  reason       text not null,
+  status       text not null default 'pending' check (status in ('pending','approved','rejected')),
+  reviewed_by  uuid references public.profiles(id),
+  reviewed_at  timestamptz,
+  review_notes text,
+  created_at   timestamptz not null default now()
+);
+
+comment on table public.profile_change_requests is
+  'Pengajuan koreksi data profil (menu "Profil Saya") untuk field yang tidak boleh diedit langsung oleh karyawan -- baru diterapkan ke tabel profiles setelah disetujui lewat menu "Approval Perubahan Data".';
+
+alter table public.profile_change_requests enable row level security;
+
+drop policy if exists "pcr_select" on public.profile_change_requests;
+create policy "pcr_select" on public.profile_change_requests
+  for select using ( user_id = auth.uid() or public.has_menu_access('profil-approval') );
+
+drop policy if exists "pcr_insert_self" on public.profile_change_requests;
+create policy "pcr_insert_self" on public.profile_change_requests
+  for insert with check ( user_id = auth.uid() and public.has_menu_access('profil') );
+
+-- Karyawan boleh membatalkan (hapus) pengajuannya sendiri SELAMA masih
+-- berstatus pending -- begitu sudah approved/rejected, baris ini jadi
+-- riwayat yang tidak boleh dihapus siapa pun.
+drop policy if exists "pcr_delete_self" on public.profile_change_requests;
+create policy "pcr_delete_self" on public.profile_change_requests
+  for delete using ( user_id = auth.uid() and status = 'pending' );
+
+-- Approve/reject: hanya yang punya akses menu "profil-approval" (atau
+-- super_admin, selalu lewat has_menu_access() -> is_super()). Karyawan
+-- TIDAK BISA mengubah status pengajuannya sendiri (cuma insert & delete
+-- selagi pending, lihat 2 policy di atas).
+drop policy if exists "pcr_update_review" on public.profile_change_requests;
+create policy "pcr_update_review" on public.profile_change_requests
+  for update using ( public.has_menu_access('profil-approval') )
+  with check ( public.has_menu_access('profil-approval') );
+
+-- Menu baru: "profil" (personal, semua role, sama seperti absensi/izin/
+-- lembur/riwayat) dan "profil-approval" (staff, sama perlakuannya seperti
+-- izin-approval/lembur-approval). Default: profil menyala untuk semua
+-- role (setiap orang wajar mau bisa lihat & koreksi data sendiri);
+-- profil-approval mengikuti pola Admin HR/Super Admin HR yang sudah ada
+-- untuk approval lainnya (menyala default), Karyawan tetap mati.
+insert into public.role_permissions (role, menu_id, enabled) values
+  ('admin_hr', 'profil', true),
+  ('admin_hr', 'profil-approval', true),
+  ('super_admin_hr', 'profil', true),
+  ('super_admin_hr', 'profil-approval', true),
+  ('karyawan', 'profil', true),
+  ('karyawan', 'profil-approval', false)
+on conflict (role, menu_id) do nothing;

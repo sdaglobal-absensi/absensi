@@ -18,6 +18,29 @@ muncul di sidebar **semua role** — Super Admin, Super Admin HR, dan Admin HR
 juga bisa absen dan mengajukan izin/lembur untuk diri sendiri, tidak cuma
 role Karyawan.
 
+## Profil Saya (koreksi data mandiri)
+
+Semua role punya menu **Profil Saya** untuk melihat & memperbaiki data
+sendiri kalau ada yang salah:
+
+- **Bisa diubah langsung** (tanpa approval): No. HP, Alamat, dan Foto
+  Profil — tersimpan seketika, karena field ini rendah risiko.
+- **Butuh approval admin**: Nama Lengkap, NIK KTP, NPWP, Unit/PT, Lokasi
+  Kerja, Departemen, Bagian, dan Jabatan — field ini berkaitan dengan
+  payroll/BPJS/dokumen resmi, jadi karyawan cuma bisa **mengajukan**
+  perubahan (lengkap dengan alasan), lalu menunggu disetujui lewat menu
+  **Approval Perubahan Data** (Admin HR/Super Admin HR/Super Admin). Begitu
+  disetujui, data di Data Karyawan langsung ikut berubah. Karyawan bisa
+  membatalkan pengajuannya sendiri selama masih berstatus "Menunggu".
+  Kode Karyawan, Role, dan Status Karyawan tidak bisa diubah lewat menu ini
+  sama sekali (murni lewat menu Data Karyawan oleh admin).
+
+Menu **Approval Perubahan Data** defaultnya menyala untuk Admin HR & Super
+Admin HR (sama seperti Approval Izin/Lembur), bisa diatur lewat
+**Pengaturan Sistem** seperti menu lainnya. Tabel `profile_change_requests`
+& seed menu-nya ada di bagian akhir `supabase-schema.sql` (aman dijalankan
+ulang di project yang sudah ada, sama seperti bagian lain schema ini).
+
 Pembatasan akses Admin HR **dan** Karyawan ditegakkan di **dua lapis**: menu
 disembunyikan di sidebar (UI), dan RLS (Row Level Security) di Supabase
 menolak query langsung ke tabel terkait kalau menu itu belum diizinkan — jadi
@@ -51,9 +74,11 @@ js/modules/
   employee-izin.js           Form & riwayat pengajuan izin
   employee-lembur.js         Form & riwayat pengajuan lembur
   employee-riwayat.js        Riwayat & rekap absensi pribadi
+  employee-profil.js         Profil Saya: edit langsung (HP/alamat/foto) + ajukan perubahan data sensitif
   admin-karyawan.js          CRUD data karyawan (menu "karyawan")
   admin-absensi.js           Monitor absensi semua karyawan (menu "absensi-monitor")
   admin-izin.js              Approval izin (menu "izin-approval")
+  admin-profil-approval.js   Approval pengajuan perubahan data profil (menu "profil-approval")
   admin-lembur.js            Approval lembur (menu "lembur-approval")
   admin-kenaikan-upah.js     Riwayat & input kenaikan upah/gaji (menu "kenaikan-upah")
   admin-slip-gaji.js         Hitung & cetak slip gaji, ikut periode cut-off, bisa difinalisasi/dikunci (menu "slip-gaji")

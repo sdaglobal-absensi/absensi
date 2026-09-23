@@ -402,6 +402,18 @@ button { font-family: 'Inter'; cursor: pointer; }
   .org-node-title { max-width: 140px; }
 }
 
+/* ---------------- Profil Saya ---------------- */
+.profil-header-card { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; margin-bottom: 28px; }
+.profil-avatar-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.profil-avatar {
+  width: 76px; height: 76px; border-radius: 50%; background: var(--primary); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-family: 'Sora'; font-weight: 700;
+  font-size: 1.5rem; overflow: hidden; flex-shrink: 0;
+}
+.profil-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.btn-photo-upload { font-size: 0.78rem; padding: 6px 12px; text-align: center; }
+.profil-header-info h2 { font-size: 1.25rem; margin-bottom: 6px; }
+
 /* ---------------- Tables ---------------- */
 .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 
