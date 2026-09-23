@@ -902,7 +902,12 @@ create policy "payroll_adjustments_select" on public.payroll_adjustments
 
 drop policy if exists "payroll_adjustments_admin_write" on public.payroll_adjustments;
 create policy "payroll_adjustments_admin_write" on public.payroll_adjustments
-  for all using ( public.has_menu_access('slip-gaji') ) with check ( public.has_menu_access('slip-gaji') );
+  -- is_staff() ditambahkan supaya Karyawan TIDAK PERNAH bisa menulis baris
+  -- ini walau menu "Slip Gaji" sengaja ditoggle untuk role-nya (menu itu
+  -- untuknya cuma "lihat & cetak punya sendiri", bukan "kelola tunjangan/
+  -- potongan siapa saja").
+  for all using ( public.is_staff() and public.has_menu_access('slip-gaji') )
+  with check ( public.is_staff() and public.has_menu_access('slip-gaji') );
 
 -- payroll_periods & payroll_slips (Slip Gaji — kunci/finalisasi) -------------------------------------------------
 alter table public.payroll_periods enable row level security;
@@ -910,19 +915,33 @@ alter table public.payroll_slips enable row level security;
 
 drop policy if exists "payroll_periods_select" on public.payroll_periods;
 create policy "payroll_periods_select" on public.payroll_periods
-  for select using ( public.is_staff() );
+  -- Tabel ini cuma berisi status kunci per periode (tanggal & siapa yang
+  -- finalisasi), TIDAK ada angka gaji siapa pun -- jadi aman dibaca semua
+  -- orang yang login. Ini penting supaya Karyawan (yang tidak is_staff())
+  -- tetap tahu periode gajinya sendiri sudah final atau belum, dan supaya
+  -- slip yang ditampilkan ke dia ikut memakai snapshot yang dibekukan
+  -- (payroll_slips), bukan hasil hitung ulang yang bisa berubah-ubah.
+  for select using ( true );
 
+-- Finalisasi/buka kunci periode gaji HANYA boleh oleh Super Admin -- tidak
+-- ikut toggle has_menu_access('slip-gaji') lagi seperti sebelumnya (yang
+-- artinya kalau menu itu ditoggle utk Karyawan, dia jadi bisa ikut
+-- finalisasi/buka kunci periode siapa saja -- celah ini sekarang ditutup).
 drop policy if exists "payroll_periods_admin_write" on public.payroll_periods;
 create policy "payroll_periods_admin_write" on public.payroll_periods
-  for all using ( public.has_menu_access('slip-gaji') ) with check ( public.has_menu_access('slip-gaji') );
+  for all using ( public.is_super() ) with check ( public.is_super() );
 
 drop policy if exists "payroll_slips_select" on public.payroll_slips;
 create policy "payroll_slips_select" on public.payroll_slips
   for select using ( user_id = auth.uid() or public.is_staff() );
 
+-- Snapshot slip beku hanya ditulis lewat proses finalisasi/buka kunci di
+-- atas, jadi ikut dibatasi ke Super Admin saja juga -- staff lain
+-- (termasuk Karyawan kalau menu "Slip Gaji"-nya ditoggle) tetap bisa BACA
+-- (lihat slip), tapi tidak bisa menulis/menghapus snapshot siapa pun.
 drop policy if exists "payroll_slips_admin_write" on public.payroll_slips;
 create policy "payroll_slips_admin_write" on public.payroll_slips
-  for all using ( public.has_menu_access('slip-gaji') ) with check ( public.has_menu_access('slip-gaji') );
+  for all using ( public.is_super() ) with check ( public.is_super() );
 
 -- office_locations -------------------------------------------------------------
 drop policy if exists "office_select_all" on public.office_locations;

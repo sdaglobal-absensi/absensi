@@ -79,8 +79,24 @@ let periodInfo = null; // baris payroll_periods utk periode yg SEDANG dibuka, at
 let frozenSlipsByUser = {}; // { [userId]: snapshot } — dari payroll_slips, hanya terisi kalau periodInfo != null
 let currentUser = null; // disimpan supaya bisa dipakai di onFinalize/onUnlock
 
+// Batasan akses berdasarkan role, dihitung sekali di awal render():
+// - canFinalize: HANYA super_admin yang boleh finalisasi/buka kunci periode.
+// - canEditAdjust: super_admin/super_admin_hr/admin_hr boleh, Karyawan TIDAK
+//   (dia cuma boleh lihat & cetak slip miliknya sendiri, tidak bisa
+//   mengubah tunjangan/potongan siapa pun termasuk dirinya sendiri).
+// - isKaryawan: kalau true, daftar karyawan disaring cuma baris dirinya
+//   sendiri (walau tabel profiles yang dibaca RLS-nya memang sudah
+//   otomatis cuma balikin baris sendiri utk role ini, filter ini jaga-jaga
+//   di sisi tampilan juga).
+let roleFlags = { isKaryawan: false, canFinalize: false, canEditAdjust: true };
+
 export async function render(container, user) {
   currentUser = user;
+  roleFlags = {
+    isKaryawan: user.role === "karyawan",
+    canFinalize: user.role === "super_admin",
+    canEditAdjust: user.role !== "karyawan",
+  };
   period = dateOnlyISO(new Date()).slice(0, 7);
   cutoffDay = await getPayrollCutoffDay();
 
@@ -105,11 +121,13 @@ export async function render(container, user) {
     <div class="page-header">
       <div>
         <h1>Slip Gaji</h1>
-        <p class="muted">Dihitung otomatis dari absensi, lembur, riwayat upah/gaji, dan Master Level. Tunjangan/potongan yang tidak tercatat otomatis bisa ditambahkan manual per karyawan. Rentang tanggal periode mengikuti pengaturan cut-off di menu Pengaturan Sistem, sampai periode itu difinalisasi.</p>
+        <p class="muted">${roleFlags.isKaryawan
+          ? "Slip gaji kamu, dihitung otomatis dari absensi, lembur, dan data upah/gaji. Kalau ada yang dirasa keliru, hubungi HR/Admin."
+          : "Dihitung otomatis dari absensi, lembur, riwayat upah/gaji, dan Master Level. Tunjangan/potongan yang tidak tercatat otomatis bisa ditambahkan manual per karyawan. Rentang tanggal periode mengikuti pengaturan cut-off di menu Pengaturan Sistem, sampai periode itu difinalisasi."}</p>
       </div>
       <div class="filter-row">
         ${periodFilterHtml}
-        <button id="btn-export" class="btn-secondary">Export Ringkasan (Excel)</button>
+        ${roleFlags.isKaryawan ? "" : `<button id="btn-export" class="btn-secondary">Export Ringkasan (Excel)</button>`}
       </div>
     </div>
 
@@ -121,7 +139,7 @@ export async function render(container, user) {
     <div id="modal-slip" class="modal hidden">
       <div class="modal-box modal-box-lg">
         <div class="modal-actions no-print" style="justify-content:space-between; margin-bottom:14px;">
-          <button type="button" id="btn-edit-adjust" class="btn-secondary">✏️ Edit Tunjangan/Potongan</button>
+          ${roleFlags.canEditAdjust ? `<button type="button" id="btn-edit-adjust" class="btn-secondary">✏️ Edit Tunjangan/Potongan</button>` : `<span></span>`}
           <div style="display:flex; gap:10px;">
             <button type="button" id="btn-print-slip" class="btn-secondary">🖨️ Cetak / Simpan PDF</button>
             <button type="button" id="btn-close-slip" class="btn-primary">Tutup</button>
@@ -160,10 +178,10 @@ export async function render(container, user) {
   `;
 
   document.getElementById("filter-period").addEventListener("change", e => { period = e.target.value; loadAndRender(); });
-  document.getElementById("btn-export").addEventListener("click", doExport);
+  document.getElementById("btn-export")?.addEventListener("click", doExport);
   document.getElementById("btn-close-slip").addEventListener("click", () => document.getElementById("modal-slip").classList.add("hidden"));
   document.getElementById("btn-print-slip").addEventListener("click", () => window.print());
-  document.getElementById("btn-edit-adjust").addEventListener("click", () => openAdjustModal(currentSlip.emp.id));
+  document.getElementById("btn-edit-adjust")?.addEventListener("click", () => openAdjustModal(currentSlip.emp.id));
   document.getElementById("btn-cancel-adjust").addEventListener("click", () => document.getElementById("modal-adjust").classList.add("hidden"));
   document.getElementById("form-adjust").addEventListener("submit", e => onSubmitAdjust(e, user));
 
@@ -210,6 +228,14 @@ async function loadData(p) {
   if (errEmp) { toast("Gagal memuat data karyawan: " + errEmp.message, "error"); }
 
   employees = emp || []; // semua karyawan aktif, termasuk yg status/grade-nya belum diatur (biar admin tahu perlu dilengkapi)
+  // Karyawan biasa hanya boleh lihat baris dirinya sendiri, walau query di
+  // atas tidak difilter per user_id — RLS profiles sebenarnya sudah
+  // otomatis membatasi ini di sisi database, filter di sini cuma jaga-jaga
+  // tambahan di sisi tampilan supaya tetap benar walau RLS-nya nanti
+  // berubah.
+  if (roleFlags.isKaryawan && currentUser) {
+    employees = employees.filter(e => e.id === currentUser.id);
+  }
   jobLevels = levels || [];
 
   wageByUser = groupByUserSorted(wages);
@@ -271,25 +297,27 @@ function getSlip(userId) {
 function renderLockBanner() {
   const el = document.getElementById("slip-lock-banner");
   if (!el) return;
+  if (roleFlags.isKaryawan) { el.innerHTML = ""; return; } // status finalisasi tidak relevan buat karyawan, cukup lihat slipnya saja
   if (periodInfo) {
     const namaPenetap = employees.find(e => e.id === periodInfo.finalized_by)?.full_name || "—";
     el.innerHTML = `
       <div class="status-card done" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
         <span>🔒 <strong>Final</strong> — periode ini sudah difinalisasi oleh ${namaPenetap} pada ${fmtDate(periodInfo.finalized_at)}. Nilai di bawah dibekukan, tidak berubah walau pengaturan cut-off/tarif berubah lagi nanti.</span>
-        <button id="btn-unlock-period" class="btn-secondary" style="white-space:nowrap;">🔓 Buka Kunci</button>
+        ${roleFlags.canFinalize ? `<button id="btn-unlock-period" class="btn-secondary" style="white-space:nowrap;">🔓 Buka Kunci</button>` : ""}
       </div>`;
-    document.getElementById("btn-unlock-period").addEventListener("click", onUnlock);
+    document.getElementById("btn-unlock-period")?.addEventListener("click", onUnlock);
   } else {
     el.innerHTML = `
       <div class="status-card" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
-        <span>📝 <strong>Draft</strong> — nilai masih dihitung otomatis dan bisa berubah kalau absensi/lembur/tarif/pengaturan cut-off diubah. Finalisasi untuk mengunci angka periode ini.</span>
-        <button id="btn-finalize-period" class="btn-primary" style="white-space:nowrap;">🔒 Finalisasi Periode Ini</button>
+        <span>📝 <strong>Draft</strong> — nilai masih dihitung otomatis dan bisa berubah kalau absensi/lembur/tarif/pengaturan cut-off diubah.${roleFlags.canFinalize ? " Finalisasi untuk mengunci angka periode ini." : " Menunggu Super Admin memfinalisasi periode ini."}</span>
+        ${roleFlags.canFinalize ? `<button id="btn-finalize-period" class="btn-primary" style="white-space:nowrap;">🔒 Finalisasi Periode Ini</button>` : ""}
       </div>`;
-    document.getElementById("btn-finalize-period").addEventListener("click", onFinalize);
+    document.getElementById("btn-finalize-period")?.addEventListener("click", onFinalize);
   }
 }
 
 async function onFinalize() {
+  if (!roleFlags.canFinalize) { toast("Hanya Super Admin yang bisa finalisasi periode.", "error"); return; }
   if (!employees.length) { toast("Tidak ada data karyawan untuk difinalisasi", "error"); return; }
   const ok = confirm(`Finalisasi periode ${periodLabel(period)}?\n\nSetelah ini, angka slip gaji periode ini dikunci dan tidak akan berubah otomatis lagi walau cut-off/tarif diubah di kemudian hari. Bisa dibuka kunci lagi kalau perlu dikoreksi.`);
   if (!ok) return;
@@ -321,6 +349,7 @@ async function onFinalize() {
 }
 
 async function onUnlock() {
+  if (!roleFlags.canFinalize) { toast("Hanya Super Admin yang bisa membuka kunci periode.", "error"); return; }
   const ok = confirm(`Buka kunci periode ${periodLabel(period)}?\n\nSlip yang sudah dibekukan akan dihapus dan periode ini kembali ke mode draft (dihitung live). Angka bisa jadi berbeda dari yang tadinya sudah dicetak, sampai difinalisasi ulang.`);
   if (!ok) return;
 
@@ -410,12 +439,14 @@ function computeSlip(emp) {
 
 // -----------------------------------------------------------------------
 function renderSummary() {
+  const el = document.getElementById("slip-summary");
+  if (roleFlags.isKaryawan) { el.innerHTML = ""; return; } // ringkasan agregat cuma relevan buat staff yang lihat banyak karyawan
   const slips = getSlipList();
   const totalBersih = slips.reduce((s, x) => s + x.gajiBersih, 0);
   const totalLembur = slips.reduce((s, x) => s + x.jamLemburBiasa + x.jamLemburLibur, 0);
   const belumDiatur = slips.filter(x => !x.emp.status_karyawan).length;
 
-  document.getElementById("slip-summary").innerHTML = `
+  el.innerHTML = `
     <div class="status-card">
       <span class="status-label">Karyawan Aktif</span>
       <span class="status-value">${slips.length}</span>
@@ -513,8 +544,10 @@ function openSlipModal(userId) {
   currentSlip = getSlip(userId);
   renderSlipContent(currentSlip);
   const btnAdjust = document.getElementById("btn-edit-adjust");
-  btnAdjust.disabled = !!periodInfo;
-  btnAdjust.title = periodInfo ? "Periode ini sudah final — buka kunci dulu untuk mengubah tunjangan/potongan." : "";
+  if (btnAdjust) {
+    btnAdjust.disabled = !!periodInfo;
+    btnAdjust.title = periodInfo ? "Periode ini sudah final — buka kunci dulu untuk mengubah tunjangan/potongan." : "";
+  }
   document.getElementById("modal-slip").classList.remove("hidden");
 }
 
@@ -582,6 +615,7 @@ function renderSlipContent(s) {
 // PENYESUAIAN MANUAL (payroll_adjustments)
 // -----------------------------------------------------------------------
 function openAdjustModal(userId) {
+  if (!roleFlags.canEditAdjust) { toast("Kamu tidak punya akses untuk mengubah tunjangan/potongan.", "error"); return; }
   if (periodInfo) { toast("Periode ini sudah final — buka kunci dulu untuk mengubah tunjangan/potongan.", "error"); return; }
   const emp = employees.find(e => e.id === userId);
   const adj = adjByUser[userId] || { hari_dinas: 0, tunjangan_lain: 0, keterangan_tunjangan: "", potongan_lain: 0, keterangan_potongan: "" };
