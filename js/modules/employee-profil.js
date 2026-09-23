@@ -1,14 +1,16 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, uploadPhoto, roleLabel, fmtDateTime, confirmDialog, lamaBekerja, STAFF_ROLES } from "../core.js";
+import { toast, uploadPhoto, roleLabel, fmtDateTime, confirmDialog, lamaBekerja } from "../core.js";
 
-// Field administratif/legal (payroll, BPJS, dokumen resmi) — karyawan TIDAK
-// bisa edit langsung, cuma bisa mengajukan lewat profile_change_requests,
-// baru diterapkan setelah disetujui admin (lihat admin-profil-approval.js).
+// Field administratif/legal (payroll, BPJS, dokumen resmi) — TIDAK bisa
+// diedit langsung oleh siapa pun lewat halaman Profil Saya, cuma bisa
+// mengajukan lewat profile_change_requests, baru diterapkan setelah
+// disetujui admin (lihat admin-profil-approval.js).
 // Field penempatan (staffOnly: true) malah tidak boleh diajukan sama sekali
-// oleh role "karyawan" biasa — cuma Super Admin/Super Admin HR/Admin HR
-// (STAFF_ROLES) yang boleh mengajukan perubahannya sendiri; karyawan lain
-// cuma bisa lihat & diarahkan menghubungi Super Admin/HR, sama seperti
-// baris Kode Karyawan/Role/Status Karyawan di bawah.
+// dari sini oleh siapa pun — apapun rolenya (termasuk Super Admin/Super
+// Admin HR/Admin HR yang login dan melihat profilnya sendiri) cuma bisa
+// lihat & diarahkan "Hubungi Admin/HR", sama seperti baris Kode
+// Karyawan/Role/Status Karyawan di bawah. Perubahan field ini cuma bisa
+// lewat halaman Data Karyawan (admin-karyawan.js).
 const REQUESTABLE_FIELDS = [
   { key: "full_name", label: "Nama Lengkap" },
   { key: "nik_ktp", label: "NIK KTP" },
@@ -74,15 +76,15 @@ export async function render(container, user) {
             <tr>
               <td data-label="Field">${f.label}</td>
               <td data-label="Nilai Saat Ini">${escapeHtml(currentProfile[f.key] || "-")}</td>
-              <td data-label="Aksi">${(!f.staffOnly || STAFF_ROLES.includes(currentUser.role))
+              <td data-label="Aksi">${!f.staffOnly
                 ? `<button type="button" class="btn-link btn-ajukan" data-key="${f.key}" data-label="${escapeAttr(f.label)}">Ajukan Perubahan</button>`
-                : `<span class="muted small">Hubungi Super Admin/HR</span>`}</td>
+                : `<span class="muted small">Hubungi Admin/HR</span>`}</td>
             </tr>
           `).join("")}
           <tr>
             <td data-label="Field">Kode Karyawan / Role / Status Karyawan</td>
             <td data-label="Nilai Saat Ini" class="muted small">${escapeHtml(currentProfile.employee_code || "-")} • ${roleLabel(currentProfile.role)} • ${escapeHtml(currentProfile.status_karyawan || "-")}</td>
-            <td data-label="Aksi" class="muted small">Hubungi Super Admin/HR</td>
+            <td data-label="Aksi" class="muted small">Hubungi Admin/HR</td>
           </tr>
         </tbody>
       </table>
