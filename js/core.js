@@ -168,6 +168,10 @@ export async function renderSidebar(user, activeId) {
   }
   nav.innerHTML = html;
 
+  const initials = (user.full_name || "?")
+    .trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || "").join("") || "?";
+  const avatarEl = document.getElementById("sidebar-avatar");
+  if (avatarEl) avatarEl.textContent = initials;
   document.getElementById("sidebar-user-name").textContent = user.full_name;
   document.getElementById("sidebar-user-role").textContent = roleLabel(user.role);
   return menu;

@@ -9,16 +9,30 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
+  <div class="mobile-topbar">
+    <button id="btn-hamburger" class="btn-hamburger" aria-label="Buka menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    </button>
+    <span class="brand">Absensi.</span>
+    <span style="width:24px"></span>
+  </div>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
   <div class="app-shell">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">Absensi.</div>
       <div class="sidebar-user">
-        <span id="sidebar-user-name">—</span>
-        <span id="sidebar-user-role">—</span>
+        <span class="sidebar-avatar" id="sidebar-avatar">—</span>
+        <span class="sidebar-user-text">
+          <span id="sidebar-user-name">—</span>
+          <span id="sidebar-user-role">—</span>
+        </span>
       </div>
       <nav id="sidebar-nav"></nav>
       <div class="sidebar-footer">
-        <button id="btn-logout">Keluar</button>
+        <button id="btn-logout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          Keluar
+        </button>
       </div>
     </aside>
     <main class="main">
@@ -104,9 +118,24 @@
       const hashTab = location.hash.replace("#", "");
       const startTab = hashTab && isTabAllowed(hashTab) ? hashTab : fallbackTab;
 
+      const sidebar = document.getElementById("sidebar");
+      const backdrop = document.getElementById("sidebar-backdrop");
+      function closeMobileMenu() {
+        sidebar.classList.remove("mobile-open");
+        backdrop.classList.remove("show");
+      }
+      document.getElementById("btn-hamburger").addEventListener("click", () => {
+        sidebar.classList.add("mobile-open");
+        backdrop.classList.add("show");
+      });
+      backdrop.addEventListener("click", closeMobileMenu);
+
       document.getElementById("sidebar-nav").addEventListener("click", e => {
         const btn = e.target.closest(".nav-item");
-        if (btn) loadTab(btn.dataset.target);
+        if (btn) {
+          loadTab(btn.dataset.target);
+          closeMobileMenu(); // tutup drawer di HP begitu satu menu dipilih
+        }
       });
       document.getElementById("btn-logout").addEventListener("click", logout);
 
