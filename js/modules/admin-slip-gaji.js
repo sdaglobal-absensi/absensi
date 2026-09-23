@@ -73,10 +73,23 @@ let penaltyRules = { telat: { weekday: [], saturday: [] }, pulang_cepat: { weekd
 let currentSlip = null; // slip yang sedang dibuka di modal detail
 let cutoffDay = 1; // 1 = kalender biasa; diisi dari payroll_settings saat loadData
 let periodRange = { start: "", end: "" }; // rentang tanggal aktual (hasil cut-off) untuk periode terpilih
+let finalizedPeriods = {}; // { [period]: { period_start, period_end, cutoff_start_day, finalized_by, finalized_at } } — dimuat sekali saat render()
+let periodInfo = null; // baris payroll_periods utk periode yg SEDANG dibuka, atau null kalau masih draft
+let frozenSlipsByUser = {}; // { [userId]: snapshot } — dari payroll_slips, hanya terisi kalau periodInfo != null
+let currentUser = null; // disimpan supaya bisa dipakai di onFinalize/onUnlock
 
 export async function render(container, user) {
+  currentUser = user;
   period = dateOnlyISO(new Date()).slice(0, 7);
   cutoffDay = await getPayrollCutoffDay();
+
+  // Ambil semua periode yang sudah difinalisasi sekali di awal, supaya
+  // label dropdown (rentang tanggal) periode LAMA yang sudah dikunci tetap
+  // menampilkan rentang yang dibekukan saat itu, bukan hasil hitung ulang
+  // pakai cutoff yang berlaku sekarang.
+  const { data: fp } = await supabase.from("payroll_periods").select("*");
+  finalizedPeriods = {};
+  (fp || []).forEach(r => { finalizedPeriods[r.period] = r; });
 
   // Kalau pakai cut-off (bukan kalender biasa), pakai dropdown yang
   // labelnya langsung rentang tanggal ("21 Agu 2026 – 20 Sep 2026")
@@ -91,7 +104,7 @@ export async function render(container, user) {
     <div class="page-header">
       <div>
         <h1>Slip Gaji</h1>
-        <p class="muted">Dihitung otomatis dari absensi, lembur, riwayat upah/gaji, dan Master Level. Tunjangan/potongan yang tidak tercatat otomatis bisa ditambahkan manual per karyawan. Rentang tanggal periode mengikuti pengaturan cut-off di menu Pengaturan Sistem.</p>
+        <p class="muted">Dihitung otomatis dari absensi, lembur, riwayat upah/gaji, dan Master Level. Tunjangan/potongan yang tidak tercatat otomatis bisa ditambahkan manual per karyawan. Rentang tanggal periode mengikuti pengaturan cut-off di menu Pengaturan Sistem, sampai periode itu difinalisasi.</p>
       </div>
       <div class="filter-row">
         ${periodFilterHtml}
@@ -99,6 +112,7 @@ export async function render(container, user) {
       </div>
     </div>
 
+    <div id="slip-lock-banner"></div>
     <div id="slip-summary" class="status-grid"></div>
     <div id="slip-table" class="table-wrap"><p class="muted">Memuat…</p></div>
 
@@ -160,16 +174,24 @@ async function loadAndRender() {
   const el = document.getElementById("slip-table");
   el.innerHTML = `<p class="muted">Memuat…</p>`;
   await loadData(period);
+  renderLockBanner();
   renderSummary();
   renderTable();
 }
 
 async function loadData(p) {
   cutoffDay = await getPayrollCutoffDay();
-  periodRange = payrollPeriodRange(p, cutoffDay);
+
+  // Kalau periode ini sudah difinalisasi, pakai rentang tanggal yang
+  // DIBEKUKAN saat itu (bukan hasil hitung ulang dari cutoff sekarang),
+  // dan nanti render pakai snapshot payroll_slips, bukan hitung live.
+  periodInfo = finalizedPeriods[p] || null;
+  periodRange = periodInfo
+    ? { start: periodInfo.period_start, end: periodInfo.period_end }
+    : payrollPeriodRange(p, cutoffDay);
   const { start, end } = periodRange;
 
-  const [{ data: emp, error: errEmp }, { data: levels }, { data: wages }, { data: salaries }, { data: att }, { data: ot }, { data: adj }, { data: rules }, { data: types }, { data: alw }] = await Promise.all([
+  const [{ data: emp, error: errEmp }, { data: levels }, { data: wages }, { data: salaries }, { data: att }, { data: ot }, { data: adj }, { data: rules }, { data: types }, { data: alw }, { data: slips }] = await Promise.all([
     supabase.from("profiles").select("*").eq("is_active", true).order("full_name"),
     supabase.from("job_levels").select("*"),
     supabase.from("wage_history").select("*").lte("effective_date", end).order("effective_date", { ascending: false }),
@@ -180,6 +202,7 @@ async function loadData(p) {
     supabase.from("late_penalty_rules").select("*").eq("is_active", true).order("jam", { ascending: true }),
     supabase.from("allowance_types").select("*").eq("is_active", true),
     supabase.from("employee_allowances").select("*").eq("is_active", true),
+    periodInfo ? supabase.from("payroll_slips").select("*").eq("period", p) : Promise.resolve({ data: [] }),
   ]);
 
   if (errEmp) { toast("Gagal memuat data karyawan: " + errEmp.message, "error"); }
@@ -210,6 +233,98 @@ async function loadData(p) {
     if (!nama) return; // jenisnya sudah dinonaktifkan, jangan dihitung
     (allowancesByUser[a.user_id] ??= []).push({ nama, nominal: a.nominal || 0 });
   });
+
+  frozenSlipsByUser = {};
+  (slips || []).forEach(s => { frozenSlipsByUser[s.user_id] = s.snapshot; });
+}
+
+// -----------------------------------------------------------------------
+// MODE FINAL vs DRAFT
+// Kalau periode sudah difinalisasi (periodInfo != null), semua tampilan
+// (ringkasan, tabel, modal detail, export) pakai snapshot yang dibekukan
+// di payroll_slips — TIDAK dihitung ulang dari absensi/tarif yang berlaku
+// sekarang. Kalau belum, tetap dihitung live seperti sebelumnya.
+// -----------------------------------------------------------------------
+function getSlipList() {
+  if (periodInfo) {
+    // Roster yang ditampilkan = karyawan yang benar-benar punya slip beku
+    // saat difinalisasi (karyawan baru sesudahnya tidak ikut nongol di
+    // periode lama; karyawan yang keluar setelahnya tetap tampil di sini).
+    return employees
+      .map(e => frozenSlipsByUser[e.id])
+      .filter(Boolean);
+  }
+  return employees.map(computeSlip);
+}
+
+function getSlip(userId) {
+  if (periodInfo) return frozenSlipsByUser[userId] || null;
+  const emp = employees.find(e => e.id === userId);
+  return emp ? computeSlip(emp) : null;
+}
+
+function renderLockBanner() {
+  const el = document.getElementById("slip-lock-banner");
+  if (!el) return;
+  if (periodInfo) {
+    const namaPenetap = employees.find(e => e.id === periodInfo.finalized_by)?.full_name || "—";
+    el.innerHTML = `
+      <div class="status-card done" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
+        <span>🔒 <strong>Final</strong> — periode ini sudah difinalisasi oleh ${namaPenetap} pada ${fmtDate(periodInfo.finalized_at)}. Nilai di bawah dibekukan, tidak berubah walau pengaturan cut-off/tarif berubah lagi nanti.</span>
+        <button id="btn-unlock-period" class="btn-secondary" style="white-space:nowrap;">🔓 Buka Kunci</button>
+      </div>`;
+    document.getElementById("btn-unlock-period").addEventListener("click", onUnlock);
+  } else {
+    el.innerHTML = `
+      <div class="status-card" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
+        <span>📝 <strong>Draft</strong> — nilai masih dihitung otomatis dan bisa berubah kalau absensi/lembur/tarif/pengaturan cut-off diubah. Finalisasi untuk mengunci angka periode ini.</span>
+        <button id="btn-finalize-period" class="btn-primary" style="white-space:nowrap;">🔒 Finalisasi Periode Ini</button>
+      </div>`;
+    document.getElementById("btn-finalize-period").addEventListener("click", onFinalize);
+  }
+}
+
+async function onFinalize() {
+  if (!employees.length) { toast("Tidak ada data karyawan untuk difinalisasi", "error"); return; }
+  const ok = confirm(`Finalisasi periode ${periodLabel(period)}?\n\nSetelah ini, angka slip gaji periode ini dikunci dan tidak akan berubah otomatis lagi walau cut-off/tarif diubah di kemudian hari. Bisa dibuka kunci lagi kalau perlu dikoreksi.`);
+  if (!ok) return;
+
+  const { data: inserted, error: errPeriod } = await supabase.from("payroll_periods").insert({
+    period,
+    period_start: periodRange.start,
+    period_end: periodRange.end,
+    cutoff_start_day: cutoffDay,
+    finalized_by: currentUser.id,
+  }).select().single();
+  if (errPeriod) { toast("Gagal finalisasi: " + errPeriod.message, "error"); return; }
+
+  const rows = employees.map(emp => {
+    const slip = computeSlip(emp);
+    return { period, user_id: emp.id, snapshot: slip, gaji_bersih: slip.gajiBersih };
+  });
+  const { error: errSlips } = await supabase.from("payroll_slips").insert(rows);
+  if (errSlips) {
+    // rollback baris payroll_periods supaya tidak nyangkut setengah-jadi
+    await supabase.from("payroll_periods").delete().eq("period", period);
+    toast("Gagal menyimpan slip: " + errSlips.message, "error");
+    return;
+  }
+
+  finalizedPeriods[period] = inserted;
+  toast("Periode berhasil difinalisasi", "success");
+  await loadAndRender();
+}
+
+async function onUnlock() {
+  const ok = confirm(`Buka kunci periode ${periodLabel(period)}?\n\nSlip yang sudah dibekukan akan dihapus dan periode ini kembali ke mode draft (dihitung live). Angka bisa jadi berbeda dari yang tadinya sudah dicetak, sampai difinalisasi ulang.`);
+  if (!ok) return;
+
+  const { error } = await supabase.from("payroll_periods").delete().eq("period", period);
+  if (error) { toast("Gagal membuka kunci: " + error.message, "error"); return; }
+
+  delete finalizedPeriods[period];
+  toast("Periode dibuka kunci, kembali ke mode draft", "success");
+  await loadAndRender();
 }
 
 function groupByUserSorted(rows) {
@@ -289,7 +404,7 @@ function computeSlip(emp) {
 
 // -----------------------------------------------------------------------
 function renderSummary() {
-  const slips = employees.map(computeSlip);
+  const slips = getSlipList();
   const totalBersih = slips.reduce((s, x) => s + x.gajiBersih, 0);
   const totalLembur = slips.reduce((s, x) => s + x.jamLemburBiasa + x.jamLemburLibur, 0);
   const belumDiatur = slips.filter(x => !x.emp.status_karyawan).length;
@@ -317,9 +432,8 @@ function renderSummary() {
 
 function renderTable() {
   const el = document.getElementById("slip-table");
-  if (!employees.length) { el.innerHTML = `<p class="muted">Belum ada data karyawan aktif.</p>`; return; }
-
-  const slips = employees.map(computeSlip);
+  const slips = getSlipList();
+  if (!slips.length) { el.innerHTML = `<p class="muted">${periodInfo ? "Tidak ada slip yang difinalisasi untuk periode ini." : "Belum ada data karyawan aktif."}</p>`; return; }
 
   el.innerHTML = `
     <table class="table">
@@ -366,17 +480,23 @@ function buildPeriodOptions(centerPeriod, cutoffD) {
   for (let offset = 2; offset >= -12; offset--) {
     const d = new Date(cy, cm - 1 + offset, 1);
     const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const { start, end } = payrollPeriodRange(value, cutoffD);
-    options.push({ value, label: `${fmtDate(start)} – ${fmtDate(end)}` });
+    // Periode yang sudah final pakai rentang yang DIBEKUKAN saat itu, bukan
+    // hasil hitung ulang dari cutoff yang berlaku sekarang.
+    const frozen = finalizedPeriods[value];
+    const { start, end } = frozen
+      ? { start: frozen.period_start, end: frozen.period_end }
+      : payrollPeriodRange(value, cutoffD);
+    options.push({ value, label: `${fmtDate(start)} – ${fmtDate(end)}${frozen ? " 🔒" : ""}` });
   }
   return options;
 }
 
 function periodLabel(p) {
-  // Kalau pakai cut-off (bukan kalender biasa), tampilkan rentang tanggal
-  // aslinya langsung — nama bulan di dropdown ("September 2026") gampang
-  // disalahartikan karena tidak sama dengan bulan awal periodenya.
-  if (cutoffDay > 1 && periodRange.start && periodRange.end) {
+  // Kalau pakai cut-off (bukan kalender biasa) ATAU periode ini sudah
+  // difinalisasi, tampilkan rentang tanggal aktualnya langsung — nama
+  // bulan ("September 2026") gampang disalahartikan karena bisa tidak
+  // sama dengan bulan awal periodenya, apalagi kalau sudah dibekukan.
+  if ((cutoffDay > 1 || periodInfo) && periodRange.start && periodRange.end) {
     return `${fmtDate(periodRange.start)} – ${fmtDate(periodRange.end)}`;
   }
   const [y, m] = p.split("-").map(Number);
@@ -384,9 +504,11 @@ function periodLabel(p) {
 }
 
 function openSlipModal(userId) {
-  const emp = employees.find(e => e.id === userId);
-  currentSlip = computeSlip(emp);
+  currentSlip = getSlip(userId);
   renderSlipContent(currentSlip);
+  const btnAdjust = document.getElementById("btn-edit-adjust");
+  btnAdjust.disabled = !!periodInfo;
+  btnAdjust.title = periodInfo ? "Periode ini sudah final — buka kunci dulu untuk mengubah tunjangan/potongan." : "";
   document.getElementById("modal-slip").classList.remove("hidden");
 }
 
@@ -454,6 +576,7 @@ function renderSlipContent(s) {
 // PENYESUAIAN MANUAL (payroll_adjustments)
 // -----------------------------------------------------------------------
 function openAdjustModal(userId) {
+  if (periodInfo) { toast("Periode ini sudah final — buka kunci dulu untuk mengubah tunjangan/potongan.", "error"); return; }
   const emp = employees.find(e => e.id === userId);
   const adj = adjByUser[userId] || { hari_dinas: 0, tunjangan_lain: 0, keterangan_tunjangan: "", potongan_lain: 0, keterangan_potongan: "" };
   const form = document.getElementById("form-adjust");
@@ -503,7 +626,7 @@ async function onSubmitAdjust(e, user) {
 
 // -----------------------------------------------------------------------
 function doExport() {
-  const slips = employees.map(computeSlip);
+  const slips = getSlipList();
   if (!slips.length) { toast("Tidak ada data untuk diexport", "error"); return; }
   const rows = slips.map(s => ({
     "Nama": s.emp.full_name,

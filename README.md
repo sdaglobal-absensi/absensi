@@ -49,7 +49,7 @@ js/modules/
   admin-izin.js              Approval izin (menu "izin-approval")
   admin-lembur.js            Approval lembur (menu "lembur-approval")
   admin-kenaikan-upah.js     Riwayat & input kenaikan upah/gaji (menu "kenaikan-upah")
-  admin-slip-gaji.js         Hitung & cetak slip gaji, ikut periode cut-off (menu "slip-gaji")
+  admin-slip-gaji.js         Hitung & cetak slip gaji, ikut periode cut-off, bisa difinalisasi/dikunci (menu "slip-gaji")
   admin-laporan.js           Laporan bulanan + export (menu "laporan")
   admin-master-*.js          Master data (level, tunjangan, denda, departemen, jadwal, libur, lokasi)
   super-pengaturan.js        Kelola akses menu Admin HR + atur cut-off slip gaji (khusus Super Admin/Super Admin HR)
@@ -114,6 +114,21 @@ Login sebagai Super Admin/Super Admin HR → buka menu **Pengaturan Sistem**:
   perusahaan pakai cut-off, misalnya periode berjalan dari tanggal 26 bulan
   sebelumnya sampai tanggal 25 bulan yang dipilih. Berlaku global untuk semua
   karyawan.
+
+> **Catatan tentang mengubah cut-off setelah berjalan lama:** pengaturan ini
+> cuma satu angka global, dan periode gaji yang **belum difinalisasi** selalu
+> dihitung ulang pakai cut-off yang *sedang* berlaku. Jadi kalau cut-off
+> diubah 6 bulan/setahun lagi, membuka ulang slip gaji periode lama yang
+> belum difinalisasi bisa menggeser rentang tanggalnya dan mengubah
+> angkanya. Data absensi/lembur asli tidak ikut berubah — cuma cara
+> pengelompokannya ke periode yang bergeser. Supaya slip gaji yang sudah
+> dicetak/diserahkan ke karyawan tidak ikut berubah, gunakan tombol
+> **🔒 Finalisasi Periode Ini** di menu Slip Gaji setiap periode selesai —
+> begitu difinalisasi, angkanya dibekukan permanen (tabel `payroll_periods` +
+> `payroll_slips`) dan tidak lagi dihitung ulang otomatis walau cut-off atau
+> tarif di Master Level/Master Denda/Master Tunjangan berubah di kemudian
+> hari. Kalau perlu dikoreksi, ada tombol **🔓 Buka Kunci** untuk kembali ke
+> mode draft, lalu finalisasi ulang setelah dikoreksi.
 
 ### 7. Aktifkan email untuk fitur "Lupa Password"
 Fitur reset password memakai `supabase.auth.resetPasswordForEmail`, yang

@@ -330,6 +330,45 @@ create table if not exists public.payroll_adjustments (
 );
 
 -- ---------------------------------------------------------------------
+-- 4g-2. TABEL: payroll_periods & payroll_slips (Slip Gaji — kunci/finalisasi)
+--     payroll_settings.cutoff_start_day itu satu pengaturan GLOBAL yang bisa
+--     diubah kapan saja (mis. 6 bulan lagi). Kalau slip gaji selalu dihitung
+--     ulang live dari cutoff yang SEDANG berlaku, maka membuka ulang slip
+--     periode lama setelah cutoff berubah bisa menggeser rentang tanggalnya
+--     dan mengubah angka yang sudah pernah dicetak/diserahkan ke karyawan.
+--     Begitu juga kalau tarif di Master Level / Master Denda / Master
+--     Tunjangan diubah setelah slip lama pernah dibuat.
+--
+--     Solusinya: saat admin "Finalisasi" sebuah periode, hasil hitungan
+--     dibekukan (snapshot) ke payroll_slips. Setelah difinalisasi, periode
+--     itu TIDAK dihitung ulang otomatis lagi walau cutoff/tarif berubah di
+--     kemudian hari — hanya berubah kalau admin sengaja "Buka Kunci" lalu
+--     Finalisasi ulang. Periode yang belum difinalisasi tetap dihitung
+--     live seperti sebelumnya (mode draft, lihat "Slip Gaji" berjalan).
+-- ---------------------------------------------------------------------
+create table if not exists public.payroll_periods (
+  period             text primary key,  -- format 'YYYY-MM'
+  period_start       date not null,     -- rentang tanggal aktual (hasil cut-off) yang DIBEKUKAN saat finalisasi
+  period_end         date not null,
+  cutoff_start_day   integer not null,  -- snapshot payroll_settings.cutoff_start_day saat difinalisasi (jejak audit)
+  finalized_by       uuid references public.profiles(id),
+  finalized_at       timestamptz not null default now()
+);
+
+comment on table public.payroll_periods is 'Penanda periode gaji yang sudah difinalisasi/dikunci. Ada baris = periode itu final, slip-nya dibekukan di payroll_slips dan tidak dihitung ulang otomatis lagi.';
+
+create table if not exists public.payroll_slips (
+  id            uuid primary key default gen_random_uuid(),
+  period        text not null references public.payroll_periods(period) on delete cascade,
+  user_id       uuid not null references public.profiles(id) on delete cascade,
+  snapshot      jsonb not null,   -- seluruh rincian slip (pendapatan, potongan, dst.) yang dibekukan saat finalisasi
+  gaji_bersih   numeric not null, -- disalin dari snapshot supaya gampang dipakai untuk laporan/rekap tanpa parse JSON
+  unique (period, user_id)
+);
+
+comment on table public.payroll_slips is 'Snapshot slip gaji per karyawan per periode yang sudah difinalisasi. Sumber kebenaran begitu periode dikunci — bukan dihitung ulang dari absensi/lembur/tarif saat ini.';
+
+-- ---------------------------------------------------------------------
 -- 4h. TABEL: late_penalty_rules (Master Denda Terlambat & Pulang Cepat)
 --     Dulu tabel jam bertingkat ini "hardcode" di kode Slip Gaji, sekarang
 --     jadi setting manual yang bisa diubah admin/HR lewat menu Master Data
@@ -642,6 +681,26 @@ create policy "payroll_adjustments_select" on public.payroll_adjustments
 
 drop policy if exists "payroll_adjustments_admin_write" on public.payroll_adjustments;
 create policy "payroll_adjustments_admin_write" on public.payroll_adjustments
+  for all using ( public.has_menu_access('slip-gaji') ) with check ( public.has_menu_access('slip-gaji') );
+
+-- payroll_periods & payroll_slips (Slip Gaji — kunci/finalisasi) -------------------------------------------------
+alter table public.payroll_periods enable row level security;
+alter table public.payroll_slips enable row level security;
+
+drop policy if exists "payroll_periods_select" on public.payroll_periods;
+create policy "payroll_periods_select" on public.payroll_periods
+  for select using ( public.is_staff() );
+
+drop policy if exists "payroll_periods_admin_write" on public.payroll_periods;
+create policy "payroll_periods_admin_write" on public.payroll_periods
+  for all using ( public.has_menu_access('slip-gaji') ) with check ( public.has_menu_access('slip-gaji') );
+
+drop policy if exists "payroll_slips_select" on public.payroll_slips;
+create policy "payroll_slips_select" on public.payroll_slips
+  for select using ( user_id = auth.uid() or public.is_staff() );
+
+drop policy if exists "payroll_slips_admin_write" on public.payroll_slips;
+create policy "payroll_slips_admin_write" on public.payroll_slips
   for all using ( public.has_menu_access('slip-gaji') ) with check ( public.has_menu_access('slip-gaji') );
 
 -- office_locations -------------------------------------------------------------
