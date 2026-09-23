@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, reverseGeocode, fmtTime, fmtDate, todayISO, dateOnlyISO, zonedDayOfWeek, zonedTimestamp } from "../core.js";
+import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, reverseGeocode, fmtTime, fmtDate, todayISO, dateOnlyISO, zonedDayOfWeek, zonedTimestamp, TIMEZONE_OPTIONS } from "../core.js";
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -67,7 +67,10 @@ export async function render(container, user) {
   container.innerHTML = `
     <div class="page-header">
       <h1>Absensi</h1>
-      <p class="muted">${new Date().toLocaleDateString("id-ID", { timeZone: tz || undefined, weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
+      <div style="text-align:right;">
+        <p class="muted" style="margin:0;">${new Date().toLocaleDateString("id-ID", { timeZone: tz || undefined, weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
+        <div class="live-clock" id="live-clock">--:--:--</div>
+      </div>
     </div>
 
     ${openShift ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">Sesi kerja dari ${fmtDate(activeRow.date)} masih berjalan (belum check-out).</p>` : ""}
@@ -118,6 +121,28 @@ export async function render(container, user) {
   if (btnOpen) btnOpen.addEventListener("click", () => openCamera(btnOpen.dataset.mode, user, activeRow, tz));
 
   document.getElementById("btn-cancel").addEventListener("click", closeCamera);
+
+  startLiveClock(tz);
+}
+
+// Jam berjalan realtime di header halaman, mengikuti zona waktu LOKASI KERJA
+// karyawan (tz -- lihat resolveUserTimezone), bukan jam device/HP-nya. Timer
+// lama otomatis dihentikan tiap kali render() dipanggil ulang (misal ganti
+// tab lalu balik lagi ke Absensi), dan juga berhenti sendiri kalau elemennya
+// sudah tidak ada di DOM (user sudah pindah ke halaman lain).
+let clockInterval = null;
+function startLiveClock(tz) {
+  if (clockInterval) clearInterval(clockInterval);
+  const tzLabel = TIMEZONE_OPTIONS.find(t => t.value === tz)?.label || "WIB";
+
+  function tick() {
+    const el = document.getElementById("live-clock");
+    if (!el) { clearInterval(clockInterval); clockInterval = null; return; }
+    const timeStr = new Date().toLocaleTimeString("id-ID", { timeZone: tz || undefined, hour12: false });
+    el.textContent = `${timeStr} ${tzLabel}`;
+  }
+  tick();
+  clockInterval = setInterval(tick, 1000);
 }
 
 // Ambil jadwal kerja milik karyawan (untuk ditampilkan, dan dipakai juga

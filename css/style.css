@@ -244,6 +244,10 @@ button { font-family: 'Inter'; cursor: pointer; }
 
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
 .page-header h1 { font-size: 1.5rem; }
+.live-clock {
+  font-family: 'Sora', monospace; font-size: 1.15rem; font-weight: 700; color: var(--primary);
+  font-variant-numeric: tabular-nums; margin-top: 2px; letter-spacing: 0.02em;
+}
 .section-title { font-size: 1.1rem; margin: 32px 0 14px; }
 
 /* ---------------- Cards & status ---------------- */
