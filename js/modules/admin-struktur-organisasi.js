@@ -21,6 +21,14 @@ const NO_LOKASI = "__no_lokasi__";
 const NO_DEPT = "__no_dept__";
 const NO_BAGIAN = "__no_bagian__";
 
+// Ikon SVG (stroke, gaya sama dengan ikon sidebar di core.js) — dipakai
+// langsung di sini (bukan emoji) supaya tampilannya konsisten & rapi di
+// semua perangkat/OS.
+const ICON_CABANG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-7.5-7-12a7 7 0 1114 0c0 4.5-7 12-7 12z"/><circle cx="12" cy="9" r="2.3"/></svg>`;
+const ICON_DEPT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>`;
+const ICON_CHEVRON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>`;
+const ICON_SEARCH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>`;
+
 let tree = null; // hasil buildTree(), disimpan supaya search tidak perlu query ulang
 let stats = { totalKaryawan: 0, totalCabang: 0, totalDept: 0, totalBagian: 0 };
 
@@ -37,16 +45,31 @@ export async function render(container, user) {
     <div id="org-summary" class="status-grid"><p class="muted">Memuat…</p></div>
 
     <div class="filter-row no-print" style="margin-bottom:16px;">
-      <input type="text" id="org-search" placeholder="Cari nama karyawan atau kode karyawan…" style="max-width:340px;">
+      <div class="org-search-wrap">
+        ${ICON_SEARCH}
+        <input type="text" id="org-search" placeholder="Cari nama karyawan atau kode karyawan…">
+      </div>
     </div>
 
     <div id="org-tree" class="org-tree"><p class="muted">Memuat…</p></div>
   `;
 
-  document.getElementById("btn-print-org").addEventListener("click", () => window.print());
+  document.getElementById("btn-print-org").addEventListener("click", onPrint);
   document.getElementById("org-search").addEventListener("input", e => applyFilter(e.target.value));
 
   await loadAndRender();
+}
+
+// Sebelum cetak, buka semua node dulu (supaya seluruh pohon ikut tercetak,
+// bukan cuma yang lagi di-expand), lalu kembalikan ke kondisi semula
+// setelah dialog cetak ditutup.
+function onPrint() {
+  const nodes = [...document.querySelectorAll("#org-tree .org-node")];
+  const prevOpen = nodes.map(n => n.open);
+  nodes.forEach(n => { n.open = true; });
+  const restore = () => { nodes.forEach((n, i) => { n.open = prevOpen[i]; }); window.removeEventListener("afterprint", restore); };
+  window.addEventListener("afterprint", restore);
+  window.print();
 }
 
 async function loadAndRender() {
@@ -151,24 +174,51 @@ function roleBadge(role) {
   return map[role] || "";
 }
 
+// Inisial 1-2 huruf dari nama, dipakai di avatar bulat setiap baris
+// karyawan (huruf pertama dari maks. 2 kata pertama nama, huruf besar).
+function initials(fullName) {
+  return (fullName || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || "").join("") || "?";
+}
+
 function renderTree(el) {
   if (!tree.length) { el.innerHTML = `<p class="muted">Belum ada data karyawan aktif.</p>`; return; }
 
   el.innerHTML = tree.map(cabang => `
     <details class="org-node org-node-cabang">
-      <summary><span>📍 ${cabang.label}</span><span class="org-count">${cabang.count} karyawan</span></summary>
+      <summary>
+        <span class="org-summary-left">
+          <span class="org-chevron">${ICON_CHEVRON}</span>
+          <span class="org-icon org-icon-cabang">${ICON_CABANG}</span>
+          <span class="org-node-title">${cabang.label}</span>
+        </span>
+        <span class="org-pill">${cabang.count} karyawan</span>
+      </summary>
       <div class="org-children">
         ${cabang.depts.length ? cabang.depts.map(dept => `
           <details class="org-node org-node-dept">
-            <summary><span>${dept.label}</span><span class="org-count">${dept.count} karyawan</span></summary>
+            <summary>
+              <span class="org-summary-left">
+                <span class="org-chevron">${ICON_CHEVRON}</span>
+                <span class="org-icon org-icon-dept">${ICON_DEPT}</span>
+                <span class="org-node-title">${dept.label}</span>
+              </span>
+              <span class="org-pill">${dept.count} karyawan</span>
+            </summary>
             <div class="org-children">
               ${dept.bagians.map(bagian => `
                 <details class="org-node org-node-bagian">
-                  <summary><span>${bagian.label}</span><span class="org-count">${bagian.employees.length} karyawan</span></summary>
+                  <summary>
+                    <span class="org-summary-left">
+                      <span class="org-chevron">${ICON_CHEVRON}</span>
+                      <span class="org-node-title">${bagian.label}</span>
+                    </span>
+                    <span class="org-pill">${bagian.employees.length} karyawan</span>
+                  </summary>
                   <div class="org-emp-list">
                     ${bagian.employees.map(e => `
                       <div class="org-emp-row" data-search="${(e.full_name + " " + (e.employee_code || "")).toLowerCase()}">
-                        <span>
+                        <span class="org-avatar org-avatar-${e.role}">${initials(e.full_name)}</span>
+                        <span class="org-emp-info">
                           <span class="org-emp-name">${e.full_name}</span>
                           <span class="org-emp-meta">${e.position || "Jabatan belum diatur"}${e.employee_code ? ` · ${e.employee_code}` : ""}</span>
                         </span>
@@ -180,7 +230,7 @@ function renderTree(el) {
               `).join("")}
             </div>
           </details>
-        `).join("") : `<p class="muted small">Belum ada karyawan di cabang ini.</p>`}
+        `).join("") : `<p class="org-empty">Belum ada karyawan di cabang ini.</p>`}
       </div>
     </details>
   `).join("");

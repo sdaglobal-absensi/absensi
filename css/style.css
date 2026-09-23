@@ -271,32 +271,82 @@ button { font-family: 'Inter'; cursor: pointer; }
 .badge-danger { background: var(--danger-bg); color: var(--danger); }
 
 /* ---------------- Struktur Organisasi (tree) ---------------- */
-.org-tree { display: flex; flex-direction: column; gap: 12px; }
-.org-node { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.org-tree { display: flex; flex-direction: column; gap: 14px; }
+
+.org-search-wrap { position: relative; max-width: 360px; }
+.org-search-wrap svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--muted); pointer-events: none; }
+.org-search-wrap input { width: 100%; padding-left: 38px; }
+
+.org-node {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  overflow: hidden; box-shadow: 0 1px 2px rgba(27, 31, 29, 0.03);
+}
+.org-node + .org-node { margin-top: 0; }
 .org-node > summary {
-  cursor: pointer; list-style: none; padding: 12px 16px; font-weight: 600;
-  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  list-style: none; cursor: pointer; padding: 15px 18px;
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
 }
 .org-node > summary::-webkit-details-marker { display: none; }
-.org-node > summary::before { content: "▸"; color: var(--muted); margin-right: 8px; transition: transform 0.15s ease; display: inline-block; }
-.org-node[open] > summary::before { transform: rotate(90deg); }
-.org-node-cabang > summary { background: var(--primary); color: #F3F1E8; border-radius: var(--radius); }
-.org-node-cabang > summary::before { color: #F3F1E8; }
-.org-node-cabang[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-.org-count { font-weight: 400; font-size: 0.78rem; opacity: 0.85; white-space: nowrap; }
-.org-children { padding: 12px 14px 14px 30px; display: flex; flex-direction: column; gap: 10px; }
-.org-node-dept > summary { background: var(--bg); }
-.org-node-dept[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-.org-node-bagian > summary { font-weight: 500; font-size: 0.92rem; }
-.org-node-bagian[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-.org-emp-list { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px 4px 30px; }
-.org-emp-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
-.org-emp-name { font-weight: 600; }
-.org-emp-meta { color: var(--muted); font-size: 0.8rem; }
+
+.org-summary-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.org-chevron { display: flex; flex-shrink: 0; color: var(--muted); transition: transform 0.18s ease; }
+.org-chevron svg { width: 15px; height: 15px; }
+.org-node[open] > summary .org-chevron { transform: rotate(90deg); }
+
+.org-icon { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; }
+.org-icon svg { width: 16px; height: 16px; stroke-width: 2; }
+.org-icon-cabang { background: var(--primary); color: #F3F1E8; }
+.org-icon-dept { background: var(--ok-bg); color: var(--ok); }
+
+.org-node-title { font-family: 'Sora', sans-serif; font-weight: 600; font-size: 0.96rem; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.org-pill { background: var(--bg); color: var(--muted); font-size: 0.75rem; font-weight: 600; padding: 4px 12px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }
+
+.org-children { margin: 0 18px 16px 34px; padding: 12px 0 0 20px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+
+.org-node-dept { background: var(--bg); box-shadow: none; }
+.org-node-dept > summary { padding: 12px 14px; }
+.org-node-dept .org-node-title { font-size: 0.88rem; }
+.org-node-dept .org-icon { width: 26px; height: 26px; border-radius: 7px; }
+.org-node-dept .org-icon svg { width: 13px; height: 13px; }
+.org-node-dept .org-children { margin: 0 14px 14px 30px; padding-top: 10px; }
+
+.org-node-bagian { background: var(--surface); box-shadow: none; border-color: var(--border); }
+.org-node-bagian > summary { padding: 10px 14px; }
+.org-node-bagian .org-node-title { font-size: 0.84rem; font-weight: 500; }
+.org-node-bagian .org-pill { font-size: 0.7rem; padding: 3px 10px; }
+
+.org-empty { color: var(--muted); font-size: 0.82rem; padding: 2px 2px 6px; }
+
+.org-emp-list { display: flex; flex-direction: column; gap: 8px; padding: 0 14px 14px; }
+.org-emp-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.org-emp-row:hover { border-color: #D8D4C8; box-shadow: 0 2px 6px rgba(27, 31, 29, 0.05); }
+
+.org-avatar {
+  width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Sora', sans-serif; font-weight: 600; font-size: 0.74rem;
+}
+.org-avatar-super_admin { background: var(--danger); }
+.org-avatar-super_admin_hr { background: var(--warn); }
+.org-avatar-admin_hr { background: var(--ok); }
+.org-avatar-karyawan { background: var(--primary-light); }
+
+.org-emp-info { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
+.org-emp-name { font-weight: 600; font-size: 0.88rem; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.org-emp-meta { font-size: 0.76rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 .org-hidden { display: none !important; }
+
 @media print {
   .no-print { display: none !important; }
-  .org-node { break-inside: avoid; }
+  .org-node { break-inside: avoid; box-shadow: none; }
+}
+@media (max-width: 640px) {
+  .org-node-title { max-width: 140px; }
 }
 
 /* ---------------- Tables ---------------- */
