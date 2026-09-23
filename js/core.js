@@ -22,6 +22,38 @@ export function toast(message, type = "info") {
 }
 
 // =====================================================================
+// ROLE — 4 role: super_admin & super_admin_hr (all akses), admin_hr
+// (akses dibatasi & diatur lewat menu "Pengaturan Sistem"), karyawan.
+// =====================================================================
+export const SUPER_ROLES = ["super_admin", "super_admin_hr"];
+export const STAFF_ROLES = ["super_admin", "super_admin_hr", "admin_hr"];
+
+export function isSuper(role) {
+  return SUPER_ROLES.includes(role);
+}
+
+// Menu yang bisa dinyalakan/dimatikan untuk role admin_hr lewat menu
+// "Pengaturan Sistem". "pengaturan-sistem" itu sendiri sengaja TIDAK ada di
+// sini — cuma super_admin/super_admin_hr yang boleh mengatur akses, tidak
+// bisa didelegasikan ke admin_hr walau lewat toggle sekalipun.
+let cachedPermissions = null; // Set<menu_id> yang enabled=true untuk admin_hr, di-cache per sesi halaman
+export async function getAllowedMenus(user) {
+  if (isSuper(user.role)) return null; // null = semua menu, tidak difilter
+  if (user.role !== "admin_hr") return new Set(); // karyawan: tidak ada menu staff
+
+  if (cachedPermissions) return cachedPermissions;
+  const { data, error } = await supabase.from("role_permissions").select("menu_id").eq("enabled", true);
+  cachedPermissions = new Set(error ? [] : (data || []).map(r => r.menu_id));
+  return cachedPermissions;
+}
+
+// Dipanggil setelah menu "Pengaturan Sistem" menyimpan perubahan supaya
+// sidebar & guard langsung ikut ter-update tanpa perlu refresh halaman.
+export function invalidatePermissionCache() {
+  cachedPermissions = null;
+}
+
+// =====================================================================
 // SIDEBAR — menu berbeda tergantung role
 // =====================================================================
 const MENUS = {
@@ -31,21 +63,9 @@ const MENUS = {
     { id: "lembur", label: "Pengajuan Lembur", icon: "file" },
     { id: "riwayat", label: "Riwayat Saya", icon: "history" },
   ],
-  hr: [
-    { id: "karyawan", label: "Data Karyawan", icon: "users" },
-    { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock" },
-    { id: "izin-approval", label: "Approval Izin", icon: "check" },
-    { id: "lembur-approval", label: "Approval Lembur", icon: "check" },
-    { id: "laporan", label: "Laporan", icon: "chart" },
-    { id: "master-level", label: "Master Level", icon: "layers", section: "Master Data" },
-    { id: "master-tunjangan", label: "Master Tunjangan", icon: "chart", section: "Master Data" },
-    { id: "master-denda", label: "Master Denda Telat", icon: "file", section: "Master Data" },
-    { id: "master-departemen", label: "Master Departemen", icon: "grid", section: "Master Data" },
-    { id: "master-jadwal", label: "Master Jadwal Kerja", icon: "clock", section: "Master Data" },
-    { id: "master-libur", label: "Master Hari Libur", icon: "file", section: "Master Data" },
-    { id: "master-lokasi", label: "Master Lokasi Kantor", icon: "grid", section: "Master Data" },
-  ],
-  admin: [
+  // Dipakai bersama oleh super_admin, super_admin_hr, dan admin_hr — untuk
+  // admin_hr, daftar ini disaring lewat getAllowedMenus() sebelum ditampilkan.
+  staff: [
     { id: "karyawan", label: "Data Karyawan", icon: "users" },
     { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock" },
     { id: "izin-approval", label: "Approval Izin", icon: "check" },
@@ -61,6 +81,10 @@ const MENUS = {
     { id: "master-libur", label: "Master Hari Libur", icon: "file", section: "Master Data" },
     { id: "master-lokasi", label: "Master Lokasi Kantor", icon: "grid", section: "Master Data" },
   ],
+  // Menu khusus super_admin/super_admin_hr, tidak pernah ditampilkan ke admin_hr.
+  superOnly: [
+    { id: "pengaturan-sistem", label: "Pengaturan Sistem", icon: "gear", section: "Super Admin" },
+  ],
 };
 
 const ICONS = {
@@ -72,10 +96,21 @@ const ICONS = {
   users: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
   layers: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
   grid: "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z",
+  gear: "M12 15a3 3 0 100-6 3 3 0 000 6z M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z",
 };
 
-export function renderSidebar(user, activeId) {
-  const menu = MENUS[user.role] || [];
+// Menghitung daftar menu yang akan ditampilkan di sidebar untuk user ini,
+// setelah difilter lewat getAllowedMenus() (kalau admin_hr).
+export async function resolveMenu(user) {
+  if (user.role === "karyawan") return MENUS.karyawan;
+  const allowed = await getAllowedMenus(user); // null utk super_admin/super_admin_hr = semua
+  const staff = allowed ? MENUS.staff.filter(m => allowed.has(m.id)) : MENUS.staff;
+  const extra = isSuper(user.role) ? MENUS.superOnly : [];
+  return [...staff, ...extra];
+}
+
+export async function renderSidebar(user, activeId) {
+  const menu = await resolveMenu(user);
   const nav = document.getElementById("sidebar-nav");
   let html = "";
   let lastSection;
@@ -95,10 +130,52 @@ export function renderSidebar(user, activeId) {
 
   document.getElementById("sidebar-user-name").textContent = user.full_name;
   document.getElementById("sidebar-user-role").textContent = roleLabel(user.role);
+  return menu;
 }
 
 export function roleLabel(role) {
-  return { admin: "Admin", hr: "HR / Manager", karyawan: "Karyawan" }[role] || role;
+  return {
+    super_admin: "Super Admin",
+    super_admin_hr: "Super Admin HR",
+    admin_hr: "Admin HR",
+    karyawan: "Karyawan",
+  }[role] || role;
+}
+
+// =====================================================================
+// PERIODE SLIP GAJI (cut-off) — diatur lewat menu "Pengaturan Sistem",
+// disimpan di tabel payroll_settings (satu baris global untuk semua
+// karyawan). cutoff_start_day = 1 berarti periode kalender biasa
+// (tanggal 1 - akhir bulan). cutoff_start_day > 1 (mis. 26) berarti
+// periode berjalan dari tanggal itu di bulan sebelumnya sampai
+// (cutoff_start_day - 1) di bulan yang dipilih.
+// =====================================================================
+let cachedCutoffDay = null;
+export async function getPayrollCutoffDay() {
+  if (cachedCutoffDay != null) return cachedCutoffDay;
+  const { data, error } = await supabase.from("payroll_settings").select("cutoff_start_day").eq("id", 1).single();
+  cachedCutoffDay = error || !data ? 1 : (data.cutoff_start_day || 1);
+  return cachedCutoffDay;
+}
+
+export function invalidatePayrollSettingsCache() {
+  cachedCutoffDay = null;
+}
+
+// periodYYYYMM: string "YYYY-MM" dipilih di filter. Mengembalikan
+// { start, end } (format YYYY-MM-DD) rentang tanggal absensi/lembur yang
+// dipakai untuk menghitung slip gaji periode tsb.
+export function payrollPeriodRange(periodYYYYMM, cutoffStartDay = 1) {
+  const [y, m] = periodYYYYMM.split("-").map(Number);
+  if (!cutoffStartDay || cutoffStartDay <= 1) {
+    // Periode kalender biasa: tanggal 1 s/d akhir bulan yang sama.
+    return { start: `${periodYYYYMM}-01`, end: dateOnlyISO(new Date(y, m, 0)) };
+  }
+  // Periode cut-off: mulai tanggal cutoffStartDay bulan SEBELUMNYA,
+  // berakhir tanggal (cutoffStartDay - 1) bulan yang dipilih.
+  const startDate = new Date(y, m - 2, cutoffStartDay);
+  const endDate = new Date(y, m - 1, cutoffStartDay - 1);
+  return { start: dateOnlyISO(startDate), end: dateOnlyISO(endDate) };
 }
 
 // =====================================================================

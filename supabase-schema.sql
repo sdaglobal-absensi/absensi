@@ -18,7 +18,7 @@ create table if not exists public.profiles (
   id              uuid primary key references auth.users(id) on delete cascade,
   employee_code   text unique,
   full_name       text not null,
-  role            text not null default 'karyawan' check (role in ('admin','hr','karyawan')),
+  role            text not null default 'karyawan' check (role in ('super_admin','super_admin_hr','admin_hr','karyawan')),
   department      text,
   bagian          text,
   position        text,
@@ -65,7 +65,26 @@ set email = u.email
 from auth.users u
 where p.id = u.id and p.email is null;
 
-comment on table public.profiles is 'Data profil & role setiap pengguna. role: admin | hr | karyawan';
+-- ---------------------------------------------------------------------
+-- 1b. MIGRASI ROLE: admin -> super_admin, hr -> admin_hr
+--     (untuk database yang sudah pernah menjalankan versi schema lama
+--     dengan role admin/hr/karyawan). Constraint lama dilepas dulu supaya
+--     UPDATE di bawah tidak ditolak, baru constraint baru dipasang.
+--     Aman dijalankan berkali-kali (idempotent).
+-- ---------------------------------------------------------------------
+alter table public.profiles drop constraint if exists profiles_role_check;
+
+update public.profiles set role = 'super_admin' where role = 'admin';
+update public.profiles set role = 'admin_hr' where role = 'hr';
+
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'profiles_role_check') then
+    alter table public.profiles add constraint profiles_role_check
+      check (role in ('super_admin','super_admin_hr','admin_hr','karyawan'));
+  end if;
+end $$;
+
+comment on table public.profiles is 'Data profil & role setiap pengguna. role: super_admin | super_admin_hr | admin_hr | karyawan';
 
 -- ---------------------------------------------------------------------
 -- 2. TABEL: office_locations (titik kantor untuk validasi radius GPS)
@@ -411,7 +430,11 @@ create trigger trg_profiles_updated_at
 
 -- ---------------------------------------------------------------------
 -- 6. TRIGGER: auto-create profile saat user baru signup
---    (role default 'karyawan'; admin bisa upgrade role lewat panel admin)
+--    Role SELALU dibuat 'karyawan' di sini, TIDAK PERNAH dipercaya dari
+--    signUp metadata (anon key itu publik, siapa pun bisa memanggil
+--    auth.signUp langsung dan menitipkan role apapun kalau kita percaya
+--    metadata-nya). Super Admin/Super Admin HR/Admin HR menaikkan role
+--    lewat UPDATE ke tabel profiles sesudahnya, yang tunduk RLS di bawah.
 -- ---------------------------------------------------------------------
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -420,7 +443,7 @@ begin
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'full_name', new.email),
-    coalesce(new.raw_user_meta_data->>'role', 'karyawan'),
+    'karyawan',
     new.raw_user_meta_data->>'employee_code',
     new.email
   )
@@ -435,6 +458,59 @@ create trigger trg_on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ---------------------------------------------------------------------
+-- 6b. TABEL: role_permissions (menu mana yang boleh dibuka role admin_hr)
+--     Diatur lewat menu "Pengaturan Sistem" (khusus super_admin &
+--     super_admin_hr). Kalau menu_id tidak ada barisnya di sini, dianggap
+--     TIDAK diizinkan (fail-closed / restrictive by default).
+-- ---------------------------------------------------------------------
+create table if not exists public.role_permissions (
+  menu_id     text primary key,
+  enabled     boolean not null default false,
+  updated_by  uuid references public.profiles(id),
+  updated_at  timestamptz not null default now()
+);
+
+comment on table public.role_permissions is 'Kontrol menu mana yang bisa diakses role admin_hr. super_admin & super_admin_hr selalu full akses, tidak dicek ke tabel ini.';
+
+-- Default setelah migrasi: yang sudah jadi kerjaan harian HR sebelumnya
+-- (monitor, approval, laporan) tetap menyala; data sensitif (karyawan,
+-- gaji, master data) dimatikan dulu -- Super Admin bisa nyalakan manual.
+insert into public.role_permissions (menu_id, enabled) values
+  ('karyawan', false),
+  ('absensi-monitor', true),
+  ('izin-approval', true),
+  ('lembur-approval', true),
+  ('kenaikan-upah', false),
+  ('slip-gaji', false),
+  ('laporan', true),
+  ('master-level', false),
+  ('master-tunjangan', false),
+  ('master-denda', false),
+  ('master-departemen', false),
+  ('master-jadwal', false),
+  ('master-libur', false),
+  ('master-lokasi', false)
+on conflict (menu_id) do nothing;
+
+-- ---------------------------------------------------------------------
+-- 6c. TABEL: payroll_settings (periode cut-off Slip Gaji, satu baris global)
+-- ---------------------------------------------------------------------
+create table if not exists public.payroll_settings (
+  id                 integer primary key default 1,
+  cutoff_start_day   integer not null default 1 check (cutoff_start_day between 1 and 28),
+  updated_by         uuid references public.profiles(id),
+  updated_at         timestamptz not null default now(),
+  constraint payroll_settings_single_row check (id = 1)
+);
+
+comment on table public.payroll_settings is 'Pengaturan global periode gajian. cutoff_start_day=1 berarti kalender biasa (tgl 1 - akhir bulan); >1 (mis. 26) berarti periode cut-off tgl itu s/d (tgl itu - 1) bulan berikutnya.';
+
+insert into public.payroll_settings (id, cutoff_start_day) values (1, 1) on conflict (id) do nothing;
+
+alter table public.role_permissions enable row level security;
+alter table public.payroll_settings enable row level security;
+
+-- ---------------------------------------------------------------------
 -- 7. HELPER FUNCTION: role user yang sedang login
 --    (security definer supaya tidak memicu rekursi RLS di profiles)
 -- ---------------------------------------------------------------------
@@ -443,9 +519,30 @@ returns text language sql security definer stable set search_path = public as $$
   select role from public.profiles where id = auth.uid();
 $$;
 
-create or replace function public.is_admin_or_hr()
+-- Super Admin & Super Admin HR = All Akses, setara persis di semua tabel.
+create or replace function public.is_super()
 returns boolean language sql security definer stable set search_path = public as $$
-  select coalesce((select role in ('admin','hr') from public.profiles where id = auth.uid()), false);
+  select coalesce((select role in ('super_admin','super_admin_hr') from public.profiles where id = auth.uid()), false);
+$$;
+
+-- Dipakai untuk akses BACA bersama (dashboard/laporan) oleh ketiga role
+-- staff — tidak berarti boleh menulis/mengubah, itu diatur has_menu_access().
+create or replace function public.is_staff()
+returns boolean language sql security definer stable set search_path = public as $$
+  select coalesce((select role in ('super_admin','super_admin_hr','admin_hr') from public.profiles where id = auth.uid()), false);
+$$;
+
+-- true kalau user sekarang boleh MENGELOLA (tulis) resource yang terkait
+-- menu tsb: selalu true untuk super_admin/super_admin_hr, untuk admin_hr
+-- baru true kalau menu_id itu enabled=true di role_permissions.
+create or replace function public.has_menu_access(p_menu_id text)
+returns boolean language sql security definer stable set search_path = public as $$
+  select
+    public.is_super()
+    or (
+      (select role from public.profiles where id = auth.uid()) = 'admin_hr'
+      and coalesce((select enabled from public.role_permissions where menu_id = p_menu_id), false)
+    );
 $$;
 
 -- ---------------------------------------------------------------------
@@ -459,7 +556,7 @@ alter table public.office_locations enable row level security;
 -- profiles -------------------------------------------------------------
 drop policy if exists "profiles_select" on public.profiles;
 create policy "profiles_select" on public.profiles
-  for select using ( id = auth.uid() or public.is_admin_or_hr() );
+  for select using ( id = auth.uid() or public.is_staff() );
 
 drop policy if exists "profiles_update_self" on public.profiles;
 create policy "profiles_update_self" on public.profiles
@@ -468,13 +565,37 @@ create policy "profiles_update_self" on public.profiles
 
 drop policy if exists "profiles_admin_all" on public.profiles;
 create policy "profiles_admin_all" on public.profiles
-  for all using ( public.my_role() = 'admin' )
-  with check ( public.my_role() = 'admin' );
+  for all
+  using ( public.is_super() or public.has_menu_access('karyawan') )
+  with check (
+    -- admin_hr cuma boleh membuat/menyimpan profil ber-role 'karyawan' --
+    -- tidak bisa menaikkan siapa pun (termasuk dirinya) ke role staff/admin,
+    -- walau menu "Data Karyawan" diizinkan Super Admin sekalipun.
+    public.is_super() or ( public.has_menu_access('karyawan') and role = 'karyawan' )
+  );
+
+-- role_permissions & payroll_settings — khusus super_admin/super_admin_hr,
+-- TIDAK bisa didelegasikan lewat toggle apapun (beda dari menu lain).
+drop policy if exists "role_permissions_select" on public.role_permissions;
+create policy "role_permissions_select" on public.role_permissions
+  for select using ( public.is_staff() );
+
+drop policy if exists "role_permissions_super_write" on public.role_permissions;
+create policy "role_permissions_super_write" on public.role_permissions
+  for all using ( public.is_super() ) with check ( public.is_super() );
+
+drop policy if exists "payroll_settings_select" on public.payroll_settings;
+create policy "payroll_settings_select" on public.payroll_settings
+  for select using ( public.is_staff() );
+
+drop policy if exists "payroll_settings_super_write" on public.payroll_settings;
+create policy "payroll_settings_super_write" on public.payroll_settings
+  for all using ( public.is_super() ) with check ( public.is_super() );
 
 -- attendance -------------------------------------------------------------
 drop policy if exists "attendance_select" on public.attendance;
 create policy "attendance_select" on public.attendance
-  for select using ( user_id = auth.uid() or public.is_admin_or_hr() );
+  for select using ( user_id = auth.uid() or public.is_staff() );
 
 drop policy if exists "attendance_insert_self" on public.attendance;
 create policy "attendance_insert_self" on public.attendance
@@ -482,12 +603,12 @@ create policy "attendance_insert_self" on public.attendance
 
 drop policy if exists "attendance_update_self" on public.attendance;
 create policy "attendance_update_self" on public.attendance
-  for update using ( user_id = auth.uid() or public.my_role() = 'admin' );
+  for update using ( user_id = auth.uid() or public.has_menu_access('absensi-monitor') );
 
 -- leave_requests -------------------------------------------------------------
 drop policy if exists "leave_select" on public.leave_requests;
 create policy "leave_select" on public.leave_requests
-  for select using ( user_id = auth.uid() or public.is_admin_or_hr() );
+  for select using ( user_id = auth.uid() or public.is_staff() );
 
 drop policy if exists "leave_insert_self" on public.leave_requests;
 create policy "leave_insert_self" on public.leave_requests
@@ -495,14 +616,14 @@ create policy "leave_insert_self" on public.leave_requests
 
 drop policy if exists "leave_update" on public.leave_requests;
 create policy "leave_update" on public.leave_requests
-  for update using ( user_id = auth.uid() or public.is_admin_or_hr() );
+  for update using ( user_id = auth.uid() or public.has_menu_access('izin-approval') );
 
 -- overtime_requests (Pengajuan Lembur) -------------------------------------------------------------
 alter table public.overtime_requests enable row level security;
 
 drop policy if exists "overtime_select" on public.overtime_requests;
 create policy "overtime_select" on public.overtime_requests
-  for select using ( user_id = auth.uid() or public.is_admin_or_hr() );
+  for select using ( user_id = auth.uid() or public.is_staff() );
 
 drop policy if exists "overtime_insert_self" on public.overtime_requests;
 create policy "overtime_insert_self" on public.overtime_requests
@@ -510,18 +631,18 @@ create policy "overtime_insert_self" on public.overtime_requests
 
 drop policy if exists "overtime_update" on public.overtime_requests;
 create policy "overtime_update" on public.overtime_requests
-  for update using ( user_id = auth.uid() or public.is_admin_or_hr() );
+  for update using ( user_id = auth.uid() or public.has_menu_access('lembur-approval') );
 
 -- payroll_adjustments (Slip Gaji — komponen manual) -------------------------------------------------------------
 alter table public.payroll_adjustments enable row level security;
 
 drop policy if exists "payroll_adjustments_select" on public.payroll_adjustments;
 create policy "payroll_adjustments_select" on public.payroll_adjustments
-  for select using ( user_id = auth.uid() or public.is_admin_or_hr() );
+  for select using ( user_id = auth.uid() or public.is_staff() );
 
 drop policy if exists "payroll_adjustments_admin_write" on public.payroll_adjustments;
 create policy "payroll_adjustments_admin_write" on public.payroll_adjustments
-  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+  for all using ( public.has_menu_access('slip-gaji') ) with check ( public.has_menu_access('slip-gaji') );
 
 -- office_locations -------------------------------------------------------------
 drop policy if exists "office_select_all" on public.office_locations;
@@ -530,7 +651,7 @@ create policy "office_select_all" on public.office_locations
 
 drop policy if exists "office_admin_write" on public.office_locations;
 create policy "office_admin_write" on public.office_locations
-  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+  for all using ( public.has_menu_access('master-lokasi') ) with check ( public.has_menu_access('master-lokasi') );
 
 -- job_levels (Master Level) -------------------------------------------------------------
 drop trigger if exists trg_job_levels_updated_at on public.job_levels;
@@ -542,33 +663,33 @@ alter table public.job_levels enable row level security;
 
 drop policy if exists "job_levels_select" on public.job_levels;
 create policy "job_levels_select" on public.job_levels
-  for select using ( public.is_admin_or_hr() );
+  for select using ( public.is_staff() );
 
 drop policy if exists "job_levels_admin_write" on public.job_levels;
 create policy "job_levels_admin_write" on public.job_levels
-  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+  for all using ( public.has_menu_access('master-level') ) with check ( public.has_menu_access('master-level') );
 
 -- wage_history (Riwayat Upah Harian) -------------------------------------------------------------
 alter table public.wage_history enable row level security;
 
 drop policy if exists "wage_history_select" on public.wage_history;
 create policy "wage_history_select" on public.wage_history
-  for select using ( user_id = auth.uid() or public.is_admin_or_hr() );
+  for select using ( user_id = auth.uid() or public.is_staff() );
 
 drop policy if exists "wage_history_admin_write" on public.wage_history;
 create policy "wage_history_admin_write" on public.wage_history
-  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+  for all using ( public.has_menu_access('kenaikan-upah') ) with check ( public.has_menu_access('kenaikan-upah') );
 
 -- salary_history (Riwayat Gaji Bulanan) -------------------------------------------------------------
 alter table public.salary_history enable row level security;
 
 drop policy if exists "salary_history_select" on public.salary_history;
 create policy "salary_history_select" on public.salary_history
-  for select using ( user_id = auth.uid() or public.is_admin_or_hr() );
+  for select using ( user_id = auth.uid() or public.is_staff() );
 
 drop policy if exists "salary_history_admin_write" on public.salary_history;
 create policy "salary_history_admin_write" on public.salary_history
-  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+  for all using ( public.has_menu_access('kenaikan-upah') ) with check ( public.has_menu_access('kenaikan-upah') );
 
 -- departments (Master Departemen) -------------------------------------------------------------
 drop trigger if exists trg_departments_updated_at on public.departments;
@@ -580,11 +701,11 @@ alter table public.departments enable row level security;
 
 drop policy if exists "departments_select" on public.departments;
 create policy "departments_select" on public.departments
-  for select using ( public.is_admin_or_hr() );
+  for select using ( public.is_staff() );
 
 drop policy if exists "departments_admin_write" on public.departments;
 create policy "departments_admin_write" on public.departments
-  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+  for all using ( public.has_menu_access('master-departemen') ) with check ( public.has_menu_access('master-departemen') );
 
 -- work_schedules & work_schedule_days (Master Jadwal Kerja) -------------------------------------------------------------
 drop trigger if exists trg_work_schedules_updated_at on public.work_schedules;
@@ -599,13 +720,13 @@ drop policy if exists "schedules_select" on public.work_schedules;
 create policy "schedules_select" on public.work_schedules for select using ( true );
 drop policy if exists "schedules_admin_write" on public.work_schedules;
 create policy "schedules_admin_write" on public.work_schedules
-  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+  for all using ( public.has_menu_access('master-jadwal') ) with check ( public.has_menu_access('master-jadwal') );
 
 drop policy if exists "schedule_days_select" on public.work_schedule_days;
 create policy "schedule_days_select" on public.work_schedule_days for select using ( true );
 drop policy if exists "schedule_days_admin_write" on public.work_schedule_days;
 create policy "schedule_days_admin_write" on public.work_schedule_days
-  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+  for all using ( public.has_menu_access('master-jadwal') ) with check ( public.has_menu_access('master-jadwal') );
 
 -- holidays (Master Hari Libur) -------------------------------------------------------------
 alter table public.holidays enable row level security;
@@ -613,7 +734,7 @@ drop policy if exists "holidays_select" on public.holidays;
 create policy "holidays_select" on public.holidays for select using ( true );
 drop policy if exists "holidays_admin_write" on public.holidays;
 create policy "holidays_admin_write" on public.holidays
-  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+  for all using ( public.has_menu_access('master-libur') ) with check ( public.has_menu_access('master-libur') );
 
 -- late_penalty_rules (Master Denda Terlambat & Pulang Cepat) -------------------------------------------------------------
 drop trigger if exists trg_late_penalty_rules_updated_at on public.late_penalty_rules;
@@ -625,11 +746,11 @@ alter table public.late_penalty_rules enable row level security;
 
 drop policy if exists "late_penalty_rules_select" on public.late_penalty_rules;
 create policy "late_penalty_rules_select" on public.late_penalty_rules
-  for select using ( public.is_admin_or_hr() );
+  for select using ( public.is_staff() );
 
 drop policy if exists "late_penalty_rules_admin_write" on public.late_penalty_rules;
 create policy "late_penalty_rules_admin_write" on public.late_penalty_rules
-  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+  for all using ( public.has_menu_access('master-denda') ) with check ( public.has_menu_access('master-denda') );
 
 -- allowance_types & employee_allowances (Master Tunjangan) -------------------------------------------------------------
 drop trigger if exists trg_allowance_types_updated_at on public.allowance_types;
@@ -647,19 +768,19 @@ alter table public.employee_allowances enable row level security;
 
 drop policy if exists "allowance_types_select" on public.allowance_types;
 create policy "allowance_types_select" on public.allowance_types
-  for select using ( public.is_admin_or_hr() );
+  for select using ( public.is_staff() );
 
 drop policy if exists "allowance_types_admin_write" on public.allowance_types;
 create policy "allowance_types_admin_write" on public.allowance_types
-  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+  for all using ( public.has_menu_access('master-tunjangan') ) with check ( public.has_menu_access('master-tunjangan') );
 
 drop policy if exists "employee_allowances_select" on public.employee_allowances;
 create policy "employee_allowances_select" on public.employee_allowances
-  for select using ( user_id = auth.uid() or public.is_admin_or_hr() );
+  for select using ( user_id = auth.uid() or public.is_staff() );
 
 drop policy if exists "employee_allowances_admin_write" on public.employee_allowances;
 create policy "employee_allowances_admin_write" on public.employee_allowances
-  for all using ( public.my_role() = 'admin' ) with check ( public.my_role() = 'admin' );
+  for all using ( public.has_menu_access('master-tunjangan') ) with check ( public.has_menu_access('master-tunjangan') );
 
 
 
@@ -735,12 +856,16 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
--- 11. AKUN ADMIN PERTAMA
+-- 11. AKUN SUPER ADMIN PERTAMA
 -- ---------------------------------------------------------------------
 -- Buat user pertama lewat Supabase Dashboard > Authentication > Users >
 -- Add user (centang "Auto Confirm User"). Trigger di atas otomatis membuat
--- baris di public.profiles untuknya. Lalu jalankan baris berikut (ganti
--- email) supaya akun itu jadi admin:
+-- baris di public.profiles untuknya (role default 'karyawan'). Lalu
+-- jalankan baris berikut (ganti email) supaya akun itu jadi Super Admin:
 --
--- update public.profiles set role = 'admin' where id =
+-- update public.profiles set role = 'super_admin' where id =
 --   (select id from auth.users where email = 'admin@perusahaan.com');
+--
+-- Role yang tersedia: super_admin, super_admin_hr (keduanya All Akses),
+-- admin_hr (akses dibatasi, diatur lewat menu "Pengaturan Sistem" oleh
+-- salah satu dari 2 role di atas), karyawan.

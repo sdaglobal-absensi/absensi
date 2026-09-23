@@ -30,7 +30,7 @@
     import { requireAuth, logout } from "./js/auth.js";
     import { renderSidebar } from "./js/core.js";
 
-    const DEFAULT_TAB = { admin: "karyawan", hr: "absensi-monitor", karyawan: "absensi" };
+    const DEFAULT_TAB_KARYAWAN = "absensi";
 
     const MODULE_MAP = {
       "absensi": () => import("./js/modules/employee-absensi.js"),
@@ -51,13 +51,26 @@
       "master-jadwal": () => import("./js/modules/admin-master-jadwal.js"),
       "master-libur": () => import("./js/modules/admin-master-libur.js"),
       "master-lokasi": () => import("./js/modules/admin-master-lokasi.js"),
+      "pengaturan-sistem": () => import("./js/modules/super-pengaturan.js"),
     };
 
     let currentUser = null;
+    let allowedTabIds = null; // Set berisi tabId yang boleh dibuka user ini (null = tidak dibatasi, khusus super role)
+
+    function isTabAllowed(tabId) {
+      if (!MODULE_MAP[tabId]) return false;
+      if (currentUser.role === "karyawan") return ["absensi", "izin", "lembur", "riwayat"].includes(tabId);
+      if (!allowedTabIds) return true; // super_admin / super_admin_hr
+      return allowedTabIds.has(tabId);
+    }
 
     async function loadTab(tabId) {
+      if (!isTabAllowed(tabId)) {
+        document.getElementById("content").innerHTML =
+          `<p class="muted">Kamu tidak punya akses ke halaman ini. Hubungi Super Admin / Super Admin HR kalau merasa ini seharusnya bisa diakses.</p>`;
+        return;
+      }
       const loader = MODULE_MAP[tabId];
-      if (!loader) return;
       try {
         const mod = await loader();
         document.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.target === tabId));
@@ -72,7 +85,7 @@
 
     (async function init() {
       try {
-        currentUser = await requireAuth(["admin", "hr", "karyawan"]);
+        currentUser = await requireAuth(["super_admin", "super_admin_hr", "admin_hr", "karyawan"]);
       } catch (err) {
         console.error("Gagal memeriksa sesi:", err);
         document.getElementById("content").innerHTML =
@@ -81,8 +94,12 @@
       }
       if (!currentUser) return;
 
-      const startTab = location.hash.replace("#", "") || DEFAULT_TAB[currentUser.role];
-      renderSidebar(currentUser, startTab);
+      const menu = await renderSidebar(currentUser, null); // activeId diisi ulang di loadTab lewat startTab
+      allowedTabIds = currentUser.role === "karyawan" ? null : new Set(menu.map(m => m.id));
+
+      const fallbackTab = currentUser.role === "karyawan" ? DEFAULT_TAB_KARYAWAN : (menu[0]?.id || DEFAULT_TAB_KARYAWAN);
+      const hashTab = location.hash.replace("#", "");
+      const startTab = hashTab && isTabAllowed(hashTab) ? hashTab : fallbackTab;
 
       document.getElementById("sidebar-nav").addEventListener("click", e => {
         const btn = e.target.closest(".nav-item");

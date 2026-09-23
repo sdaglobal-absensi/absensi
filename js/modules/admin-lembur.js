@@ -45,7 +45,7 @@ async function load(user) {
             <td>${escapeHtml(r.reason)}</td>
             <td><span class="badge badge-${r.status === "approved" ? "ok" : r.status === "rejected" ? "danger" : "warn"}">${statusLabel(r.status)}</span></td>
             <td>
-              ${r.status === "pending" && user.role === "hr" ? `
+              ${r.status === "pending" ? `
                 <button class="btn-link btn-approve" data-id="${r.id}">Setujui</button>
                 <button class="btn-link btn-reject" data-id="${r.id}">Tolak</button>
               ` : ""}

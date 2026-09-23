@@ -20,7 +20,7 @@ const GROUPS = [
 let rules = [];
 
 export async function render(container, user) {
-  const canEdit = user.role === "admin";
+  const canEdit = true; // siapa pun yang sampai ke sini sudah lolos guard permission menu ini
 
   container.innerHTML = `
     <div class="page-header">

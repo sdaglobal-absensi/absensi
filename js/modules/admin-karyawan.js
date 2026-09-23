@@ -1,5 +1,5 @@
 import { supabase, supabaseAdminCreate } from "../supabaseClient.js";
-import { toast, roleLabel, searchSelectHtml, wireSearchSelect, lamaBekerja } from "../core.js";
+import { toast, roleLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper } from "../core.js";
 
 let masterDepartments = [];
 let masterLevels = [];
@@ -7,7 +7,13 @@ let masterLocations = [];
 let ssDepartemen, ssBagian, ssJabatan, ssGrade, ssLokasi;
 
 export async function render(container, user) {
-  const canEdit = user.role === "admin";
+  // Siapa pun yang sampai ke halaman ini sudah lolos guard menu "karyawan"
+  // (super_admin/super_admin_hr selalu, admin_hr cuma kalau diizinkan lewat
+  // Pengaturan Sistem) — jadi semua yang bisa membuka halaman ini boleh edit.
+  const canEdit = true;
+  // Tapi admin_hr TIDAK BOLEH menaikkan role siapa pun ke role staff/admin —
+  // RLS di server juga menegakkan ini (bukan cuma disembunyikan di UI).
+  const canAssignStaffRole = isSuper(user.role);
 
   container.innerHTML = `
     <div class="page-header">
@@ -44,9 +50,13 @@ export async function render(container, user) {
             <label>Role
               <select name="role">
                 <option value="karyawan">Karyawan</option>
-                <option value="hr">HR / Manager</option>
-                <option value="admin">Admin</option>
+                ${canAssignStaffRole ? `
+                  <option value="admin_hr">Admin HR</option>
+                  <option value="super_admin_hr">Super Admin HR</option>
+                  <option value="super_admin">Super Admin</option>
+                ` : ""}
               </select>
+              ${canAssignStaffRole ? "" : `<span class="small muted">Cuma Super Admin / Super Admin HR yang bisa mengatur role selain Karyawan.</span>`}
             </label>
           </div>
           <div class="form-row two-col" id="email-row">
@@ -109,7 +119,7 @@ export async function render(container, user) {
     });
   }
 
-  loadTable(canEdit);
+  loadTable(canEdit, canAssignStaffRole);
 }
 
 async function loadMasterData() {
@@ -164,10 +174,15 @@ function setupSearchSelects() {
   });
 }
 
-async function loadTable(canEdit) {
+async function loadTable(canEdit, canAssignStaffRole) {
   const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
   const el = document.getElementById("karyawan-table");
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
+
+  // Admin HR (bukan Super Admin/Super Admin HR) cuma boleh mengedit akun
+  // ber-role karyawan — akun staff/admin lain cuma bisa dilihat, tidak
+  // ada tombol Edit (dan tetap ditolak RLS kalau dipaksa lewat API).
+  const canEditRow = k => canEdit && (canAssignStaffRole || k.role === "karyawan");
 
   el.innerHTML = `
     <table class="table">
@@ -183,7 +198,7 @@ async function loadTable(canEdit) {
             <td>${k.level || "-"}</td>
             <td>${roleLabel(k.role)}</td>
             <td><span class="badge badge-${k.is_active ? "ok" : "danger"}">${k.is_active ? "Aktif" : "Nonaktif"}</span></td>
-            ${canEdit ? `<td><button class="btn-link btn-edit" data-id="${k.id}">Edit</button></td>` : ""}
+            ${canEdit ? `<td>${canEditRow(k) ? `<button class="btn-link btn-edit" data-id="${k.id}">Edit</button>` : ""}</td>` : ""}
           </tr>
         `).join("")}
       </tbody>
@@ -291,15 +306,21 @@ async function onSubmit(e, currentUser) {
       const email = fd.get("email");
       const password = fd.get("password") || Math.random().toString(36).slice(2, 10);
       // Pakai client terpisah supaya sesi admin yang sedang login tidak tertimpa.
+      // Catatan keamanan: trigger di server SENGAJA mengabaikan "role" yang
+      // dikirim lewat signUp metadata (siapa pun bisa memanggil signUp
+      // langsung lewat anon key, jadi role tidak boleh dipercaya dari sini).
+      // Profil selalu dibuat dengan role 'karyawan' dulu, lalu di baris di
+      // bawah ini role sebenarnya baru diatur lewat update yang tunduk RLS.
       const { data: signUpData, error: signUpError } = await supabaseAdminCreate.auth.signUp({
         email, password,
-        options: { data: { full_name: payload.full_name, role: payload.role, employee_code: payload.employee_code } },
+        options: { data: { full_name: payload.full_name, employee_code: payload.employee_code } },
       });
       if (signUpError) throw signUpError;
 
       const newUserId = signUpData.user?.id;
       if (newUserId) {
-        await supabase.from("profiles").update({ ...payload, email }).eq("id", newUserId);
+        const { error: updErr } = await supabase.from("profiles").update({ ...payload, email }).eq("id", newUserId);
+        if (updErr) throw updErr;
       }
       await supabaseAdminCreate.auth.signOut();
       toast(`Akun dibuat. Beritahu karyawan: email ${email}, password ${password}`, "success");

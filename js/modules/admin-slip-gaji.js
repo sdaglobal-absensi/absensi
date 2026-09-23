@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exportXLSX, dayOfWeekFromDateStr, zonedMinutesOfDay, hmToMinutes } from "../core.js";
+import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exportXLSX, dayOfWeekFromDateStr, zonedMinutesOfDay, hmToMinutes, getPayrollCutoffDay, payrollPeriodRange } from "../core.js";
 
 // =======================================================================
 // SLIP GAJI — dihitung otomatis dari data yang sudah ada di sistem:
@@ -71,6 +71,8 @@ let adjByUser = {};
 let allowancesByUser = {}; // { [userId]: [{ nama, nominal }] } — dari Master Tunjangan (aktif saja)
 let penaltyRules = { telat: { weekday: [], saturday: [] }, pulang_cepat: { weekday: [], saturday: [] } };
 let currentSlip = null; // slip yang sedang dibuka di modal detail
+let cutoffDay = 1; // 1 = kalender biasa; diisi dari payroll_settings saat loadData
+let periodRange = { start: "", end: "" }; // rentang tanggal aktual (hasil cut-off) untuk periode terpilih
 
 export async function render(container, user) {
   period = dateOnlyISO(new Date()).slice(0, 7);
@@ -79,7 +81,7 @@ export async function render(container, user) {
     <div class="page-header">
       <div>
         <h1>Slip Gaji</h1>
-        <p class="muted">Dihitung otomatis dari absensi, lembur, riwayat upah/gaji, dan Master Level. Tunjangan/potongan yang tidak tercatat otomatis bisa ditambahkan manual per karyawan.</p>
+        <p class="muted">Dihitung otomatis dari absensi, lembur, riwayat upah/gaji, dan Master Level. Tunjangan/potongan yang tidak tercatat otomatis bisa ditambahkan manual per karyawan. Rentang tanggal periode mengikuti pengaturan cut-off di menu Pengaturan Sistem.</p>
       </div>
       <div class="filter-row">
         <input type="month" id="filter-period" value="${period}">
@@ -153,9 +155,9 @@ async function loadAndRender() {
 }
 
 async function loadData(p) {
-  const start = `${p}-01`;
-  const [y, m] = p.split("-").map(Number);
-  const end = dateOnlyISO(new Date(y, m, 0)); // tanggal terakhir bulan tsb
+  cutoffDay = await getPayrollCutoffDay();
+  periodRange = payrollPeriodRange(p, cutoffDay);
+  const { start, end } = periodRange;
 
   const [{ data: emp, error: errEmp }, { data: levels }, { data: wages }, { data: salaries }, { data: att }, { data: ot }, { data: adj }, { data: rules }, { data: types }, { data: alw }] = await Promise.all([
     supabase.from("profiles").select("*").eq("is_active", true).order("full_name"),
@@ -347,7 +349,11 @@ function renderTable() {
 // -----------------------------------------------------------------------
 function periodLabel(p) {
   const [y, m] = p.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+  const bulanTahun = new Date(y, m - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+  if (cutoffDay > 1 && periodRange.start && periodRange.end) {
+    return `${bulanTahun} (${fmtDate(periodRange.start)} – ${fmtDate(periodRange.end)})`;
+  }
+  return bulanTahun;
 }
 
 function openSlipModal(userId) {

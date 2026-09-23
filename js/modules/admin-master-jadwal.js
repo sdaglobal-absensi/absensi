@@ -4,7 +4,7 @@ import { toast } from "../core.js";
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
 export async function render(container, user) {
-  const canEdit = user.role === "admin";
+  const canEdit = true; // siapa pun yang sampai ke sini sudah lolos guard permission menu ini
 
   container.innerHTML = `
     <div class="page-header">
@@ -94,7 +94,7 @@ async function loadEmployeeChecklist(scheduleId) {
     .from("profiles")
     .select("id, full_name, employee_code, department, schedule_id, role")
     .eq("is_active", true)
-    .neq("role", "admin")
+    .eq("role", "karyawan")
     .order("full_name");
 
   if (error) { el.innerHTML = `<p class="muted small">Gagal memuat daftar karyawan.</p>`; return; }
@@ -125,7 +125,7 @@ async function loadList(canEdit) {
   if (!schedules.length) { el.innerHTML = `<p class="muted">Belum ada jadwal kerja.</p>`; return; }
 
   const { data: days } = await supabase.from("work_schedule_days").select("*");
-  const { data: employees } = await supabase.from("profiles").select("id, schedule_id").eq("is_active", true).neq("role", "admin");
+  const { data: employees } = await supabase.from("profiles").select("id, schedule_id").eq("is_active", true).eq("role", "karyawan");
 
   el.innerHTML = schedules.map(s => {
     const myDays = (days || []).filter(d => d.schedule_id === s.id).sort((a, b) => a.day_of_week - b.day_of_week);
