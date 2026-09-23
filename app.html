@@ -55,11 +55,11 @@
     };
 
     let currentUser = null;
-    let allowedTabIds = null; // Set berisi tabId yang boleh dibuka user ini (null = tidak dibatasi, khusus super role)
+    let allowedTabIds = null; // Set berisi tabId yang boleh dibuka user ini (null = tidak dibatasi, khusus super_admin)
 
     function isTabAllowed(tabId) {
       if (!MODULE_MAP[tabId]) return false;
-      if (!allowedTabIds) return true; // super_admin / super_admin_hr — All Akses, tidak difilter
+      if (!allowedTabIds) return true; // super_admin — All Akses, tidak difilter
       return allowedTabIds.has(tabId);
     }
 
@@ -94,8 +94,8 @@
       if (!currentUser) return;
 
       const menu = await renderSidebar(currentUser, null); // activeId diisi ulang di loadTab lewat startTab
-      // Super Admin/Super Admin HR = All Akses, tidak difilter (null). Semua
-      // role lain (admin_hr & karyawan) dibatasi ke menu yang benar-benar
+      // super_admin = All Akses, tidak difilter (null). Semua role lain
+      // (super_admin_hr, admin_hr & karyawan) dibatasi ke menu yang benar-benar
       // muncul di sidebar-nya, hasil dari resolveMenu() (yang sudah menyaring
       // lewat toggle Pengaturan Sistem masing-masing role).
       allowedTabIds = isSuper(currentUser.role) ? null : new Set(menu.map(m => m.id));

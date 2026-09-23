@@ -497,15 +497,19 @@ create trigger trg_on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ---------------------------------------------------------------------
--- 6b. TABEL: role_permissions (menu mana yang boleh dibuka role admin_hr
---     ATAU role karyawan — sekarang per-role lewat kolom `role`, jadi
---     Admin HR dan Karyawan punya toggle masing-masing yang independen).
---     Diatur lewat menu "Pengaturan Sistem" (khusus super_admin &
---     super_admin_hr). Kalau (role, menu_id) tidak ada barisnya di sini,
---     dianggap TIDAK diizinkan (fail-closed / restrictive by default).
+-- 6b. TABEL: role_permissions (menu mana yang boleh dibuka role
+--     super_admin_hr, admin_hr, ATAU karyawan -- ketiganya lewat kolom
+--     `role`, jadi tiap role punya toggle sendiri yang independen, dan
+--     diperlakukan SAMA PERSIS satu sama lain). Diatur lewat menu
+--     "Pengaturan Sistem" (halaman itu sendiri cuma bisa dibuka super_admin
+--     -- satu-satunya root -- dan TIDAK ada di tabel ini, jadi tidak pernah
+--     bisa dikunci sendiri ataupun didelegasikan ke role lain). Kalau
+--     (role, menu_id) tidak ada barisnya di sini, dianggap TIDAK diizinkan
+--     (fail-closed / restrictive by default). super_admin sendiri TIDAK
+--     pernah punya baris di tabel ini -- selalu full akses lewat is_super().
 -- ---------------------------------------------------------------------
 create table if not exists public.role_permissions (
-  role        text not null check (role in ('admin_hr', 'karyawan')),
+  role        text not null check (role in ('super_admin_hr', 'admin_hr', 'karyawan')),
   menu_id     text not null,
   enabled     boolean not null default false,
   updated_by  uuid references public.profiles(id),
@@ -513,7 +517,7 @@ create table if not exists public.role_permissions (
   primary key (role, menu_id)
 );
 
-comment on table public.role_permissions is 'Kontrol menu mana yang bisa diakses role admin_hr dan role karyawan (satu baris per (role, menu_id)). super_admin & super_admin_hr selalu full akses, tidak dicek ke tabel ini.';
+comment on table public.role_permissions is 'Kontrol menu mana yang bisa diakses role super_admin_hr, admin_hr, dan karyawan (satu baris per (role, menu_id)) -- ketiganya diperlakukan sama persis, diatur manual lewat Pengaturan Sistem. super_admin TIDAK pernah dicek ke tabel ini -- satu-satunya role yang selalu full akses & tidak bisa dibatasi lewat toggle apapun (lihat is_super()/has_menu_access()). Halaman "pengaturan-sistem" itu sendiri juga sengaja tidak pernah ada di tabel ini, supaya tidak pernah bisa dikunci sendiri dan tidak bisa didelegasikan ke role lain.';
 
 -- Migrasi dari versi lama (role_permissions tanpa kolom `role`, PK di
 -- menu_id saja, semua baris implisit untuk admin_hr): aman dijalankan
@@ -533,6 +537,31 @@ begin
     alter table public.role_permissions drop constraint if exists role_permissions_pkey;
     alter table public.role_permissions add primary key (role, menu_id);
   end if;
+end $$;
+
+-- Kalau project ini sebelumnya sempat pakai versi lain yang memberi
+-- super_admin baris sendiri di role_permissions, hapus dulu SEBELUM
+-- constraint dikencangkan di bawah -- super_admin TIDAK pernah dicek ke
+-- tabel ini (lihat has_menu_access()), jadi baris itu cuma bikin bingung
+-- kalau dibiarkan (dan bikin constraint di bawah gagal ditambahkan).
+delete from public.role_permissions where role = 'super_admin';
+
+-- Migrasi lanjutan: project yang sudah pernah pakai skema 2-role
+-- (admin_hr/karyawan saja) atau skema 4-role punya constraint lama yang
+-- beda -- kencangkan/lebarkan supaya persis 3 role ini saja (super_admin_hr,
+-- admin_hr, karyawan). super_admin SENGAJA tidak dimasukkan ke constraint
+-- ini -- role itu tidak pernah punya baris di tabel ini (selalu full akses
+-- lewat is_super(), lihat komentar di atas tabel).
+do $$
+begin
+  if exists (
+    select 1 from information_schema.table_constraints
+    where table_schema = 'public' and table_name = 'role_permissions' and constraint_name = 'role_permissions_role_check'
+  ) then
+    alter table public.role_permissions drop constraint role_permissions_role_check;
+  end if;
+  alter table public.role_permissions add constraint role_permissions_role_check
+    check (role in ('super_admin_hr', 'admin_hr', 'karyawan'));
 end $$;
 
 -- Default Admin HR setelah migrasi: yang sudah jadi kerjaan harian HR
@@ -561,15 +590,55 @@ insert into public.role_permissions (role, menu_id, enabled) values
   ('admin_hr', 'riwayat', true)
 on conflict (role, menu_id) do nothing;
 
--- Default Karyawan: sama seperti perilaku lama (semua 4 menu pribadi
--- menyala) -- Super Admin sekarang bisa mematikan satu-satu lewat
--- Pengaturan Sistem kalau perlu (mis. matikan "Pengajuan Lembur" kalau
--- lembur hanya boleh diajukan atasan).
+-- Default Karyawan: 4 menu pribadi menyala (sama seperti perilaku lama),
+-- menu staff (Data Karyawan, Approval, Master Data, dst) dimatikan dulu --
+-- Super Admin bisa nyalakan manual satu-satu kalau memang mau dibuka untuk
+-- Karyawan.
 insert into public.role_permissions (role, menu_id, enabled) values
   ('karyawan', 'absensi', true),
   ('karyawan', 'izin', true),
   ('karyawan', 'lembur', true),
-  ('karyawan', 'riwayat', true)
+  ('karyawan', 'riwayat', true),
+  ('karyawan', 'karyawan', false),
+  ('karyawan', 'absensi-monitor', false),
+  ('karyawan', 'izin-approval', false),
+  ('karyawan', 'lembur-approval', false),
+  ('karyawan', 'kenaikan-upah', false),
+  ('karyawan', 'slip-gaji', false),
+  ('karyawan', 'laporan', false),
+  ('karyawan', 'master-level', false),
+  ('karyawan', 'master-tunjangan', false),
+  ('karyawan', 'master-denda', false),
+  ('karyawan', 'master-departemen', false),
+  ('karyawan', 'master-jadwal', false),
+  ('karyawan', 'master-libur', false),
+  ('karyawan', 'master-lokasi', false)
+on conflict (role, menu_id) do nothing;
+
+-- Default Super Admin HR: SEMUA menu menyala dulu -- Super Admin HR tidak
+-- lagi istimewa (beda dari super_admin), jadi diberi default "full akses"
+-- yang persis sama seperti perilaku lama, tapi sekarang benar-benar cuma
+-- default: bisa dimatikan manual satu-satu lewat Pengaturan Sistem kalau
+-- Super Admin memang mau membatasi akun Super Admin HR tertentu.
+insert into public.role_permissions (role, menu_id, enabled) values
+  ('super_admin_hr', 'karyawan', true),
+  ('super_admin_hr', 'absensi-monitor', true),
+  ('super_admin_hr', 'izin-approval', true),
+  ('super_admin_hr', 'lembur-approval', true),
+  ('super_admin_hr', 'kenaikan-upah', true),
+  ('super_admin_hr', 'slip-gaji', true),
+  ('super_admin_hr', 'laporan', true),
+  ('super_admin_hr', 'master-level', true),
+  ('super_admin_hr', 'master-tunjangan', true),
+  ('super_admin_hr', 'master-denda', true),
+  ('super_admin_hr', 'master-departemen', true),
+  ('super_admin_hr', 'master-jadwal', true),
+  ('super_admin_hr', 'master-libur', true),
+  ('super_admin_hr', 'master-lokasi', true),
+  ('super_admin_hr', 'absensi', true),
+  ('super_admin_hr', 'izin', true),
+  ('super_admin_hr', 'lembur', true),
+  ('super_admin_hr', 'riwayat', true)
 on conflict (role, menu_id) do nothing;
 
 -- ---------------------------------------------------------------------
@@ -599,25 +668,30 @@ returns text language sql security definer stable set search_path = public as $$
   select role from public.profiles where id = auth.uid();
 $$;
 
--- Super Admin & Super Admin HR = All Akses, setara persis di semua tabel.
+-- Super Admin = satu-satunya role "root", All Akses mutlak di semua tabel.
+-- Ini SENGAJA hardcoded (tidak dicek ke role_permissions sama sekali) --
+-- satu-satunya jaminan supaya selalu ada jalan masuk untuk memperbaiki
+-- pengaturan kalau ada role lain (termasuk Super Admin HR) yang salah
+-- disetel sampai kehilangan akses ke halaman-halaman penting.
 create or replace function public.is_super()
 returns boolean language sql security definer stable set search_path = public as $$
-  select coalesce((select role in ('super_admin','super_admin_hr') from public.profiles where id = auth.uid()), false);
+  select coalesce((select role = 'super_admin' from public.profiles where id = auth.uid()), false);
 $$;
 
 -- Dipakai untuk akses BACA bersama (dashboard/laporan) oleh ketiga role
--- staff — tidak berarti boleh menulis/mengubah, itu diatur has_menu_access().
+-- staff (super_admin, super_admin_hr, admin_hr) — tidak berarti boleh
+-- menulis/mengubah, itu diatur has_menu_access().
 create or replace function public.is_staff()
 returns boolean language sql security definer stable set search_path = public as $$
   select coalesce((select role in ('super_admin','super_admin_hr','admin_hr') from public.profiles where id = auth.uid()), false);
 $$;
 
 -- true kalau user sekarang boleh MENGELOLA (tulis) resource yang terkait
--- menu tsb: selalu true untuk super_admin/super_admin_hr; untuk admin_hr
--- ATAU karyawan, baru true kalau ada baris (role, menu_id) yang enabled=true
--- di role_permissions untuk role akun yang sedang login. Ini generic per-role
--- (bukan cuma admin_hr lagi) supaya dipakai juga untuk menu pribadi karyawan
--- (absensi/izin/lembur) yang sekarang toggle-nya diatur di Pengaturan Sistem.
+-- menu tsb: selalu true untuk super_admin (satu-satunya root, bypass
+-- mutlak); untuk super_admin_hr, admin_hr, ATAU karyawan, baru true kalau
+-- ada baris (role, menu_id) yang enabled=true di role_permissions untuk
+-- role akun yang sedang login -- ketiga role ini diperlakukan generic &
+-- sama persis (termasuk Super Admin HR, tidak istimewa lagi).
 create or replace function public.has_menu_access(p_menu_id text)
 returns boolean language sql security definer stable set search_path = public as $$
   select
@@ -651,18 +725,27 @@ create policy "profiles_admin_all" on public.profiles
   for all
   using ( public.is_super() or public.has_menu_access('karyawan') )
   with check (
-    -- admin_hr cuma boleh membuat/menyimpan profil ber-role 'karyawan' --
-    -- tidak bisa menaikkan siapa pun (termasuk dirinya) ke role staff/admin,
-    -- walau menu "Data Karyawan" diizinkan Super Admin sekalipun.
+    -- super_admin_hr/admin_hr/karyawan cuma boleh membuat/menyimpan profil
+    -- ber-role 'karyawan' -- tidak bisa menaikkan siapa pun (termasuk
+    -- dirinya) ke role staff/admin, walau menu "Data Karyawan" diizinkan
+    -- sekalipun. is_super() di sini SENGAJA tetap hardcoded ke role
+    -- super_admin saja (bukan lewat has_menu_access, dan TIDAK termasuk
+    -- super_admin_hr) supaya kemampuan menaikkan/membuat akun Super Admin
+    -- HR/Admin HR baru selalu ada di satu role yang jelas & tidak pernah
+    -- bisa mati lewat toggle menu "Data Karyawan".
     public.is_super() or ( public.has_menu_access('karyawan') and role = 'karyawan' )
   );
 
 -- role_permissions: staff (super_admin/super_admin_hr/admin_hr) boleh lihat
--- semua baris (perlu untuk halaman Pengaturan Sistem); karyawan cuma boleh
--- lihat baris role='karyawan' miliknya sendiri (perlu untuk sidebar-nya
--- tahu menu pribadi mana yang dinyalakan). Yang MENULIS tabel ini tetap
--- khusus super_admin/super_admin_hr, TIDAK bisa didelegasikan lewat toggle
--- apapun (beda dari menu lain) — lihat "role_permissions_super_write".
+-- semua baris (perlu untuk halaman Pengaturan Sistem, dan supaya
+-- super_admin_hr/admin_hr sendiri bisa tahu menunya sendiri yang mana yang
+-- menyala lewat has_menu_access()); karyawan cuma boleh lihat baris
+-- role='karyawan' miliknya sendiri (perlu untuk sidebar-nya tahu menu mana
+-- yang dinyalakan). Yang MENULIS tabel ini tetap khusus super_admin (satu-
+-- satunya root), TIDAK bisa didelegasikan ke role lain lewat toggle apapun
+-- (termasuk ke super_admin_hr) — lihat "role_permissions_super_write". Ini
+-- sengaja tetap hardcoded (bukan lewat has_menu_access) supaya tidak pernah
+-- ada skenario Super Admin terkunci total dari halaman Pengaturan Sistem.
 drop policy if exists "role_permissions_select" on public.role_permissions;
 create policy "role_permissions_select" on public.role_permissions
   for select using ( public.is_staff() or role = public.my_role() );

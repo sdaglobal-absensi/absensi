@@ -2,20 +2,24 @@ import { supabase } from "../supabaseClient.js";
 import { toast, invalidatePermissionCache, invalidatePayrollSettingsCache, payrollPeriodRange, fmtDate } from "../core.js";
 
 // =======================================================================
-// PENGATURAN SISTEM — khusus Super Admin & Super Admin HR:
+// PENGATURAN SISTEM — khusus Super Admin (satu-satunya role "root"; ini
+// halaman satu-satunya jalan mengatur akses role lain, jadi sengaja tidak
+// bisa didelegasikan ke role lain sama sekali, termasuk Super Admin HR):
 //   1. Kelola Akses Menu — satu tabel, nyalakan/matikan menu mana saja yang
-//      boleh dibuka role Admin HR dan/atau role Karyawan (dua kolom
-//      checkbox berdampingan per baris, tersimpan independen di tabel
-//      role_permissions sebagai baris terpisah per (role, menu_id)).
+//      boleh dibuka role Super Admin HR, Admin HR, dan/atau Karyawan (tiga
+//      kolom checkbox per baris, tersimpan independen di tabel
+//      role_permissions sebagai baris terpisah per (role, menu_id)). Ketiga
+//      role ini diperlakukan SAMA PERSIS — Super Admin HR tidak lagi
+//      istimewa, akses-nya sepenuhnya manual lewat tabel ini juga.
 //   2. Periode Cut-Off Slip Gaji — atur tanggal mulai periode gajian kalau
 //      perusahaan pakai cut-off (mis. tgl 26 - 25), bukan kalender biasa.
 // RLS di Supabase tetap jadi penjaga utama (bukan cuma sembunyi menu di
-// sidebar) — jadi walau ada yang coba akses langsung lewat API, Admin HR
-// maupun Karyawan tetap tertahan di menu yang belum diizinkan.
+// sidebar) — jadi walau ada yang coba akses langsung lewat API, Super Admin
+// HR, Admin HR, maupun Karyawan tetap tertahan di menu yang belum diizinkan.
+// Hanya Super Admin yang benar-benar tidak bisa ditolak RLS (bypass mutlak).
 // =======================================================================
 
-// Menu staff (approval, laporan, master data, dst) — cuma relevan untuk
-// Admin HR, kolom "Akses Karyawan" untuk baris-baris ini selalu "–".
+// Menu staff (approval, laporan, master data, dst).
 const MENU_LABELS = {
   "karyawan": "Data Karyawan",
   "absensi-monitor": "Monitor Absensi",
@@ -33,10 +37,7 @@ const MENU_LABELS = {
   "master-lokasi": "Master Lokasi Kantor",
 };
 
-// Menu pribadi (absensi/izin/lembur/riwayat sendiri) — relevan untuk Admin
-// HR MAUPUN Karyawan (dua kolom checkbox pada baris yang sama, tersimpan
-// sebagai dua baris independen di role_permissions: (admin_hr, menu_id) dan
-// (karyawan, menu_id)).
+// Menu pribadi (absensi/izin/lembur/riwayat sendiri).
 const PERSONAL_MENU_LABELS = {
   "absensi": "Absensi (Check-in/Check-out Pribadi)",
   "izin": "Pengajuan Izin Pribadi",
@@ -44,12 +45,19 @@ const PERSONAL_MENU_LABELS = {
   "riwayat": "Riwayat Absensi Pribadi",
 };
 
-// Urutan tampil: menu pribadi dulu (relevan buat kedua role), baru menu
-// staff (khusus Admin HR). applicableRoles menandai kolom mana yang aktif
-// (checkbox) vs "–" (tidak berlaku) untuk baris itu.
+// Tiga role bisa disetel manual di sini, baris per baris, independen satu
+// sama lain: Super Admin HR & Admin HR (defaultnya menu yang relevan buat
+// kerjaan HR menyala, data sensitif mati dulu) dan Karyawan (defaultnya cuma
+// menu pribadi yang menyala, menu staff mati, tinggal dinyalakan kalau
+// memang mau dibuka). Super Admin sendiri TIDAK ada kolomnya di sini — akses
+// Super Admin selalu penuh & tidak bisa dibatasi lewat toggle apapun (satu-
+// satunya role yang benar-benar bypass RLS). "pengaturan-sistem" (halaman
+// ini sendiri) juga sengaja tidak ada di daftar menu — cuma Super Admin yang
+// bisa membukanya, tidak bisa didelegasikan ke role lain sama sekali.
+const ROLES = ["super_admin_hr", "admin_hr", "karyawan"];
 const ALL_MENU_ROWS = [
-  ...Object.keys(PERSONAL_MENU_LABELS).map(id => ({ id, label: PERSONAL_MENU_LABELS[id], roles: ["admin_hr", "karyawan"] })),
-  ...Object.keys(MENU_LABELS).map(id => ({ id, label: MENU_LABELS[id], roles: ["admin_hr"] })),
+  ...Object.keys(PERSONAL_MENU_LABELS).map(id => ({ id, label: PERSONAL_MENU_LABELS[id] })),
+  ...Object.keys(MENU_LABELS).map(id => ({ id, label: MENU_LABELS[id] })),
 ];
 
 export async function render(container, user) {
@@ -57,18 +65,20 @@ export async function render(container, user) {
     <div class="page-header">
       <div>
         <h1>Pengaturan Sistem</h1>
-        <p class="muted">Halaman ini cuma bisa dibuka Super Admin &amp; Super Admin HR.</p>
+        <p class="muted">Halaman ini cuma bisa dibuka Super Admin.</p>
       </div>
     </div>
 
     <h3 style="margin-bottom:10px;">Kelola Akses Menu</h3>
     <p class="muted small" style="margin-top:-6px; margin-bottom:14px;">
-      Nyalakan menu yang boleh dibuka akun ber-role <strong>Admin HR</strong> dan/atau
-      <strong>Karyawan</strong> — dua toggle ini independen satu sama lain, jadi mematikan sebuah
-      menu untuk satu role tidak memengaruhi role lainnya. Menu staff (approval, laporan, master
-      data, dst) cuma berlaku untuk Admin HR — kolom Akses Karyawan untuk baris itu ditandai "–".
-      Menu yang dimatikan otomatis hilang dari sidebar, dan aksesnya tetap ditolak di sisi server
-      walau dicoba lewat cara lain.
+      Nyalakan/matikan menu apa saja untuk role <strong>Super Admin HR</strong>,
+      <strong>Admin HR</strong>, dan <strong>Karyawan</strong> — ketiga toggle di setiap baris
+      independen satu sama lain, jadi mematikan sebuah menu untuk satu role tidak memengaruhi role
+      lainnya. Ketiganya diperlakukan sama persis, termasuk Super Admin HR — tidak ada lagi akses
+      otomatis, semua diatur manual lewat tabel ini. Super Admin sendiri tidak ada di tabel ini:
+      akses Super Admin selalu penuh dan tidak bisa dibatasi lewat toggle apapun. Menu yang
+      dimatikan otomatis hilang dari sidebar, dan aksesnya tetap ditolak di sisi server walau
+      dicoba lewat cara lain.
     </p>
     <div id="perm-list" class="table-wrap" style="margin-bottom:32px;"><p class="muted">Memuat…</p></div>
 
@@ -113,7 +123,6 @@ async function loadPermissions(user) {
   (data || []).forEach(r => { enabledMap[`${r.role}:${r.menu_id}`] = r.enabled; });
 
   const cell = (row, role) => {
-    if (!row.roles.includes(role)) return `<td class="muted" style="text-align:center;">–</td>`;
     const enabled = !!enabledMap[`${role}:${row.id}`];
     return `
       <td>
@@ -127,13 +136,12 @@ async function loadPermissions(user) {
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Menu</th><th>Akses Admin HR</th><th>Akses Karyawan</th></tr></thead>
+      <thead><tr><th>Menu</th><th>Akses Super Admin HR</th><th>Akses Admin HR</th><th>Akses Karyawan</th></tr></thead>
       <tbody>
         ${ALL_MENU_ROWS.map(row => `
           <tr>
             <td>${row.label}</td>
-            ${cell(row, "admin_hr")}
-            ${cell(row, "karyawan")}
+            ${ROLES.map(role => cell(row, role)).join("")}
           </tr>
         `).join("")}
       </tbody>
@@ -146,7 +154,12 @@ async function loadPermissions(user) {
 }
 
 function roleDisplayName(role) {
-  return role === "karyawan" ? "Karyawan" : "Admin HR";
+  return {
+    super_admin: "Super Admin",
+    super_admin_hr: "Super Admin HR",
+    admin_hr: "Admin HR",
+    karyawan: "Karyawan",
+  }[role] || role;
 }
 
 function menuLabel(menuId) {

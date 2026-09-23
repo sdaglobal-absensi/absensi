@@ -22,27 +22,32 @@ export function toast(message, type = "info") {
 }
 
 // =====================================================================
-// ROLE — 4 role: super_admin & super_admin_hr (all akses), admin_hr
-// (akses dibatasi & diatur lewat menu "Pengaturan Sistem"), karyawan.
+// ROLE — 4 role: super_admin (satu-satunya role "root", all akses, TIDAK
+// bisa dibatasi lewat toggle apapun — ini yang benar-benar tembus di sisi
+// server/RLS juga), super_admin_hr, admin_hr, dan karyawan (akses ketiganya
+// dibatasi & diatur manual lewat menu "Pengaturan Sistem", persis sama
+// perlakuannya satu sama lain — super_admin_hr TIDAK istimewa lagi
+// dibanding admin_hr/karyawan, cuma nama role-nya saja yang beda).
 // =====================================================================
-export const SUPER_ROLES = ["super_admin", "super_admin_hr"];
+export const SUPER_ROLES = ["super_admin"];
 export const STAFF_ROLES = ["super_admin", "super_admin_hr", "admin_hr"];
 
 export function isSuper(role) {
   return SUPER_ROLES.includes(role);
 }
 
-// Menu yang bisa dinyalakan/dimatikan untuk role admin_hr ATAU role
-// karyawan lewat menu "Pengaturan Sistem" (satu toggle set per role, jadi
-// independen satu sama lain). "pengaturan-sistem" itu sendiri sengaja
-// TIDAK ada di sini — cuma super_admin/super_admin_hr yang boleh mengatur
-// akses, tidak bisa didelegasikan ke role lain walau lewat toggle sekalipun.
-const RESTRICTED_ROLES = ["admin_hr", "karyawan"];
+// Menu yang bisa dinyalakan/dimatikan untuk super_admin_hr, admin_hr, dan
+// karyawan lewat menu "Pengaturan Sistem" (satu toggle set per role,
+// independen satu sama lain). "pengaturan-sistem" itu sendiri sengaja TIDAK
+// ada di sini — cuma super_admin (satu-satunya root) yang boleh membuka &
+// mengatur akses, tidak bisa didelegasikan ke role lain walau lewat toggle
+// sekalipun (termasuk ke super_admin_hr).
+const TOGGLABLE_ROLES = ["super_admin_hr", "admin_hr", "karyawan"];
 let cachedPermissions = null; // Set<menu_id> enabled=true untuk role user ini, di-cache per sesi halaman
 let cachedPermissionsRole = null; // role yang lagi di-cache, buat jaga-jaga kalau role user berubah di sesi yang sama
 export async function getAllowedMenus(user) {
-  if (isSuper(user.role)) return null; // null = semua menu, tidak difilter
-  if (!RESTRICTED_ROLES.includes(user.role)) return new Set();
+  if (isSuper(user.role)) return null; // null = semua menu, tidak difilter (khusus super_admin)
+  if (!TOGGLABLE_ROLES.includes(user.role)) return new Set();
 
   if (cachedPermissions && cachedPermissionsRole === user.role) return cachedPermissions;
   const { data, error } = await supabase
@@ -67,10 +72,10 @@ export function invalidatePermissionCache() {
 // Menu pribadi (absensi/izin/lembur/riwayat sendiri) — dulu cuma dipakai
 // role karyawan, sekarang ditampilkan juga di sidebar super_admin,
 // super_admin_hr, dan admin_hr (semua orang, apapun rolenya, tetap perlu
-// absen/ajukan izin & lembur untuk dirinya sendiri). Untuk admin_hr &
-// karyawan, masing-masing disaring lewat getAllowedMenus() (toggle
-// independen per role di Pengaturan Sistem); untuk super_admin/super_admin_hr
-// selalu tampil semua (All Akses).
+// absen/ajukan izin & lembur untuk dirinya sendiri). Untuk super_admin_hr,
+// admin_hr & karyawan, masing-masing disaring lewat getAllowedMenus() (toggle
+// independen per role di Pengaturan Sistem); untuk super_admin (satu-satunya
+// root) selalu tampil semua (All Akses).
 const EMPLOYEE_SELF_MENUS = [
   { id: "absensi", label: "Absensi", icon: "clock" },
   { id: "izin", label: "Pengajuan Izin", icon: "file" },
@@ -98,7 +103,9 @@ const MENUS = {
     { id: "master-libur", label: "Master Hari Libur", icon: "file", section: "Master Data" },
     { id: "master-lokasi", label: "Master Lokasi Kantor", icon: "grid", section: "Master Data" },
   ],
-  // Menu khusus super_admin/super_admin_hr, tidak pernah ditampilkan ke admin_hr.
+  // Menu khusus super_admin (satu-satunya root), tidak pernah ditampilkan
+  // ke super_admin_hr/admin_hr/karyawan, dan tidak bisa didelegasikan lewat
+  // toggle apapun.
   superOnly: [
     { id: "pengaturan-sistem", label: "Pengaturan Sistem", icon: "gear", section: "Super Admin" },
   ],
@@ -117,9 +124,11 @@ const ICONS = {
 };
 
 // Menghitung daftar menu yang akan ditampilkan di sidebar untuk user ini,
-// setelah difilter lewat getAllowedMenus() (kalau admin_hr atau karyawan).
+// setelah difilter lewat getAllowedMenus() (kalau super_admin_hr, admin_hr,
+// atau karyawan — ketiganya diperlakukan sama persis). allowed = null cuma
+// untuk super_admin (satu-satunya role yang tidak difilter).
 export async function resolveMenu(user) {
-  const allowed = await getAllowedMenus(user); // null utk super_admin/super_admin_hr = semua, tidak difilter
+  const allowed = await getAllowedMenus(user); // null utk super_admin = semua, tidak difilter
 
   if (user.role === "karyawan") {
     return allowed ? EMPLOYEE_SELF_MENUS.filter(m => allowed.has(m.id)) : EMPLOYEE_SELF_MENUS;
@@ -127,11 +136,12 @@ export async function resolveMenu(user) {
 
   // super_admin/super_admin_hr/admin_hr: menu pribadi (grup "Menu Saya")
   // digabung di atas menu staff, keduanya disaring bareng lewat toggle yang
-  // sama (allowed) untuk admin_hr; untuk super role, allowed = null = semua.
+  // sama (allowed) untuk super_admin_hr & admin_hr; untuk super_admin,
+  // allowed = null = semua.
   const personal = EMPLOYEE_SELF_MENUS.map(m => ({ ...m, section: "Menu Saya" }));
   const combined = [...personal, ...MENUS.staff];
   const staff = allowed ? combined.filter(m => allowed.has(m.id)) : combined;
-  const extra = isSuper(user.role) ? MENUS.superOnly : [];
+  const extra = isSuper(user.role) ? MENUS.superOnly : []; // "Pengaturan Sistem": khusus super_admin
   return [...staff, ...extra];
 }
 
