@@ -378,23 +378,36 @@ export function fmtDateTime(d) {
 }
 
 // ---------------------------------------------------------------------
-// ZONA WAKTU KANTOR
+// ZONA WAKTU KANTOR (per cabang/lokasi kerja)
 // ---------------------------------------------------------------------
-// Semua perhitungan tanggal/jam "hari ini", telat/tidak, dsb dipatok ke SATU
-// zona waktu kantor di sini — TIDAK bergantung ke timezone HP/perangkat
-// masing-masing karyawan atau ke UTC. Kalau kantor pindah kota/zona waktu,
-// cukup ubah dua baris ini saja:
-//   WIB  (Jakarta, Surabaya, Bandung, Medan, dst)   -> "Asia/Jakarta"  , offset 7
-//   WITA (Balikpapan, Makassar, Denpasar, dst)      -> "Asia/Makassar" , offset 8
-//   WIT  (Jayapura, Ambon, dst)                     -> "Asia/Jayapura" , offset 9
-// Indonesia tidak menerapkan DST, jadi offset di atas selalu tetap sepanjang
-// tahun — aman dihardcode berpasangan dengan nama zonanya.
-export const APP_TIMEZONE = "Asia/Makassar"; // contoh: kantor di Balikpapan (WITA)
-export const APP_TIMEZONE_OFFSET_HOURS = 8;  // WITA = UTC+8
+// Tiap baris di Master Lokasi Kantor (office_locations) sekarang punya
+// kolom "timezone" sendiri (WIB/WITA/WIT), dan tiap karyawan dikaitkan ke
+// satu lokasi lewat profiles.lokasi_kerja. Semua fungsi di bawah ini
+// menerima parameter "tz" opsional (kode IANA, mis. "Asia/Makassar") --
+// isi dengan zona waktu LOKASI KERJA KARYAWAN yang bersangkutan (bukan
+// device/HP-nya) supaya telat/tidaknya, tanggal "hari ini", dst dihitung
+// sesuai jam setempat cabang itu. Kalau tz tidak diisi/tidak dikenali,
+// jatuh ke APP_TIMEZONE di bawah sebagai default (dipakai juga utk hal
+// yang company-wide & tidak terikat ke satu cabang tertentu, misal siklus
+// tanggal gajian, atau lokasi kerja karyawan yang belum diisi timezone-nya
+// sama sekali). Indonesia tidak menerapkan DST, jadi offset tiap zona di
+// bawah selalu tetap sepanjang tahun — aman dihardcode berpasangan dengan
+// nama zonanya.
+export const TIMEZONE_OPTIONS = [
+  { value: "Asia/Jakarta", label: "WIB", offset: 7 },
+  { value: "Asia/Makassar", label: "WITA", offset: 8 },
+  { value: "Asia/Jayapura", label: "WIT", offset: 9 },
+];
+export const APP_TIMEZONE = "Asia/Jakarta"; // default/fallback: WIB (kantor pusat Surabaya)
+export const APP_TIMEZONE_OFFSET_HOURS = 7;  // WIB = UTC+7
 
-function zonedParts(d = new Date()) {
+function tzOffsetHours(tz) {
+  return TIMEZONE_OPTIONS.find(t => t.value === tz)?.offset ?? APP_TIMEZONE_OFFSET_HOURS;
+}
+
+function zonedParts(d = new Date(), tz = APP_TIMEZONE) {
   const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: APP_TIMEZONE,
+    timeZone: tz || APP_TIMEZONE,
     year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit", second: "2-digit",
     hour12: false,
@@ -407,13 +420,13 @@ function zonedParts(d = new Date()) {
 // Tanggal "hari ini" (atau tanggal dari Date apa pun) menurut zona kantor,
 // format YYYY-MM-DD. Pengganti toISOString().slice(0,10)/getFullYear() dkk
 // yang keduanya salah kalau dipakai untuk ini (lihat catatan di atas).
-export function dateOnlyISO(d = new Date()) {
-  const p = zonedParts(d);
+export function dateOnlyISO(d = new Date(), tz) {
+  const p = zonedParts(d, tz);
   return `${p.year}-${p.month}-${p.day}`;
 }
 
-export function todayISO() {
-  return dateOnlyISO(new Date());
+export function todayISO(tz) {
+  return dateOnlyISO(new Date(), tz);
 }
 
 // Hari dalam minggu (0=Minggu..6=Sabtu) dari tanggal kalender "YYYY-MM-DD".
@@ -428,8 +441,8 @@ export function dayOfWeekFromDateStr(dateStr) {
 // menurut zona kantor. Pengganti Date#getDay(), yang memakai timezone
 // perangkat. Untuk tanggal kalender murni (string "YYYY-MM-DD" tanpa jam),
 // pakai dayOfWeekFromDateStr di atas.
-export function zonedDayOfWeek(d = new Date()) {
-  const p = zonedParts(d);
+export function zonedDayOfWeek(d = new Date(), tz) {
+  const p = zonedParts(d, tz);
   return dayOfWeekFromDateStr(`${p.year}-${p.month}-${p.day}`);
 }
 
@@ -437,8 +450,8 @@ export function zonedDayOfWeek(d = new Date()) {
 // Dipakai untuk aturan yang bergantung ke JAM ABSOLUT karyawan absen (misal
 // tabel potongan telat/pulang cepat berbasis jam pasti seperti "> 08:00"),
 // beda dengan status telat/tidaknya jadwal kerja yang sudah dihitung terpisah.
-export function zonedMinutesOfDay(d) {
-  const p = zonedParts(new Date(d));
+export function zonedMinutesOfDay(d, tz) {
+  const p = zonedParts(new Date(d), tz);
   return Number(p.hour) * 60 + Number(p.minute);
 }
 
@@ -453,14 +466,14 @@ export function hmToMinutes(hm) {
 // pada tanggal "YYYY-MM-DD" tertentu, DIUKUR menurut zona kantor. Dipakai
 // untuk membandingkan "jam mulai shift kantor" dengan waktu absen karyawan,
 // supaya hasilnya konsisten di HP mana pun / timezone device apa pun.
-export function zonedTimestamp(dateStr, hh, mm, ss = 0) {
+export function zonedTimestamp(dateStr, hh, mm, ss = 0, tz) {
   const [y, m, d] = dateStr.split("-").map(Number);
-  return Date.UTC(y, m - 1, d, hh - APP_TIMEZONE_OFFSET_HOURS, mm, ss);
+  return Date.UTC(y, m - 1, d, hh - tzOffsetHours(tz), mm, ss);
 }
 
 // Waktu sekarang, sudah diformat sesuai zona kantor (untuk ditampilkan).
-export function fmtNowInOfficeZone() {
-  return new Date().toLocaleString("id-ID", { timeZone: APP_TIMEZONE, dateStyle: "full", timeStyle: "short" });
+export function fmtNowInOfficeZone(tz) {
+  return new Date().toLocaleString("id-ID", { timeZone: tz || APP_TIMEZONE, dateStyle: "full", timeStyle: "short" });
 }
 
 export function fmtRupiah(n) {

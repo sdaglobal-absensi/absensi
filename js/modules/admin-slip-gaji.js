@@ -29,11 +29,11 @@ import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exp
 // Keterlambatan: tier diurutkan naik (jam paling pagi -> paling siang).
 // Yang dipakai adalah tier PALING TERAKHIR yang jam absennya sudah
 // terlampaui (jadi makin siang datangnya, makin besar potongannya).
-function hitungDendaTelat(checkInAt, dayOfWeek, dendaDasar) {
+function hitungDendaTelat(checkInAt, dayOfWeek, dendaDasar, tz) {
   if (!checkInAt || dayOfWeek < 1 || dayOfWeek > 6) return null; // Minggu/tidak absen: tidak ada aturan
   const dayType = dayOfWeek === 6 ? "saturday" : "weekday";
   const rules = penaltyRules.telat[dayType] || [];
-  const mins = zonedMinutesOfDay(checkInAt);
+  const mins = zonedMinutesOfDay(checkInAt, tz);
   let picked = null;
   for (const r of rules) {
     if (mins > hmToMinutes(r.jam)) picked = r;
@@ -46,11 +46,11 @@ function hitungDendaTelat(checkInAt, dayOfWeek, dendaDasar) {
 // Pulang cepat: tier diurutkan naik (jam paling pagi -> paling siang).
 // Yang dipakai adalah tier PERTAMA yang jam pulangnya masih di bawah
 // batas (jadi makin awal pulangnya, makin besar potongannya).
-function hitungDendaPulangCepat(checkOutAt, dayOfWeek, dendaDasar) {
+function hitungDendaPulangCepat(checkOutAt, dayOfWeek, dendaDasar, tz) {
   if (!checkOutAt || dayOfWeek < 1 || dayOfWeek > 6) return null;
   const dayType = dayOfWeek === 6 ? "saturday" : "weekday";
   const rules = penaltyRules.pulang_cepat[dayType] || [];
-  const mins = zonedMinutesOfDay(checkOutAt);
+  const mins = zonedMinutesOfDay(checkOutAt, tz);
   for (const r of rules) {
     if (mins < hmToMinutes(r.jam)) {
       const amount = r.tipe === "flat" ? r.nominal : dendaDasar * r.persen / 100;
@@ -70,6 +70,7 @@ let overtimeByUser = {};
 let adjByUser = {};
 let allowancesByUser = {}; // { [userId]: [{ nama, nominal }] } — dari Master Tunjangan (aktif saja)
 let penaltyRules = { telat: { weekday: [], saturday: [] }, pulang_cepat: { weekday: [], saturday: [] } };
+let tzByLokasi = {}; // { [nama_lokasi]: timezone } — dari Master Lokasi Kantor, dipakai supaya potongan telat/pulang-cepat dihitung sesuai jam SETEMPAT tiap cabang, bukan satu zona global.
 let currentSlip = null; // slip yang sedang dibuka di modal detail
 let cutoffDay = 1; // 1 = kalender biasa; diisi dari payroll_settings saat loadData
 let periodRange = { start: "", end: "" }; // rentang tanggal aktual (hasil cut-off) untuk periode terpilih
@@ -191,7 +192,7 @@ async function loadData(p) {
     : payrollPeriodRange(p, cutoffDay);
   const { start, end } = periodRange;
 
-  const [{ data: emp, error: errEmp }, { data: levels }, { data: wages }, { data: salaries }, { data: att }, { data: ot }, { data: adj }, { data: rules }, { data: types }, { data: alw }, { data: slips }] = await Promise.all([
+  const [{ data: emp, error: errEmp }, { data: levels }, { data: wages }, { data: salaries }, { data: att }, { data: ot }, { data: adj }, { data: rules }, { data: types }, { data: alw }, { data: slips }, { data: locs }] = await Promise.all([
     supabase.from("profiles").select("*").eq("is_active", true).order("full_name"),
     supabase.from("job_levels").select("*"),
     supabase.from("wage_history").select("*").lte("effective_date", end).order("effective_date", { ascending: false }),
@@ -203,6 +204,7 @@ async function loadData(p) {
     supabase.from("allowance_types").select("*").eq("is_active", true),
     supabase.from("employee_allowances").select("*").eq("is_active", true),
     periodInfo ? supabase.from("payroll_slips").select("*").eq("period", p) : Promise.resolve({ data: [] }),
+    supabase.from("office_locations").select("name, timezone"),
   ]);
 
   if (errEmp) { toast("Gagal memuat data karyawan: " + errEmp.message, "error"); }
@@ -224,6 +226,9 @@ async function loadData(p) {
 
   penaltyRules = { telat: { weekday: [], saturday: [] }, pulang_cepat: { weekday: [], saturday: [] } };
   (rules || []).forEach(r => { (penaltyRules[r.jenis]?.[r.day_type] ?? []).push(r); });
+
+  tzByLokasi = {};
+  (locs || []).forEach(l => { tzByLokasi[l.name] = l.timezone; });
 
   const typeNameById = {};
   (types || []).forEach(t => { typeNameById[t.id] = t.nama; });
@@ -355,11 +360,12 @@ function computeSlip(emp) {
   let dendaKeterlambatan = 0;
   let dendaPulangCepat = 0;
   const dendaDasar = level?.denda_terlambat || 0;
+  const tz = tzByLokasi[emp.lokasi_kerja]; // zona waktu cabang tempat karyawan ini ditempatkan
   for (const a of attRows) {
     const dow = dayOfWeekFromDateStr(a.date);
-    const telat = hitungDendaTelat(a.check_in, dow, dendaDasar);
+    const telat = hitungDendaTelat(a.check_in, dow, dendaDasar, tz);
     if (telat) dendaKeterlambatan += telat.amount;
-    const cepat = hitungDendaPulangCepat(a.check_out, dow, dendaDasar);
+    const cepat = hitungDendaPulangCepat(a.check_out, dow, dendaDasar, tz);
     if (cepat) dendaPulangCepat += cepat.amount;
   }
 

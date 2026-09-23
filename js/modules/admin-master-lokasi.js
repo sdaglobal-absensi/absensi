@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, getPosition } from "../core.js";
+import { toast, getPosition, TIMEZONE_OPTIONS } from "../core.js";
 
 export async function render(container, user) {
   const canEdit = true; // siapa pun yang sampai ke sini sudah lolos guard permission menu ini
@@ -33,6 +33,14 @@ export async function render(container, user) {
           </div>
           <div class="form-row">
             <label>Radius Toleransi (meter) <input type="number" name="radius_meters" min="10" step="10" value="150" required></label>
+          </div>
+          <div class="form-row">
+            <label>Zona Waktu
+              <select name="timezone" required>
+                ${TIMEZONE_OPTIONS.map(t => `<option value="${t.value}">${t.label} (${t.value.replace("Asia/", "")})</option>`).join("")}
+              </select>
+            </label>
+            <p class="small muted field-hint" style="margin-top:-4px;">Dipakai untuk menentukan telat/tidaknya absen & jam kerja karyawan yang ditempatkan di lokasi ini.</p>
           </div>
           <div class="form-row">
             <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Aktif dipakai</label>
@@ -86,7 +94,7 @@ async function loadTable() {
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Nama</th><th>Koordinat</th><th>Radius</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Nama</th><th>Koordinat</th><th>Radius</th><th>Zona Waktu</th><th>Status</th><th></th></tr></thead>
       <tbody>
         ${data.map(r => `
           <tr>
@@ -95,6 +103,7 @@ async function loadTable() {
               <a href="https://www.google.com/maps?q=${r.lat},${r.lng}" target="_blank" rel="noopener" class="btn-link">${r.lat}, ${r.lng}</a>
             </td>
             <td>${r.radius_meters} m</td>
+            <td>${TIMEZONE_OPTIONS.find(t => t.value === r.timezone)?.label || "WIB"}</td>
             <td><span class="badge badge-${r.is_active ? "ok" : "danger"}">${r.is_active ? "Aktif" : "Nonaktif"}</span></td>
             <td><button class="btn-link btn-edit" data-id="${r.id}">Edit</button></td>
           </tr>
@@ -124,10 +133,12 @@ function openModal(existing = null) {
     form.lat.value = existing.lat;
     form.lng.value = existing.lng;
     form.radius_meters.value = existing.radius_meters;
+    form.timezone.value = existing.timezone || "Asia/Jakarta";
     form.is_active.checked = existing.is_active;
   } else {
     form.id.value = "";
     form.radius_meters.value = 150;
+    form.timezone.value = "Asia/Jakarta";
   }
   modal.classList.remove("hidden");
 }
@@ -169,6 +180,7 @@ async function onSubmit(e) {
     lat,
     lng,
     radius_meters: Number(fd.get("radius_meters")),
+    timezone: fd.get("timezone"),
     is_active: fd.get("is_active") === "on",
   };
 

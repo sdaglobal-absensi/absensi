@@ -7,7 +7,30 @@ let stream = null;
 let capturedBlob = null;
 let pendingMode = null; // 'in' | 'out'
 
+// Cache sederhana nama lokasi -> timezone, supaya tidak query office_locations
+// berkali-kali untuk karyawan yang sama dalam satu sesi halaman.
+const tzByLokasiCache = {};
+
+// Zona waktu yang berlaku untuk karyawan ini, diambil dari Master Lokasi
+// Kantor tempat dia ditempatkan (profiles.lokasi_kerja -> office_locations.
+// name). Kalau lokasi kerjanya belum diisi atau tidak ketemu datanya, jatuh
+// ke default aplikasi (WIB) -- lihat APP_TIMEZONE di core.js.
+async function resolveUserTimezone(user) {
+  if (!user.lokasi_kerja) return undefined;
+  if (user.lokasi_kerja in tzByLokasiCache) return tzByLokasiCache[user.lokasi_kerja];
+  const { data } = await supabase
+    .from("office_locations")
+    .select("timezone")
+    .eq("name", user.lokasi_kerja)
+    .maybeSingle();
+  const tz = data?.timezone || undefined;
+  tzByLokasiCache[user.lokasi_kerja] = tz;
+  return tz;
+}
+
 export async function render(container, user) {
+  const tz = await resolveUserTimezone(user);
+
   // Ambil absensi TERBARU milik user (bukan cuma "hari ini"), supaya shift
   // yang lintas hari (misal masuk jam 22:00, pulang besok jam 06:00) tetap
   // terdeteksi sebagai satu sesi yang sama saat check-out.
@@ -19,7 +42,7 @@ export async function render(container, user) {
     .limit(1)
     .maybeSingle();
 
-  const today = todayISO();
+  const today = todayISO(tz);
   let openShift = !!(latest && !latest.check_out);
   let staleOpen = false;
 
@@ -29,7 +52,7 @@ export async function render(container, user) {
   // misal karyawan shift reguler yang lupa check-out — jangan diblokir;
   // anggap sesi lama itu tertinggal, dan izinkan check-in baru hari ini.
   if (openShift && latest.date !== today) {
-    const continuation = await isOvernightContinuation(user, latest);
+    const continuation = await isOvernightContinuation(user, latest, tz);
     if (!continuation) {
       staleOpen = true;
       openShift = false;
@@ -44,13 +67,13 @@ export async function render(container, user) {
   container.innerHTML = `
     <div class="page-header">
       <h1>Absensi</h1>
-      <p class="muted">${new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
+      <p class="muted">${new Date().toLocaleDateString("id-ID", { timeZone: tz || undefined, weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
     </div>
 
     ${openShift ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">Sesi kerja dari ${fmtDate(activeRow.date)} masih berjalan (belum check-out).</p>` : ""}
     ${staleOpen ? `<p class="small" style="margin-top:-14px; margin-bottom:18px; color:var(--warn);">⚠️ Ada check-in tanggal ${fmtDate(latest.date)} yang belum di-check-out (kemungkinan lupa). Kamu tetap bisa check-in baru hari ini — data lama itu akan tercatat tidak lengkap sampai diperbaiki admin.</p>` : ""}
 
-    ${scheduleCardHtml(scheduleInfo)}
+    ${scheduleCardHtml(scheduleInfo, tz)}
 
     <div class="status-grid">
       <div class="status-card ${activeRow?.check_in ? "done" : ""}">
@@ -92,7 +115,7 @@ export async function render(container, user) {
   `;
 
   const btnOpen = document.getElementById("btn-open-camera");
-  if (btnOpen) btnOpen.addEventListener("click", () => openCamera(btnOpen.dataset.mode, user, activeRow));
+  if (btnOpen) btnOpen.addEventListener("click", () => openCamera(btnOpen.dataset.mode, user, activeRow, tz));
 
   document.getElementById("btn-cancel").addEventListener("click", closeCamera);
 }
@@ -109,8 +132,8 @@ async function loadMySchedule(user) {
   return { sched, days: days || [] };
 }
 
-function scheduleCardHtml(info) {
-  const todayDow = zonedDayOfWeek();
+function scheduleCardHtml(info, tz) {
+  const todayDow = zonedDayOfWeek(new Date(), tz);
   if (!info) {
     return `
       <div class="card" style="margin-bottom:24px;">
@@ -159,16 +182,16 @@ function scheduleCardHtml(info) {
 // 22:00-06:00) berdasarkan Master Jadwal Kerja karyawan pada hari check-in
 // tersebut terjadi. Kalau karyawan tidak punya jadwal, anggap bukan
 // lintas hari (perilaku aman/default).
-function yesterdayISO(base = new Date()) {
+function yesterdayISO(base = new Date(), tz) {
   const d = new Date(base);
   d.setDate(d.getDate() - 1);
-  return dateOnlyISO(d);
+  return dateOnlyISO(d, tz);
 }
 
-async function isOvernightContinuation(user, row) {
-  if (!row || row.date !== yesterdayISO()) return false;
+async function isOvernightContinuation(user, row, tz) {
+  if (!row || row.date !== yesterdayISO(new Date(), tz)) return false;
   if (!user.schedule_id) return false;
-  const dow = zonedDayOfWeek(new Date(row.check_in));
+  const dow = zonedDayOfWeek(new Date(row.check_in), tz);
   const { data: day } = await supabase
     .from("work_schedule_days")
     .select("crosses_midnight")
@@ -178,7 +201,7 @@ async function isOvernightContinuation(user, row) {
   return !!day?.crosses_midnight;
 }
 
-async function openCamera(mode, user, activeRow) {
+async function openCamera(mode, user, activeRow, tz) {
   pendingMode = mode;
   capturedBlob = null;
   const modal = document.getElementById("camera-modal");
@@ -224,7 +247,7 @@ async function openCamera(mode, user, activeRow) {
 
   document.getElementById("btn-capture").onclick = capturePhoto;
   document.getElementById("btn-retake").onclick = retake;
-  document.getElementById("btn-submit").onclick = () => submitAttendance(user, activeRow);
+  document.getElementById("btn-submit").onclick = () => submitAttendance(user, activeRow, tz);
 }
 
 function buildWatermarkLines() {
@@ -269,13 +292,14 @@ function retake() {
 }
 
 // Tentukan status tepat-waktu/telat berdasarkan Master Jadwal Kerja milik
-// karyawan. Kalau karyawan belum dikaitkan ke jadwal manapun, pakai jam
-// 08:15 sebagai cadangan (perilaku lama) supaya tidak mengganggu yang
-// belum sempat diatur adminnya.
-async function getLateCutoff(user, now) {
-  const todayStr = dateOnlyISO(now); // tanggal "hari ini" menurut zona kantor, bukan device
+// karyawan, DIHITUNG dalam zona waktu lokasi kerja karyawan tsb (tz -- lihat
+// resolveUserTimezone). Kalau karyawan belum dikaitkan ke jadwal manapun,
+// pakai jam 08:15 sebagai cadangan (perilaku lama) supaya tidak mengganggu
+// yang belum sempat diatur adminnya.
+async function getLateCutoff(user, now, tz) {
+  const todayStr = dateOnlyISO(now, tz); // tanggal "hari ini" menurut zona lokasi kerja karyawan
   if (user.schedule_id) {
-    const dow = zonedDayOfWeek(now); // 0=Minggu ... 6=Sabtu, menurut zona kantor
+    const dow = zonedDayOfWeek(now, tz); // 0=Minggu ... 6=Sabtu, menurut zona lokasi kerja
     const [{ data: sched }, { data: day }] = await Promise.all([
       supabase.from("work_schedules").select("*").eq("id", user.schedule_id).maybeSingle(),
       supabase.from("work_schedule_days").select("*").eq("schedule_id", user.schedule_id).eq("day_of_week", dow).maybeSingle(),
@@ -283,13 +307,13 @@ async function getLateCutoff(user, now) {
     if (day?.is_working_day && day.start_time) {
       const [h, m] = day.start_time.split(":").map(Number);
       const toleranceMs = (sched?.late_tolerance_minutes || 0) * 60000;
-      return new Date(zonedTimestamp(todayStr, h, m) + toleranceMs);
+      return new Date(zonedTimestamp(todayStr, h, m, 0, tz) + toleranceMs);
     }
   }
-  return new Date(zonedTimestamp(todayStr, 8, 15));
+  return new Date(zonedTimestamp(todayStr, 8, 15, 0, tz));
 }
 
-async function submitAttendance(user, activeRow) {
+async function submitAttendance(user, activeRow, tz) {
   if (!capturedBlob) { toast("Ambil foto dulu", "error"); return; }
   const submitBtn = document.getElementById("btn-submit");
   submitBtn.disabled = true;
@@ -302,12 +326,12 @@ async function submitAttendance(user, activeRow) {
     const now = new Date();
 
     if (pendingMode === "in") {
-      const cutoff = await getLateCutoff(user, now);
+      const cutoff = await getLateCutoff(user, now, tz);
       const status = now > cutoff ? "telat" : "tepat_waktu";
 
       const { error } = await supabase.from("attendance").insert({
         user_id: user.id,
-        date: todayISO(),
+        date: todayISO(tz),
         check_in: now.toISOString(),
         check_in_lat: pos?.lat ?? null,
         check_in_lng: pos?.lng ?? null,

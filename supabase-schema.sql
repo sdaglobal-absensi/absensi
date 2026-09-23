@@ -95,9 +95,31 @@ create table if not exists public.office_locations (
   lat             double precision not null,
   lng             double precision not null,
   radius_meters   integer not null default 150,
+  -- Zona waktu cabang ini -- dipakai utk hitung telat/tidak, tanggal "hari
+  -- ini", dst utk karyawan yg lokasi_kerja-nya cocok dgn nama lokasi ini.
+  -- Kode IANA harus salah satu dari TIMEZONE_OPTIONS di js/core.js.
+  timezone        text not null default 'Asia/Jakarta'
+                    check (timezone in ('Asia/Jakarta','Asia/Makassar','Asia/Jayapura')),
   is_active       boolean not null default true,
   created_at      timestamptz not null default now()
 );
+
+-- Migrasi kolom timezone utk yang sudah pernah menjalankan schema versi
+-- lama tanpa kolom ini (aman dijalankan berulang).
+alter table public.office_locations add column if not exists timezone text not null default 'Asia/Jakarta';
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'office_locations_timezone_check') then
+    alter table public.office_locations add constraint office_locations_timezone_check
+      check (timezone in ('Asia/Jakarta','Asia/Makassar','Asia/Jayapura'));
+  end if;
+end $$;
+-- Tebakan awal dari nama lokasi yang sudah ada (S6 Balikpapan -> WITA) --
+-- SILAKAN DICEK ULANG & disesuaikan manual lewat menu Master Lokasi Kantor,
+-- ini cuma migrasi data lama supaya tidak semuanya kepatok WIB begitu saja.
+update public.office_locations set timezone = 'Asia/Makassar'
+  where timezone = 'Asia/Jakarta' and name ilike '%balikpapan%';
+update public.office_locations set timezone = 'Asia/Jayapura'
+  where timezone = 'Asia/Jakarta' and (name ilike '%jayapura%' or name ilike '%ambon%');
 
 -- ---------------------------------------------------------------------
 -- 3. TABEL: attendance (absensi harian, GPS + foto)
