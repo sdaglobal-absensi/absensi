@@ -85,6 +85,7 @@ const EMPLOYEE_SELF_MENUS = [
   { id: "izin", label: "Pengajuan Izin", icon: "file" },
   { id: "lembur", label: "Pengajuan Lembur", icon: "file" },
   { id: "riwayat", label: "Riwayat Saya", icon: "history" },
+  { id: "slip-gaji-saya", label: "Slip Gaji Saya", icon: "file" },
 ];
 
 const MENUS = {

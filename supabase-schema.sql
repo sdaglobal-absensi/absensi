@@ -962,7 +962,13 @@ alter table public.job_levels enable row level security;
 
 drop policy if exists "job_levels_select" on public.job_levels;
 create policy "job_levels_select" on public.job_levels
-  for select using ( public.is_staff() );
+  -- Sebelumnya is_staff() saja -- akibatnya kalau Karyawan (atau siapa pun
+  -- yang bukan staff) buka slip gajinya sendiri, tabel ini ikut terkunci
+  -- dan BPJS/PPh21/lembur di slipnya salah kehitung Rp 0 (bukan karena
+  -- datanya kosong, tapi karena baris Master Level-nya tidak kebaca RLS).
+  -- Tabel ini cuma berisi definisi tarif per grade (bukan data personal per
+  -- karyawan), jadi aman dibuka untuk semua yang sudah login.
+  for select using ( true );
 
 drop policy if exists "job_levels_admin_write" on public.job_levels;
 create policy "job_levels_admin_write" on public.job_levels
@@ -1045,7 +1051,10 @@ alter table public.late_penalty_rules enable row level security;
 
 drop policy if exists "late_penalty_rules_select" on public.late_penalty_rules;
 create policy "late_penalty_rules_select" on public.late_penalty_rules
-  for select using ( public.is_staff() );
+  -- Sama seperti job_levels di atas -- tabel tarif denda per jam/tier,
+  -- bukan data personal, jadi aman dibuka untuk semua yang login supaya
+  -- slip gaji pribadi (menu "Slip Gaji Saya") bisa dihitung dengan benar.
+  for select using ( true );
 
 drop policy if exists "late_penalty_rules_admin_write" on public.late_penalty_rules;
 create policy "late_penalty_rules_admin_write" on public.late_penalty_rules
@@ -1067,7 +1076,10 @@ alter table public.employee_allowances enable row level security;
 
 drop policy if exists "allowance_types_select" on public.allowance_types;
 create policy "allowance_types_select" on public.allowance_types
-  for select using ( public.is_staff() );
+  -- Sama alasannya seperti job_levels/late_penalty_rules di atas -- ini
+  -- cuma daftar NAMA jenis tunjangan (mis. "Tunjangan Jabatan"), bukan
+  -- nominal per karyawan (itu di employee_allowances, tetap dibatasi).
+  for select using ( true );
 
 drop policy if exists "allowance_types_admin_write" on public.allowance_types;
 create policy "allowance_types_admin_write" on public.allowance_types

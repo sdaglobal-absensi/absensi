@@ -90,12 +90,19 @@ let currentUser = null; // disimpan supaya bisa dipakai di onFinalize/onUnlock
 //   di sisi tampilan juga).
 let roleFlags = { isKaryawan: false, canFinalize: false, canEditAdjust: true };
 
-export async function render(container, user) {
+export async function render(container, user, opts = {}) {
   currentUser = user;
+  // forceSelfOnly: dipakai oleh menu "Slip Gaji Saya" (lihat js/modules/
+  // employee-slip-gaji.js) supaya SIAPA PUN yang membukanya lewat menu itu
+  // -- termasuk Super Admin HR/Admin HR yang tidak (atau belum tentu)
+  // dikasih akses menu "Slip Gaji" (kelola semua karyawan) -- tetap hanya
+  // melihat slip miliknya sendiri, tanpa tombol finalisasi/edit apa pun.
+  // Menu "Slip Gaji" biasa (tanpa opts ini) tetap pakai role asli seperti
+  // sebelumnya.
   roleFlags = {
-    isKaryawan: user.role === "karyawan",
-    canFinalize: user.role === "super_admin",
-    canEditAdjust: user.role !== "karyawan",
+    isKaryawan: opts.forceSelfOnly || user.role === "karyawan",
+    canFinalize: !opts.forceSelfOnly && user.role === "super_admin",
+    canEditAdjust: !opts.forceSelfOnly && user.role !== "karyawan",
   };
   period = dateOnlyISO(new Date()).slice(0, 7);
   cutoffDay = await getPayrollCutoffDay();
