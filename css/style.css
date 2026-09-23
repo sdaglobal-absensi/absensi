@@ -86,7 +86,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary-lig
 .form-row { margin-bottom: 4px; }
 .form-row.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .form-row.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
-@media (max-width: 560px) { .form-row.three-col { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .form-row.three-col { grid-template-columns: 1fr; } .form-row.two-col { grid-template-columns: 1fr; } }
 .form-section-label {
   font-size: 0.76rem; font-weight: 600; color: var(--muted); text-transform: uppercase;
   letter-spacing: 0.04em; margin: 20px 0 10px; padding-top: 16px; border-top: 1px solid var(--border);
@@ -239,7 +239,33 @@ button { font-family: 'Inter'; cursor: pointer; }
   }
   .sidebar-backdrop.show { display: block; opacity: 1; pointer-events: auto; }
 
-  .main { padding: 20px; }
+  .main { padding: 16px; }
+  .card { padding: 18px; }
+  .page-header h1 { font-size: 1.28rem; }
+  .section-title { font-size: 1rem; margin: 26px 0 12px; }
+  .form-card .btn-primary { width: 100%; }
+
+  /* Data Lain / Riwayat Pengajuan (Profil Saya) — tabel jadi kartu bertumpuk
+     di HP, tiap baris satu blok dengan label di atas nilainya, supaya tidak
+     perlu geser ke samping untuk baca kolom yang kepotong. */
+  .table-responsive-stack thead { display: none; }
+  .table-responsive-stack, .table-responsive-stack tbody, .table-responsive-stack tr, .table-responsive-stack td {
+    display: block; width: 100%;
+  }
+  .table-responsive-stack tr { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .table-responsive-stack tr:last-child { border-bottom: none; }
+  .table-responsive-stack td {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 5px 0; border-bottom: none; text-align: right; white-space: normal;
+  }
+  .table-responsive-stack td::before {
+    content: attr(data-label); font-weight: 600; color: var(--muted); font-size: 0.72rem;
+    text-transform: uppercase; letter-spacing: 0.02em; text-align: left; flex-shrink: 0;
+  }
+
+  /* Kartu header Profil Saya — foto & info ditumpuk rapi di tengah */
+  .profil-header-card { flex-direction: column; text-align: center; gap: 14px; padding: 20px; }
+  .profil-header-info { width: 100%; }
 }
 
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }

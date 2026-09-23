@@ -67,22 +67,22 @@ export async function render(container, user) {
       Kalau ada yang salah, klik <strong>Ajukan Perubahan</strong> — perubahan baru berlaku setelah disetujui admin.
     </p>
     <div class="table-wrap">
-      <table class="table">
-        <thead><tr><th>Field</th><th>Nilai Saat Ini</th><th></th></tr></thead>
+      <table class="table table-responsive-stack">
+        <thead><tr><th>Field</th><th>Nilai Saat Ini</th><th>Aksi</th></tr></thead>
         <tbody>
           ${REQUESTABLE_FIELDS.map(f => `
             <tr>
-              <td>${f.label}</td>
-              <td>${escapeHtml(currentProfile[f.key] || "-")}</td>
-              <td>${(!f.staffOnly || STAFF_ROLES.includes(currentUser.role))
+              <td data-label="Field">${f.label}</td>
+              <td data-label="Nilai Saat Ini">${escapeHtml(currentProfile[f.key] || "-")}</td>
+              <td data-label="Aksi">${(!f.staffOnly || STAFF_ROLES.includes(currentUser.role))
                 ? `<button type="button" class="btn-link btn-ajukan" data-key="${f.key}" data-label="${escapeAttr(f.label)}">Ajukan Perubahan</button>`
                 : `<span class="muted small">Hubungi Super Admin/HR</span>`}</td>
             </tr>
           `).join("")}
           <tr>
-            <td>Kode Karyawan / Role / Status Karyawan</td>
-            <td class="muted small">${escapeHtml(currentProfile.employee_code || "-")} • ${roleLabel(currentProfile.role)} • ${escapeHtml(currentProfile.status_karyawan || "-")}</td>
-            <td class="muted small">Hubungi Super Admin/HR</td>
+            <td data-label="Field">Kode Karyawan / Role / Status Karyawan</td>
+            <td data-label="Nilai Saat Ini" class="muted small">${escapeHtml(currentProfile.employee_code || "-")} • ${roleLabel(currentProfile.role)} • ${escapeHtml(currentProfile.status_karyawan || "-")}</td>
+            <td data-label="Aksi" class="muted small">Hubungi Super Admin/HR</td>
           </tr>
         </tbody>
       </table>
@@ -208,17 +208,17 @@ async function loadRequests() {
   if (!data || !data.length) { el.innerHTML = `<p class="muted">Belum ada pengajuan perubahan data.</p>`; return; }
 
   el.innerHTML = `
-    <table class="table">
-      <thead><tr><th>Field</th><th>Dari</th><th>Menjadi</th><th>Status</th><th>Diajukan</th><th></th></tr></thead>
+    <table class="table table-responsive-stack">
+      <thead><tr><th>Field</th><th>Dari</th><th>Menjadi</th><th>Status</th><th>Diajukan</th><th>Aksi</th></tr></thead>
       <tbody>
         ${data.map(r => `
           <tr>
-            <td>${escapeHtml(r.field_label)}</td>
-            <td class="muted">${escapeHtml(r.old_value || "-")}</td>
-            <td>${escapeHtml(r.new_value)}</td>
-            <td><span class="badge badge-${statusTone(r.status)}">${statusLabel(r.status)}</span></td>
-            <td class="muted small">${fmtDateTime(r.created_at)}</td>
-            <td>${r.status === "pending" ? `<button type="button" class="btn-link btn-batal" data-id="${r.id}">Batalkan</button>` : ""}</td>
+            <td data-label="Field">${escapeHtml(r.field_label)}</td>
+            <td data-label="Dari" class="muted">${escapeHtml(r.old_value || "-")}</td>
+            <td data-label="Menjadi">${escapeHtml(r.new_value)}</td>
+            <td data-label="Status"><span class="badge badge-${statusTone(r.status)}">${statusLabel(r.status)}</span></td>
+            <td data-label="Diajukan" class="muted small">${fmtDateTime(r.created_at)}</td>
+            <td data-label="Aksi">${r.status === "pending" ? `<button type="button" class="btn-link btn-batal" data-id="${r.id}">Batalkan</button>` : "—"}</td>
           </tr>
         `).join("")}
       </tbody>
