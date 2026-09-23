@@ -81,12 +81,12 @@ export function invalidatePermissionCache() {
 // independen per role di Pengaturan Sistem); untuk super_admin (satu-satunya
 // root) selalu tampil semua (All Akses).
 const EMPLOYEE_SELF_MENUS = [
+  { id: "profil", label: "Profil Saya", icon: "user" },
   { id: "absensi", label: "Absensi", icon: "clock" },
   { id: "izin", label: "Pengajuan Izin", icon: "file" },
   { id: "lembur", label: "Pengajuan Lembur", icon: "file" },
   { id: "riwayat", label: "Riwayat Saya", icon: "history" },
   { id: "slip-gaji-saya", label: "Slip Gaji Saya", icon: "file" },
-  { id: "profil", label: "Profil Saya", icon: "user" },
 ];
 
 // Dashboard/beranda — selalu tampil untuk SEMUA role sebagai halaman pertama

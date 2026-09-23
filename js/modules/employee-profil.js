@@ -1,18 +1,23 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, uploadPhoto, roleLabel, fmtDateTime, confirmDialog, lamaBekerja } from "../core.js";
+import { toast, uploadPhoto, roleLabel, fmtDateTime, confirmDialog, lamaBekerja, STAFF_ROLES } from "../core.js";
 
 // Field administratif/legal (payroll, BPJS, dokumen resmi) — karyawan TIDAK
 // bisa edit langsung, cuma bisa mengajukan lewat profile_change_requests,
 // baru diterapkan setelah disetujui admin (lihat admin-profil-approval.js).
+// Field penempatan (staffOnly: true) malah tidak boleh diajukan sama sekali
+// oleh role "karyawan" biasa — cuma Super Admin/Super Admin HR/Admin HR
+// (STAFF_ROLES) yang boleh mengajukan perubahannya sendiri; karyawan lain
+// cuma bisa lihat & diarahkan menghubungi Super Admin/HR, sama seperti
+// baris Kode Karyawan/Role/Status Karyawan di bawah.
 const REQUESTABLE_FIELDS = [
   { key: "full_name", label: "Nama Lengkap" },
   { key: "nik_ktp", label: "NIK KTP" },
   { key: "npwp", label: "NPWP" },
-  { key: "unit_pt", label: "Unit / PT" },
-  { key: "lokasi_kerja", label: "Lokasi Kerja / Area" },
-  { key: "department", label: "Departemen" },
-  { key: "bagian", label: "Bagian" },
-  { key: "position", label: "Jabatan" },
+  { key: "unit_pt", label: "Unit / PT", staffOnly: true },
+  { key: "lokasi_kerja", label: "Lokasi Kerja / Area", staffOnly: true },
+  { key: "department", label: "Departemen", staffOnly: true },
+  { key: "bagian", label: "Bagian", staffOnly: true },
+  { key: "position", label: "Jabatan", staffOnly: true },
 ];
 
 let currentUser = null;
@@ -69,7 +74,9 @@ export async function render(container, user) {
             <tr>
               <td>${f.label}</td>
               <td>${escapeHtml(currentProfile[f.key] || "-")}</td>
-              <td><button type="button" class="btn-link btn-ajukan" data-key="${f.key}" data-label="${escapeAttr(f.label)}">Ajukan Perubahan</button></td>
+              <td>${(!f.staffOnly || STAFF_ROLES.includes(currentUser.role))
+                ? `<button type="button" class="btn-link btn-ajukan" data-key="${f.key}" data-label="${escapeAttr(f.label)}">Ajukan Perubahan</button>`
+                : `<span class="muted small">Hubungi Super Admin/HR</span>`}</td>
             </tr>
           `).join("")}
           <tr>
