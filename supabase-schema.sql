@@ -721,9 +721,12 @@ alter table public.leave_requests enable row level security;
 alter table public.office_locations enable row level security;
 
 -- profiles -------------------------------------------------------------
+-- has_menu_access('laporan') ditambahkan di sini supaya menu "Laporan" bisa
+-- baca nama/departemen karyawan (dipakai buat rekap) walau menu "Data
+-- Karyawan" tidak ikut dinyalakan terpisah untuk role yang sama.
 drop policy if exists "profiles_select" on public.profiles;
 create policy "profiles_select" on public.profiles
-  for select using ( id = auth.uid() or public.is_staff() );
+  for select using ( id = auth.uid() or public.is_staff() or public.has_menu_access('laporan') );
 
 drop policy if exists "profiles_update_self" on public.profiles;
 create policy "profiles_update_self" on public.profiles
@@ -782,9 +785,19 @@ create policy "payroll_settings_write" on public.payroll_settings
   with check ( public.is_super() or public.has_menu_access('pengaturan-sistem') );
 
 -- attendance -------------------------------------------------------------
+-- SELECT baris ORANG LAIN (bukan milik sendiri) sekarang lewat
+-- has_menu_access('absensi-monitor') -- BUKAN is_staff() lagi. Sebelumnya
+-- is_staff() dipakai di sini, yang artinya baca semua data absensi selalu
+-- terbuka untuk super_admin_hr/admin_hr TANPA PEDULI toggle "Monitor
+-- Absensi"-nya menyala atau tidak, dan sebaliknya TIDAK PERNAH bisa
+-- didelegasikan ke Karyawan walau sudah dicentang "Diizinkan" di Kelola
+-- Akses Menu (karena is_staff() memang tidak pernah true untuk role
+-- karyawan). has_menu_access() memperbaiki keduanya sekaligus -- benar-benar
+-- ikut toggle, utk ketiga role (super_admin_hr, admin_hr, karyawan) sama
+-- persis, konsisten dengan cara kerja menu-menu lain.
 drop policy if exists "attendance_select" on public.attendance;
 create policy "attendance_select" on public.attendance
-  for select using ( user_id = auth.uid() or public.is_staff() );
+  for select using ( user_id = auth.uid() or public.has_menu_access('absensi-monitor') );
 
 drop policy if exists "attendance_insert_self" on public.attendance;
 create policy "attendance_insert_self" on public.attendance
@@ -795,9 +808,11 @@ create policy "attendance_update_self" on public.attendance
   for update using ( user_id = auth.uid() or public.has_menu_access('absensi-monitor') );
 
 -- leave_requests -------------------------------------------------------------
+-- Sama seperti attendance di atas -- select baris orang lain sekarang ikut
+-- toggle "Approval Izin" (has_menu_access), bukan is_staff() yang hardcoded.
 drop policy if exists "leave_select" on public.leave_requests;
 create policy "leave_select" on public.leave_requests
-  for select using ( user_id = auth.uid() or public.is_staff() );
+  for select using ( user_id = auth.uid() or public.has_menu_access('izin-approval') );
 
 drop policy if exists "leave_insert_self" on public.leave_requests;
 create policy "leave_insert_self" on public.leave_requests
@@ -810,9 +825,11 @@ create policy "leave_update" on public.leave_requests
 -- overtime_requests (Pengajuan Lembur) -------------------------------------------------------------
 alter table public.overtime_requests enable row level security;
 
+-- Sama seperti attendance/leave_requests -- select baris orang lain sekarang
+-- ikut toggle "Approval Lembur" (has_menu_access), bukan is_staff().
 drop policy if exists "overtime_select" on public.overtime_requests;
 create policy "overtime_select" on public.overtime_requests
-  for select using ( user_id = auth.uid() or public.is_staff() );
+  for select using ( user_id = auth.uid() or public.has_menu_access('lembur-approval') );
 
 drop policy if exists "overtime_insert_self" on public.overtime_requests;
 create policy "overtime_insert_self" on public.overtime_requests
@@ -995,11 +1012,26 @@ create policy "employee_allowances_admin_write" on public.employee_allowances
 
 
 -- ---------------------------------------------------------------------
--- 9. STORAGE BUCKET untuk foto absensi (jalankan sekali)
+-- 9. STORAGE BUCKET untuk foto absensi
 -- ---------------------------------------------------------------------
-insert into storage.buckets (id, name, public)
-values ('attendance-photos', 'attendance-photos', true)
-on conflict (id) do nothing;
+-- PENTING: baris "insert into storage.buckets" TIDAK BISA dijalankan lewat
+-- SQL Editor -- akan gagal dengan error "42501: must be owner of table
+-- buckets", karena tabel storage.buckets dimiliki oleh Supabase sendiri
+-- (supabase_storage_admin), bukan role yang dipakai SQL Editor. Bucket-nya
+-- HARUS dibuat manual lewat Dashboard, baru lanjut jalankan dua "create
+-- policy" di bawah (itu aman dijalankan lewat SQL Editor):
+--
+--   1. Buka Storage (ikon di sidebar kiri) → tombol "New bucket".
+--   2. Name: attendance-photos (harus persis sama, huruf kecil semua).
+--   3. Toggle "Public bucket" → ON.
+--   4. Create bucket.
+--   5. Baru jalankan (lagi) dua statement "create policy" di bawah ini
+--      lewat SQL Editor kalau belum sempat jalan waktu error kemarin
+--      (statement sebelum baris yang error tadi sudah tersimpan duluan).
+--
+-- insert into storage.buckets (id, name, public)
+-- values ('attendance-photos', 'attendance-photos', true)
+-- on conflict (id) do nothing;
 
 drop policy if exists "photo_upload_own" on storage.objects;
 create policy "photo_upload_own" on storage.objects

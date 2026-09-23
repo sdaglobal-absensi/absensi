@@ -129,20 +129,21 @@ const ICONS = {
 
 // Menghitung daftar menu yang akan ditampilkan di sidebar untuk user ini,
 // setelah difilter lewat getAllowedMenus() (kalau super_admin_hr, admin_hr,
-// atau karyawan — ketiganya diperlakukan sama persis). allowed = null cuma
-// untuk super_admin (satu-satunya role yang tidak difilter).
+// atau karyawan — ketiganya diperlakukan sama persis, TERMASUK menu staff:
+// kalau menu staff dicentang "Diizinkan" untuk Karyawan di Kelola Akses Menu,
+// menu itu memang harus ikut muncul di sidebar Karyawan juga, bukan cuma
+// untuk Admin HR/Super Admin HR). allowed = null cuma untuk super_admin
+// (satu-satunya role yang tidak difilter).
 export async function resolveMenu(user) {
   const allowed = await getAllowedMenus(user); // null utk super_admin = semua, tidak difilter
 
-  if (user.role === "karyawan") {
-    return allowed ? EMPLOYEE_SELF_MENUS.filter(m => allowed.has(m.id)) : EMPLOYEE_SELF_MENUS;
-  }
-
-  // super_admin/super_admin_hr/admin_hr: menu pribadi (grup "Menu Saya")
-  // digabung di atas menu staff (termasuk "Pengaturan Sistem" sekarang),
-  // semuanya disaring bareng lewat toggle yang sama (allowed) untuk
-  // super_admin_hr & admin_hr; untuk super_admin, allowed = null = semua,
-  // jadi "Pengaturan Sistem" selalu tampil untuknya tanpa perlu toggle.
+  // Menu pribadi (grup "Menu Saya") digabung di atas menu staff (termasuk
+  // "Pengaturan Sistem"), semuanya disaring bareng lewat toggle yang sama
+  // (allowed) untuk super_admin_hr, admin_hr, DAN karyawan — ketiganya
+  // sekarang lewat jalur yang benar-benar sama, tidak ada jalur khusus lagi
+  // untuk karyawan yang diam-diam mengabaikan menu staff. Untuk super_admin,
+  // allowed = null = semua, jadi semua menu (termasuk "Pengaturan Sistem")
+  // selalu tampil untuknya tanpa perlu toggle.
   const personal = EMPLOYEE_SELF_MENUS.map(m => ({ ...m, section: "Menu Saya" }));
   const combined = [...personal, ...MENUS.staff];
   return allowed ? combined.filter(m => allowed.has(m.id)) : combined;
