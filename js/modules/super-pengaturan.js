@@ -197,9 +197,10 @@ async function onTogglePermission(checkbox, user) {
 
   const { error } = await supabase
     .from("role_permissions")
-    .update({ enabled, updated_by: user.id, updated_at: new Date().toISOString() })
-    .eq("role", role)
-    .eq("menu_id", menuId);
+    .upsert(
+      { role, menu_id: menuId, enabled, updated_by: user.id, updated_at: new Date().toISOString() },
+      { onConflict: "role,menu_id" }
+    );
 
   checkbox.disabled = false;
   if (error) {
