@@ -57,6 +57,7 @@ const PERSONAL_MENU_LABELS = {
   "izin": "Pengajuan Izin Pribadi",
   "lembur": "Pengajuan Lembur Pribadi",
   "riwayat": "Riwayat Absensi Pribadi",
+  "slip-gaji-saya": "Slip Gaji Saya (Lihat & Cetak Punya Sendiri)",
 };
 
 // Tiga role bisa disetel manual di sini, baris per baris, independen satu
