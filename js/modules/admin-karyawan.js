@@ -5,6 +5,10 @@ let masterDepartments = [];
 let masterLevels = [];
 let masterLocations = [];
 let ssDepartemen, ssBagian, ssJabatan, ssGrade, ssLokasi;
+// Izin user yang sedang login, dipakai lagi di openModal() waktu membangun
+// pilihan Role untuk baris yang sedang diedit.
+let currentIsFullSuperAdmin = false;
+let currentCanAssignHrRoles = false;
 
 export async function render(container, user) {
   // Siapa pun yang sampai ke halaman ini sudah lolos guard menu "karyawan"
@@ -20,6 +24,8 @@ export async function render(container, user) {
   // sampai Admin HR / Super Admin HR, tapi TIDAK BOLEH menaikkan ke Super
   // Admin — itu tetap eksklusif milik Super Admin.
   const canAssignHrRoles = STAFF_ROLES.includes(user.role);
+  currentIsFullSuperAdmin = isFullSuperAdmin;
+  currentCanAssignHrRoles = canAssignHrRoles;
 
   container.innerHTML = `
     <div class="page-header">
@@ -54,16 +60,8 @@ export async function render(container, user) {
           <div class="form-row two-col">
             <label>Kode Karyawan <input name="employee_code" required></label>
             <label>Role
-              <select name="role">
-                <option value="karyawan">Karyawan</option>
-                ${canAssignHrRoles ? `
-                  <option value="admin_hr">Admin HR</option>
-                  <option value="super_admin_hr">Super Admin HR</option>
-                ` : ""}
-                ${isFullSuperAdmin ? `<option value="super_admin">Super Admin</option>` : ""}
-              </select>
-              ${canAssignHrRoles ? "" : `<span class="small muted">Cuma Admin HR ke atas yang bisa mengatur role selain Karyawan.</span>`}
-              ${(canAssignHrRoles && !isFullSuperAdmin) ? `<span class="small muted">Role Super Admin cuma bisa diatur oleh Super Admin.</span>` : ""}
+              <select name="role" id="role-select"></select>
+              <div id="role-hint"></div>
             </label>
           </div>
           <div class="form-row two-col" id="email-row">
@@ -186,10 +184,10 @@ async function loadTable(canEdit, isFullSuperAdmin) {
   const el = document.getElementById("karyawan-table");
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
 
-  // Super Admin HR & Admin HR boleh mengedit siapa pun KECUALI akun
-  // ber-role Super Admin — itu cuma bisa diedit oleh sesama Super Admin
-  // (dan tetap ditolak RLS kalau dipaksa lewat API).
-  const canEditRow = k => canEdit && (isFullSuperAdmin || k.role !== "super_admin");
+  // Tombol Edit sekarang muncul untuk SEMUA baris tanpa kecuali (termasuk
+  // akun Super Admin) -- pembatasannya dipindah ke level field Role di
+  // dalam modal (lihat renderRoleOptions), bukan menyembunyikan tombolnya.
+  const canEditRow = () => canEdit;
 
   el.innerHTML = `
     <table class="table">
@@ -222,6 +220,43 @@ async function loadTable(canEdit, isFullSuperAdmin) {
   }
 }
 
+// Membangun ulang pilihan di dropdown Role tiap kali modal dibuka, karena
+// pilihannya tergantung DUA hal: role user yang sedang login (siapa boleh
+// menaikkan role sampai mana) DAN role baris yang sedang diedit (baris
+// ber-role Super Admin dikunci -- tidak bisa diubah -- kalau yang mengedit
+// bukan Super Admin, walau field lain di baris itu tetap boleh diedit).
+function renderRoleOptions(existing) {
+  const select = document.getElementById("role-select");
+  const hint = document.getElementById("role-hint");
+  const lockedSuperAdmin = existing && existing.role === "super_admin" && !currentIsFullSuperAdmin;
+
+  if (lockedSuperAdmin) {
+    // Cuma satu opsi & itu pun sama dengan nilai sekarang -- secara efektif
+    // terkunci tanpa perlu disabled (select disabled tidak ikut terkirim
+    // lewat FormData saat submit).
+    select.innerHTML = `<option value="super_admin" selected>Super Admin</option>`;
+    hint.innerHTML = `<span class="small muted">Role Super Admin cuma bisa diubah oleh sesama Super Admin. Data lain di akun ini tetap bisa Anda edit.</span>`;
+    return;
+  }
+
+  select.innerHTML = `
+    <option value="karyawan">Karyawan</option>
+    ${currentCanAssignHrRoles ? `
+      <option value="admin_hr">Admin HR</option>
+      <option value="super_admin_hr">Super Admin HR</option>
+    ` : ""}
+    ${currentIsFullSuperAdmin ? `<option value="super_admin">Super Admin</option>` : ""}
+  `;
+
+  if (!currentCanAssignHrRoles) {
+    hint.innerHTML = `<span class="small muted">Cuma Admin HR ke atas yang bisa mengatur role selain Karyawan.</span>`;
+  } else if (!currentIsFullSuperAdmin) {
+    hint.innerHTML = `<span class="small muted">Role Super Admin cuma bisa diatur oleh Super Admin.</span>`;
+  } else {
+    hint.innerHTML = "";
+  }
+}
+
 function openModal(existing = null) {
   const modal = document.getElementById("modal-karyawan");
   const form = document.getElementById("form-karyawan");
@@ -229,6 +264,7 @@ function openModal(existing = null) {
   ssDepartemen.clear(); ssBagian.setOptions([]); ssBagian.clear();
   ssJabatan.setOptions([]); ssJabatan.clear(); ssGrade.clear(); ssLokasi.clear();
   document.getElementById("lama_bekerja").value = "";
+  renderRoleOptions(existing);
 
   document.getElementById("modal-title").textContent = existing ? "Edit Karyawan" : "Tambah Karyawan";
   document.getElementById("email-row").classList.toggle("hidden", !!existing);

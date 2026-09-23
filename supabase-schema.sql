@@ -688,9 +688,18 @@ returns boolean language sql security definer stable set search_path = public as
   select coalesce((select role = 'super_admin' from public.profiles where id = auth.uid()), false);
 $$;
 
--- Dipakai untuk akses BACA bersama (dashboard/laporan) oleh ketiga role
--- staff (super_admin, super_admin_hr, admin_hr) — tidak berarti boleh
--- menulis/mengubah, itu diatur has_menu_access().
+-- Role SEBELUM diedit dari sebuah baris profiles, dicek terpisah dari
+-- my_role() (yg selalu tentang user yg sedang login) supaya policy
+-- profiles_admin_all bisa membandingkan role LAMA vs role BARU yang mau
+-- disimpan -- dipakai supaya Admin HR/Super Admin HR boleh menyimpan
+-- perubahan field LAIN (nama, no HP, dst) pada baris ber-role Super Admin,
+-- selama field role-nya sendiri tidak ikut diubah.
+create or replace function public.role_of(p_id uuid)
+returns text language sql security definer stable set search_path = public as $$
+  select role from public.profiles where id = p_id;
+$$;
+
+
 create or replace function public.is_staff()
 returns boolean language sql security definer stable set search_path = public as $$
   select coalesce((select role in ('super_admin','super_admin_hr','admin_hr') from public.profiles where id = auth.uid()), false);
@@ -736,11 +745,13 @@ create policy "profiles_update_self" on public.profiles
 drop policy if exists "profiles_admin_all" on public.profiles;
 create policy "profiles_admin_all" on public.profiles
   for all
-  -- USING: baris ber-role 'super_admin' TIDAK BOLEH disentuh (dibaca utk
-  -- update/delete) oleh siapa pun selain super_admin sendiri -- jadi
-  -- super_admin_hr/admin_hr tidak bisa mengedit akun Super Admin sama
-  -- sekali, walau menu "Data Karyawan" diizinkan.
-  using ( public.is_super() or ( public.has_menu_access('karyawan') and role <> 'super_admin' ) )
+  -- USING: baris mana yg boleh disentuh (dibaca utk update/delete). Semua
+  -- baris boleh disentuh oleh siapa pun yg punya akses menu "Data
+  -- Karyawan", TERMASUK baris ber-role Super Admin -- supaya Admin HR/
+  -- Super Admin HR tetap bisa mengedit field LAIN (nama, no HP, dst) punya
+  -- akun Super Admin. Pembatasan supaya role-nya sendiri tidak ikut
+  -- berubah ada di WITH CHECK di bawah, bukan di sini.
+  using ( public.is_super() or public.has_menu_access('karyawan') )
   with check (
     -- WITH CHECK: nilai role BARU yang boleh disimpan.
     -- - super_admin: bebas (root, all akses).
@@ -751,15 +762,23 @@ create policy "profiles_admin_all" on public.profiles
     --   super_admin saja supaya kemampuan membuat akun Super Admin baru
     --   selalu ada di satu role yang jelas & tidak pernah bisa mati lewat
     --   toggle menu "Data Karyawan".
+    -- - PENGECUALIAN: kalau baris yg diedit SEBELUMNYA sudah 'super_admin'
+    --   (role_of(id) = 'super_admin') dan field role yg disimpan TETAP
+    --   'super_admin' (tidak diubah), izinkan juga -- ini yang membuat
+    --   Admin HR/Super Admin HR bisa menyimpan perubahan field lain punya
+    --   akun Super Admin tanpa bisa menurunkan/menaikkan role siapa pun
+    --   ke/dari Super Admin.
     -- - karyawan biasa yg kebetulan diberi akses menu ini: tetap cuma
-    --   boleh role 'karyawan' (STAFF_ROLES check di bawah).
+    --   boleh role 'karyawan'.
     public.is_super()
     or (
       public.has_menu_access('karyawan')
-      and public.my_role() in ('super_admin_hr','admin_hr')
-      and role in ('karyawan','admin_hr','super_admin_hr')
+      and (
+        ( public.my_role() in ('super_admin_hr','admin_hr') and role in ('karyawan','admin_hr','super_admin_hr') )
+        or ( role = 'karyawan' )
+        or ( role = 'super_admin' and public.role_of(id) = 'super_admin' )
+      )
     )
-    or ( public.has_menu_access('karyawan') and role = 'karyawan' )
   );
 
 -- role_permissions: staff (super_admin/super_admin_hr/admin_hr) boleh lihat
