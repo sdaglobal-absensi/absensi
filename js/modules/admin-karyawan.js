@@ -1,5 +1,5 @@
 import { supabase, supabaseAdminCreate } from "../supabaseClient.js";
-import { toast, roleLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper } from "../core.js";
+import { toast, roleLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper, STAFF_ROLES } from "../core.js";
 
 let masterDepartments = [];
 let masterLevels = [];
@@ -11,9 +11,15 @@ export async function render(container, user) {
   // (super_admin/super_admin_hr selalu, admin_hr cuma kalau diizinkan lewat
   // Pengaturan Sistem) — jadi semua yang bisa membuka halaman ini boleh edit.
   const canEdit = true;
-  // Tapi admin_hr TIDAK BOLEH menaikkan role siapa pun ke role staff/admin —
-  // RLS di server juga menegakkan ini (bukan cuma disembunyikan di UI).
-  const canAssignStaffRole = isSuper(user.role);
+  // Super Admin adalah satu-satunya yang boleh membuat/mengedit akun Super
+  // Admin dan menaikkan siapa pun ke role Super Admin — RLS di server juga
+  // menegakkan ini (bukan cuma disembunyikan di UI).
+  const isFullSuperAdmin = isSuper(user.role);
+  // Super Admin HR & Admin HR (bukan role "karyawan" biasa yang kebetulan
+  // diberi akses menu ini) boleh mengedit karyawan dan menaikkan role
+  // sampai Admin HR / Super Admin HR, tapi TIDAK BOLEH menaikkan ke Super
+  // Admin — itu tetap eksklusif milik Super Admin.
+  const canAssignHrRoles = STAFF_ROLES.includes(user.role);
 
   container.innerHTML = `
     <div class="page-header">
@@ -50,13 +56,14 @@ export async function render(container, user) {
             <label>Role
               <select name="role">
                 <option value="karyawan">Karyawan</option>
-                ${canAssignStaffRole ? `
+                ${canAssignHrRoles ? `
                   <option value="admin_hr">Admin HR</option>
                   <option value="super_admin_hr">Super Admin HR</option>
-                  <option value="super_admin">Super Admin</option>
                 ` : ""}
+                ${isFullSuperAdmin ? `<option value="super_admin">Super Admin</option>` : ""}
               </select>
-              ${canAssignStaffRole ? "" : `<span class="small muted">Cuma Super Admin / Super Admin HR yang bisa mengatur role selain Karyawan.</span>`}
+              ${canAssignHrRoles ? "" : `<span class="small muted">Cuma Admin HR ke atas yang bisa mengatur role selain Karyawan.</span>`}
+              ${(canAssignHrRoles && !isFullSuperAdmin) ? `<span class="small muted">Role Super Admin cuma bisa diatur oleh Super Admin.</span>` : ""}
             </label>
           </div>
           <div class="form-row two-col" id="email-row">
@@ -113,13 +120,13 @@ export async function render(container, user) {
 
     document.getElementById("btn-new").addEventListener("click", () => openModal());
     document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
-    document.getElementById("form-karyawan").addEventListener("submit", e => onSubmit(e, user));
+    document.getElementById("form-karyawan").addEventListener("submit", e => onSubmit(e, user, isFullSuperAdmin));
     document.getElementById("join_date").addEventListener("input", e => {
       document.getElementById("lama_bekerja").value = lamaBekerja(e.target.value);
     });
   }
 
-  loadTable(canEdit, canAssignStaffRole);
+  loadTable(canEdit, isFullSuperAdmin);
 }
 
 async function loadMasterData() {
@@ -174,15 +181,15 @@ function setupSearchSelects() {
   });
 }
 
-async function loadTable(canEdit, canAssignStaffRole) {
+async function loadTable(canEdit, isFullSuperAdmin) {
   const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
   const el = document.getElementById("karyawan-table");
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
 
-  // Admin HR (bukan Super Admin/Super Admin HR) cuma boleh mengedit akun
-  // ber-role karyawan — akun staff/admin lain cuma bisa dilihat, tidak
-  // ada tombol Edit (dan tetap ditolak RLS kalau dipaksa lewat API).
-  const canEditRow = k => canEdit && (canAssignStaffRole || k.role === "karyawan");
+  // Super Admin HR & Admin HR boleh mengedit siapa pun KECUALI akun
+  // ber-role Super Admin — itu cuma bisa diedit oleh sesama Super Admin
+  // (dan tetap ditolak RLS kalau dipaksa lewat API).
+  const canEditRow = k => canEdit && (isFullSuperAdmin || k.role !== "super_admin");
 
   el.innerHTML = `
     <table class="table">
@@ -273,7 +280,7 @@ function closeModal() {
   document.getElementById("modal-karyawan").classList.add("hidden");
 }
 
-async function onSubmit(e, currentUser) {
+async function onSubmit(e, currentUser, isFullSuperAdmin) {
   e.preventDefault();
   const fd = new FormData(e.target);
   const id = fd.get("id");
@@ -326,7 +333,7 @@ async function onSubmit(e, currentUser) {
       toast(`Akun dibuat. Beritahu karyawan: email ${email}, password ${password}`, "success");
     }
     closeModal();
-    loadTable(true);
+    loadTable(true, isFullSuperAdmin);
   } catch (err) {
     toast("Gagal menyimpan: " + err.message, "error");
   }

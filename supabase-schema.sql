@@ -736,17 +736,30 @@ create policy "profiles_update_self" on public.profiles
 drop policy if exists "profiles_admin_all" on public.profiles;
 create policy "profiles_admin_all" on public.profiles
   for all
-  using ( public.is_super() or public.has_menu_access('karyawan') )
+  -- USING: baris ber-role 'super_admin' TIDAK BOLEH disentuh (dibaca utk
+  -- update/delete) oleh siapa pun selain super_admin sendiri -- jadi
+  -- super_admin_hr/admin_hr tidak bisa mengedit akun Super Admin sama
+  -- sekali, walau menu "Data Karyawan" diizinkan.
+  using ( public.is_super() or ( public.has_menu_access('karyawan') and role <> 'super_admin' ) )
   with check (
-    -- super_admin_hr/admin_hr/karyawan cuma boleh membuat/menyimpan profil
-    -- ber-role 'karyawan' -- tidak bisa menaikkan siapa pun (termasuk
-    -- dirinya) ke role staff/admin, walau menu "Data Karyawan" diizinkan
-    -- sekalipun. is_super() di sini SENGAJA tetap hardcoded ke role
-    -- super_admin saja (bukan lewat has_menu_access, dan TIDAK termasuk
-    -- super_admin_hr) supaya kemampuan menaikkan/membuat akun Super Admin
-    -- HR/Admin HR baru selalu ada di satu role yang jelas & tidak pernah
-    -- bisa mati lewat toggle menu "Data Karyawan".
-    public.is_super() or ( public.has_menu_access('karyawan') and role = 'karyawan' )
+    -- WITH CHECK: nilai role BARU yang boleh disimpan.
+    -- - super_admin: bebas (root, all akses).
+    -- - super_admin_hr/admin_hr (staff) dgn menu "Data Karyawan": boleh
+    --   menyimpan role 'karyawan', 'admin_hr', atau 'super_admin_hr' --
+    --   TAPI TIDAK PERNAH boleh menaikkan siapa pun (termasuk dirinya) ke
+    --   'super_admin'. is_super() di sini SENGAJA tetap hardcoded ke role
+    --   super_admin saja supaya kemampuan membuat akun Super Admin baru
+    --   selalu ada di satu role yang jelas & tidak pernah bisa mati lewat
+    --   toggle menu "Data Karyawan".
+    -- - karyawan biasa yg kebetulan diberi akses menu ini: tetap cuma
+    --   boleh role 'karyawan' (STAFF_ROLES check di bawah).
+    public.is_super()
+    or (
+      public.has_menu_access('karyawan')
+      and public.my_role() in ('super_admin_hr','admin_hr')
+      and role in ('karyawan','admin_hr','super_admin_hr')
+    )
+    or ( public.has_menu_access('karyawan') and role = 'karyawan' )
   );
 
 -- role_permissions: staff (super_admin/super_admin_hr/admin_hr) boleh lihat
