@@ -88,6 +88,12 @@ const EMPLOYEE_SELF_MENUS = [
   { id: "slip-gaji-saya", label: "Slip Gaji Saya", icon: "file" },
 ];
 
+// Dashboard/beranda — selalu tampil untuk SEMUA role sebagai halaman pertama
+// setelah login, terlepas dari toggle Pengaturan Sistem (bukan menu yang
+// bisa dimatikan). Isinya sendiri sudah otomatis menyesuaikan ke menu apa
+// saja yang benar-benar diizinkan untuk user yang login (lihat dashboard.js).
+const DASHBOARD_MENU = { id: "dashboard", label: "Dashboard", icon: "home" };
+
 const MENUS = {
   karyawan: EMPLOYEE_SELF_MENUS,
   // Dipakai bersama oleh super_admin, super_admin_hr, dan admin_hr — untuk
@@ -117,7 +123,8 @@ const MENUS = {
   ],
 };
 
-const ICONS = {
+export const ICONS = {
+  home: "M3 11.5L12 4l9 7.5M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10",
   clock: "M12 6v6l4 2M12 21a9 9 0 100-18 9 9 0 000 18z",
   file: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6",
   history: "M3 3v5h5M3.05 13A9 9 0 106 5.3L3 8",
@@ -148,7 +155,9 @@ export async function resolveMenu(user) {
   // selalu tampil untuknya tanpa perlu toggle.
   const personal = EMPLOYEE_SELF_MENUS.map(m => ({ ...m, section: "Menu Saya" }));
   const combined = [...personal, ...MENUS.staff];
-  return allowed ? combined.filter(m => allowed.has(m.id)) : combined;
+  const filtered = allowed ? combined.filter(m => allowed.has(m.id)) : combined;
+  // "dashboard" selalu ditambahkan paling atas, tidak ikut difilter toggle.
+  return [DASHBOARD_MENU, ...filtered];
 }
 
 export async function renderSidebar(user, activeId) {

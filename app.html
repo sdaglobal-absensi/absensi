@@ -44,9 +44,8 @@
     import { requireAuth, logout } from "./js/auth.js";
     import { renderSidebar, isSuper } from "./js/core.js";
 
-    const DEFAULT_TAB_KARYAWAN = "absensi";
-
     const MODULE_MAP = {
+      "dashboard": () => import("./js/modules/dashboard.js"),
       "absensi": () => import("./js/modules/employee-absensi.js"),
       "izin": () => import("./js/modules/employee-izin.js"),
       "lembur": () => import("./js/modules/employee-lembur.js"),
@@ -116,7 +115,7 @@
       // lewat toggle Pengaturan Sistem masing-masing role).
       allowedTabIds = isSuper(currentUser.role) ? null : new Set(menu.map(m => m.id));
 
-      const fallbackTab = menu[0]?.id || DEFAULT_TAB_KARYAWAN;
+      const fallbackTab = "dashboard";
       const hashTab = location.hash.replace("#", "");
       const startTab = hashTab && isTabAllowed(hashTab) ? hashTab : fallbackTab;
 

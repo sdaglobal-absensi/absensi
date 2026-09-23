@@ -261,6 +261,59 @@ button { font-family: 'Inter'; cursor: pointer; }
 .status-value { font-family: 'Sora'; font-size: 1.3rem; font-weight: 600; }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
+
+/* ---------------- Dashboard ---------------- */
+.dash-hero {
+  background: linear-gradient(135deg, var(--primary) 0%, #163b2c 100%);
+  color: #F3F1E8; border-radius: 16px; padding: 28px 32px; margin-bottom: 24px;
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap;
+  position: relative; overflow: hidden;
+}
+.dash-hero::after {
+  content: ""; position: absolute; top: -60px; right: -60px; width: 220px; height: 220px;
+  border-radius: 50%; background: radial-gradient(circle, rgba(201,138,62,0.28) 0%, rgba(201,138,62,0) 70%);
+}
+.dash-eyebrow { font-size: 0.82rem; color: #C7D6CD; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+.dash-title { font-size: 1.9rem; color: #fff; margin: 4px 0 10px; }
+.dash-role { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dash-role .muted.small { color: #D9E4DC; }
+.dash-clock-wrap { text-align: right; position: relative; z-index: 1; }
+.dash-clock-wrap .muted.small { color: #C7D6CD; }
+.dash-clock-wrap .live-clock { color: #fff; font-size: 1.5rem; }
+@media (max-width: 640px) { .dash-hero { padding: 22px; } .dash-clock-wrap { text-align: left; } }
+
+.status-card-link { cursor: pointer; transition: box-shadow 0.15s ease, border-color 0.15s ease; }
+.status-card-link:hover { border-color: var(--accent); box-shadow: 0 4px 14px rgba(27,31,29,0.08); }
+
+.quick-links-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.quick-link-card {
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.quick-link-card:hover { border-color: var(--primary); box-shadow: 0 6px 16px rgba(27,31,29,0.07); transform: translateY(-1px); }
+.quick-link-icon {
+  width: 38px; height: 38px; border-radius: 10px; background: var(--ok-bg); color: var(--primary);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.quick-link-icon svg { width: 18px; height: 18px; }
+.quick-link-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.quick-link-label { font-weight: 600; font-size: 0.9rem; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.quick-link-section { font-size: 0.74rem; color: var(--muted); }
+
+/* ---------------- Laporan (report) summary & print ---------------- */
+.report-meta { color: var(--muted); font-size: 0.85rem; margin: -14px 0 20px; }
+.report-print-head { display: none; }
+@media print {
+  .no-print { display: none !important; }
+  .report-print-head {
+    display: block; margin-bottom: 18px; border-bottom: 2px solid var(--primary); padding-bottom: 12px;
+  }
+  .report-print-head h1 { font-size: 1.3rem; }
+  .main { padding: 0 !important; }
+  .app-shell { display: block !important; }
+  .sidebar, .mobile-topbar { display: none !important; }
+}
 .form-card { max-width: 520px; margin-bottom: 28px; }
 
 .action-area { margin: 24px 0 36px; }
