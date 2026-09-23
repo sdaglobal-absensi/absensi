@@ -120,13 +120,15 @@ dibuat lewat panel admin. Untuk akun Super Admin pertama:
 
 ### 6. Atur akses Admin HR, akses Karyawan & periode cut-off slip gaji
 Login sebagai Super Admin/Super Admin HR → buka menu **Pengaturan Sistem**:
-- **Kelola Akses Admin HR** — nyalakan menu apa saja yang boleh dibuka akun
-  ber-role Admin HR, baik menu staff (default: Monitor Absensi, Approval Izin,
-  Approval Lembur, Laporan — sisanya mati sampai dinyalakan manual) maupun
-  menu pribadi (default: Absensi, Pengajuan Izin, Pengajuan Lembur, Riwayat
-  Saya — default menyala semua).
-- **Kelola Akses Karyawan** — nyalakan/matikan menu pribadi yang boleh dibuka
-  akun ber-role Karyawan (default menyala semua, sama seperti sebelumnya).
+- **Kelola Akses Menu** — satu tabel dengan dua kolom checkbox berdampingan,
+  **Akses Admin HR** dan **Akses Karyawan**, jadi bisa diatur sekaligus di satu
+  tempat. Kedua toggle independen satu sama lain (mematikan menu untuk satu
+  role tidak memengaruhi role lainnya). Menu staff (approval, laporan, master
+  data, dst) cuma berlaku untuk Admin HR — kolom Akses Karyawan di baris itu
+  ditandai "–". Menu pribadi (Absensi, Pengajuan Izin, Pengajuan Lembur,
+  Riwayat Saya) berlaku untuk keduanya — default: menyala semua untuk kedua
+  role (Admin HR karena mereka juga karyawan; Karyawan sama seperti perilaku
+  sebelumnya). Menu staff selain itu, default sesuai tabel Role di atas.
 - **Periode Cut-Off Slip Gaji** — isi `1` untuk periode kalender biasa
   (tanggal 1 s/d akhir bulan), atau isi tanggal lain (mis. `26`) kalau
   perusahaan pakai cut-off, misalnya periode berjalan dari tanggal 26 bulan
