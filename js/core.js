@@ -419,6 +419,34 @@ export const TIMEZONE_OPTIONS = [
 export const APP_TIMEZONE = "Asia/Jakarta"; // default/fallback: WIB (kantor pusat Surabaya)
 export const APP_TIMEZONE_OFFSET_HOURS = 7;  // WIB = UTC+7
 
+// Cache sederhana nama lokasi -> timezone, supaya tidak query office_locations
+// berkali-kali untuk karyawan yang sama dalam satu sesi halaman.
+const tzByLokasiCache = {};
+
+// Zona waktu yang berlaku untuk seorang karyawan, diambil dari Master Lokasi
+// Kantor tempat dia ditempatkan (profiles.lokasi_kerja -> office_locations.
+// name). Kalau lokasi kerjanya belum diisi atau tidak ketemu datanya, jatuh
+// ke default aplikasi (WIB). Dipakai di semua halaman yang menampilkan jam
+// atau menghitung "hari ini" untuk seorang karyawan tertentu (Dashboard,
+// Absensi, dst) supaya konsisten mengikuti zona waktu LOKASI KERJANYA,
+// bukan zona waktu device/HP-nya ataupun WIB yang di-hardcode.
+export async function resolveUserTimezone(user) {
+  if (!user?.lokasi_kerja) return undefined;
+  if (user.lokasi_kerja in tzByLokasiCache) return tzByLokasiCache[user.lokasi_kerja];
+  const { data } = await supabase
+    .from("office_locations")
+    .select("timezone")
+    .eq("name", user.lokasi_kerja)
+    .maybeSingle();
+  const tz = data?.timezone || undefined;
+  tzByLokasiCache[user.lokasi_kerja] = tz;
+  return tz;
+}
+
+export function tzLabel(tz) {
+  return TIMEZONE_OPTIONS.find(t => t.value === tz)?.label || "WIB";
+}
+
 function tzOffsetHours(tz) {
   return TIMEZONE_OPTIONS.find(t => t.value === tz)?.offset ?? APP_TIMEZONE_OFFSET_HOURS;
 }

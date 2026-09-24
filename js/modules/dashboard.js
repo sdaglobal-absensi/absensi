@@ -1,15 +1,17 @@
 import { supabase } from "../supabaseClient.js";
-import { fmtTime, todayISO, roleLabel, resolveMenu, ICONS } from "../core.js";
+import { fmtTime, todayISO, roleLabel, resolveMenu, ICONS, resolveUserTimezone, tzLabel } from "../core.js";
 
 // Menu personal yang sudah punya kartu ringkasannya sendiri di dashboard —
 // tidak perlu diulang lagi di grid "Menu Lainnya" di bawah.
 const HANDLED_IN_SUMMARY = new Set(["dashboard", "absensi", "izin", "lembur"]);
 
 export async function render(container, user) {
+  const tz = await resolveUserTimezone(user); // zona waktu lokasi kerja karyawan, bukan WIB/device yang di-hardcode
+
   container.innerHTML = `
     <div class="dash-hero">
       <div>
-        <div class="dash-eyebrow">${greeting()}</div>
+        <div class="dash-eyebrow">${greeting(tz)}</div>
         <h1 class="dash-title">${escapeHtml(user.full_name || "Pengguna")}</h1>
         <div class="dash-role">
           <span class="badge badge-ok">${roleLabel(user.role)}</span>
@@ -17,7 +19,7 @@ export async function render(container, user) {
         </div>
       </div>
       <div class="dash-clock-wrap">
-        <div class="muted small" id="dash-date">${fmtNowDate()}</div>
+        <div class="muted small" id="dash-date">${fmtNowDate(tz)}</div>
         <div class="live-clock" id="dash-live-clock">--:--:--</div>
       </div>
     </div>
@@ -40,33 +42,37 @@ export async function render(container, user) {
     <div class="quick-links-grid" id="dash-quick-links"><p class="muted">Memuat menu…</p></div>
   `;
 
-  startClock();
+  startClock(tz);
   loadQuickLinks(user);
-  loadPersonalStats(user);
+  loadPersonalStats(user, tz);
   loadOrgStats(user);
 }
 
 // =====================================================================
-// JAM & TANGGAL
+// JAM & TANGGAL — mengikuti zona waktu LOKASI KERJA karyawan (tz, lihat
+// resolveUserTimezone di core.js), bukan jam device/HP-nya ataupun WIB
+// yang di-hardcode, supaya konsisten dengan yang ditampilkan di halaman
+// Absensi.
 // =====================================================================
 let clockInterval = null;
-function startClock() {
+function startClock(tz) {
   if (clockInterval) clearInterval(clockInterval);
+  const label = tzLabel(tz);
   function tick() {
     const el = document.getElementById("dash-live-clock");
     if (!el) { clearInterval(clockInterval); clockInterval = null; return; }
-    el.textContent = new Date().toLocaleTimeString("id-ID", { hour12: false }) + " WIB";
+    el.textContent = new Date().toLocaleTimeString("id-ID", { timeZone: tz || undefined, hour12: false }) + " " + label;
   }
   tick();
   clockInterval = setInterval(tick, 1000);
 }
 
-function fmtNowDate() {
-  return new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+function fmtNowDate(tz) {
+  return new Date().toLocaleDateString("id-ID", { timeZone: tz || undefined, weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
 
-function greeting() {
-  const hour = Number(new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", hour12: false }));
+function greeting(tz) {
+  const hour = Number(new Date().toLocaleString("id-ID", { timeZone: tz || undefined, hour: "2-digit", hour12: false }));
   if (hour < 11) return "Selamat pagi";
   if (hour < 15) return "Selamat siang";
   if (hour < 18) return "Selamat sore";
@@ -76,8 +82,8 @@ function greeting() {
 // =====================================================================
 // KARTU RINGKASAN PRIBADI — status absensi hari ini + pengajuan pending milik sendiri
 // =====================================================================
-async function loadPersonalStats(user) {
-  const today = todayISO();
+async function loadPersonalStats(user, tz) {
+  const today = todayISO(tz);
   const [{ data: att }, { count: izinPending }, { count: lemburPending }] = await Promise.all([
     supabase.from("attendance").select("*").eq("user_id", user.id).eq("date", today).maybeSingle(),
     supabase.from("leave_requests").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "pending"),

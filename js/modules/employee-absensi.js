@@ -1,32 +1,11 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, reverseGeocode, fmtTime, fmtDate, todayISO, dateOnlyISO, zonedDayOfWeek, zonedTimestamp, TIMEZONE_OPTIONS } from "../core.js";
+import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, reverseGeocode, fmtTime, fmtDate, todayISO, dateOnlyISO, zonedDayOfWeek, zonedMinutesOfDay, zonedTimestamp, hmToMinutes, resolveUserTimezone, tzLabel } from "../core.js";
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
 let stream = null;
 let capturedBlob = null;
 let pendingMode = null; // 'in' | 'out'
-
-// Cache sederhana nama lokasi -> timezone, supaya tidak query office_locations
-// berkali-kali untuk karyawan yang sama dalam satu sesi halaman.
-const tzByLokasiCache = {};
-
-// Zona waktu yang berlaku untuk karyawan ini, diambil dari Master Lokasi
-// Kantor tempat dia ditempatkan (profiles.lokasi_kerja -> office_locations.
-// name). Kalau lokasi kerjanya belum diisi atau tidak ketemu datanya, jatuh
-// ke default aplikasi (WIB) -- lihat APP_TIMEZONE di core.js.
-async function resolveUserTimezone(user) {
-  if (!user.lokasi_kerja) return undefined;
-  if (user.lokasi_kerja in tzByLokasiCache) return tzByLokasiCache[user.lokasi_kerja];
-  const { data } = await supabase
-    .from("office_locations")
-    .select("timezone")
-    .eq("name", user.lokasi_kerja)
-    .maybeSingle();
-  const tz = data?.timezone || undefined;
-  tzByLokasiCache[user.lokasi_kerja] = tz;
-  return tz;
-}
 
 export async function render(container, user) {
   const tz = await resolveUserTimezone(user);
@@ -133,13 +112,13 @@ export async function render(container, user) {
 let clockInterval = null;
 function startLiveClock(tz) {
   if (clockInterval) clearInterval(clockInterval);
-  const tzLabel = TIMEZONE_OPTIONS.find(t => t.value === tz)?.label || "WIB";
+  const label = tzLabel(tz);
 
   function tick() {
     const el = document.getElementById("live-clock");
     if (!el) { clearInterval(clockInterval); clockInterval = null; return; }
     const timeStr = new Date().toLocaleTimeString("id-ID", { timeZone: tz || undefined, hour12: false });
-    el.textContent = `${timeStr} ${tzLabel}`;
+    el.textContent = `${timeStr} ${label}`;
   }
   tick();
   clockInterval = setInterval(tick, 1000);
@@ -224,6 +203,49 @@ async function isOvernightContinuation(user, row, tz) {
     .eq("day_of_week", dow)
     .maybeSingle();
   return !!day?.crosses_midnight;
+}
+
+// Tentukan TANGGAL & HARI-JADWAL yang relevan untuk sebuah check-in BARU
+// (bukan cuma tanggal kalender "hari ini" apa adanya). Ini krusial untuk
+// shift lintas tengah malam (mis. 22:00-06:00): kalau karyawan baru
+// check-in dini hari (mis. 00:12, telat 2+ jam dari jam masuk 22:00),
+// check-in itu SECARA JADWAL masih bagian dari shift yang mulai KEMARIN,
+// bukan shift baru "hari ini". Kalau tetap dicatat dengan tanggal hari ini,
+// baris attendance hari ini (unique per karyawan+tanggal) langsung
+// "terpakai" oleh shift semalam yang cuma telat check-in, sehingga shift
+// yang sungguhan baru mulai malam ini (di tanggal kalender yang sama)
+// jadi tidak bisa check-in sama sekali -- padahal jam shiftnya sendiri
+// sudah lewat. Fungsi ini cuma dipanggil saat memulai check-in BARU (tidak
+// ada sesi terbuka), jadi aman dipakai berdampingan dengan openShift/
+// isOvernightContinuation di atas.
+async function resolveShiftDate(user, now, tz) {
+  const todayStr = dateOnlyISO(now, tz);
+  const todayDow = zonedDayOfWeek(now, tz);
+  if (!user.schedule_id) return { dateStr: todayStr, dow: todayDow };
+
+  const nowMinutes = zonedMinutesOfDay(now, tz);
+  const yst = new Date(now);
+  yst.setDate(yst.getDate() - 1);
+  const yesterdayStr = dateOnlyISO(yst, tz);
+  const yesterdayDow = zonedDayOfWeek(yst, tz);
+
+  const [{ data: todayRow }, { data: yesterdayRow }] = await Promise.all([
+    supabase.from("work_schedule_days").select("*").eq("schedule_id", user.schedule_id).eq("day_of_week", todayDow).maybeSingle(),
+    supabase.from("work_schedule_days").select("*").eq("schedule_id", user.schedule_id).eq("day_of_week", yesterdayDow).maybeSingle(),
+  ]);
+
+  // Kemarin memang jadwal shift lintas hari, DAN sekarang masih sebelum jam
+  // pulang shift semalam itu, DAN shift hari ini sendiri belum waktunya
+  // mulai (atau hari ini libur) -- berarti ini check-in telat utk shift
+  // kemarin, bukan shift baru hari ini.
+  if (yesterdayRow?.is_working_day && yesterdayRow.crosses_midnight && yesterdayRow.end_time) {
+    const endMinutes = hmToMinutes(yesterdayRow.end_time.slice(0, 5));
+    const todayShiftAlreadyStarted = !!(todayRow?.is_working_day && todayRow.start_time) && nowMinutes >= hmToMinutes(todayRow.start_time.slice(0, 5));
+    if (nowMinutes < endMinutes && !todayShiftAlreadyStarted) {
+      return { dateStr: yesterdayStr, dow: yesterdayDow };
+    }
+  }
+  return { dateStr: todayStr, dow: todayDow };
 }
 
 async function openCamera(mode, user, activeRow, tz) {
@@ -321,10 +343,9 @@ function retake() {
 // resolveUserTimezone). Kalau karyawan belum dikaitkan ke jadwal manapun,
 // pakai jam 08:15 sebagai cadangan (perilaku lama) supaya tidak mengganggu
 // yang belum sempat diatur adminnya.
-async function getLateCutoff(user, now, tz) {
-  const todayStr = dateOnlyISO(now, tz); // tanggal "hari ini" menurut zona lokasi kerja karyawan
+async function getLateCutoff(user, now, tz, shiftCtx) {
+  const { dateStr: todayStr, dow } = shiftCtx || await resolveShiftDate(user, now, tz); // tanggal & hari-jadwal yang relevan (lihat resolveShiftDate)
   if (user.schedule_id) {
-    const dow = zonedDayOfWeek(now, tz); // 0=Minggu ... 6=Sabtu, menurut zona lokasi kerja
     const [{ data: sched }, { data: day }] = await Promise.all([
       supabase.from("work_schedules").select("*").eq("id", user.schedule_id).maybeSingle(),
       supabase.from("work_schedule_days").select("*").eq("schedule_id", user.schedule_id).eq("day_of_week", dow).maybeSingle(),
@@ -351,12 +372,13 @@ async function submitAttendance(user, activeRow, tz) {
     const now = new Date();
 
     if (pendingMode === "in") {
-      const cutoff = await getLateCutoff(user, now, tz);
+      const shiftCtx = await resolveShiftDate(user, now, tz);
+      const cutoff = await getLateCutoff(user, now, tz, shiftCtx);
       const status = now > cutoff ? "telat" : "tepat_waktu";
 
       const { error } = await supabase.from("attendance").insert({
         user_id: user.id,
-        date: todayISO(tz),
+        date: shiftCtx.dateStr,
         check_in: now.toISOString(),
         check_in_lat: pos?.lat ?? null,
         check_in_lng: pos?.lng ?? null,
