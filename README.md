@@ -24,13 +24,14 @@ Semua role punya menu **Profil Saya** untuk melihat & memperbaiki data
 sendiri kalau ada yang salah:
 
 - **Bisa diubah langsung** (tanpa approval): No. HP, Alamat Domisili, Foto
-  Profil, Pendidikan Terakhir, Agama, Status Pernikahan, dan seluruh
-  biodata keluarga (nama ayah & ibu, suami/istri, data anak) — tersimpan
+  Profil, Pendidikan Terakhir, Agama, dan biodata keluarga (nama ayah & ibu,
+  suami/istri, data anak) — tersimpan
   seketika. Lihat bagian **Biodata Karyawan** di bawah.
 - **Butuh approval admin**: Nama Lengkap, NIK KTP, NPWP, Alamat Sesuai KTP,
-  Jenis Kelamin, Tempat Lahir, Tanggal Lahir, Unit/PT, Lokasi Kerja, Departemen, Bagian,
+  Jenis Kelamin, Tempat Lahir, Tanggal Lahir, **Status Pernikahan**, Unit/PT, Lokasi Kerja, Departemen, Bagian,
   dan Jabatan — field ini berkaitan dengan payroll/BPJS/dokumen resmi
-  (alamat KTP, jenis kelamin & tempat/tanggal lahir mengacu ke KTP), jadi karyawan cuma bisa **mengajukan**
+  (alamat KTP, jenis kelamin & tempat/tanggal lahir mengacu ke KTP; status
+  pernikahan menentukan PTKP), jadi karyawan cuma bisa **mengajukan**
   perubahan (lengkap dengan alasan), lalu menunggu disetujui lewat menu
   **Approval Perubahan Data** (Admin HR/Super Admin HR/Super Admin). Begitu
   disetujui, data di Data Karyawan langsung ikut berubah. Karyawan bisa
@@ -47,7 +48,7 @@ melengkapi sendiri lewat **Profil Saya**.
 | Kelompok | Field |
 |---|---|
 | Data pribadi | Alamat Sesuai KTP, Alamat Domisili, Jenis Kelamin, Agama, Tempat Lahir, Tanggal Lahir, Pendidikan Terakhir |
-| Status | Status Pernikahan (Belum Menikah / Menikah / Cerai Hidup / Cerai Mati) |
+| Status | Status Pernikahan (Belum Menikah / Menikah / Cerai Hidup / Cerai Mati) — admin mengisinya di Data Karyawan; karyawan hanya bisa mengubahnya lewat pengajuan |
 | Orang tua | Nama Ayah, Nama Ibu |
 | Suami / Istri | Nama, Tempat Lahir, Tanggal Lahir, Pekerjaan — hanya tampil kalau status **Menikah**; kalau status diganti ke selain Menikah, data pasangan ikut dikosongkan saat disimpan |
 | Anak | Daftar dinamis (tombol **+ Tambah Anak**): Nama, Tempat Lahir, Tanggal Lahir, Pekerjaan. Urutan Anak Pertama, Kedua, dst. mengikuti urutan di form |
@@ -61,11 +62,45 @@ Catatan teknis:
   anak). Membacanya hanya boleh pemiliknya sendiri atau role yang menu
   **Data Karyawan**-nya menyala (Admin HR yang menu itu masih mati tidak
   bisa membacanya, sama seperti data karyawan lain).
-- Semua ini ada di **bagian 13** `supabase-schema.sql`. Untuk project yang
+- **Profil Saya** juga menampilkan **Level** (dan grade) serta **PTKP**.
+  Keduanya hanya-baca: level diatur admin di Data Karyawan, PTKP dihitung
+  otomatis (lihat di bawah).
+- Semua ini ada di **bagian 13 dan 14** `supabase-schema.sql`. Untuk project yang
   sudah berjalan cukup jalankan ulang file itu di SQL Editor — data lama
   tidak berubah.
+- **Tanggal Resign** (`resign_date`) ada di seksi Kepegawaian Data Karyawan;
+  kosong = masih bekerja. Tidak boleh lebih awal dari tanggal masuk (dijaga
+  form dan database). "Lama Bekerja" berhenti dihitung di tanggal resign.
+  Mengisi tanggal resign **tidak** otomatis menonaktifkan akun — form hanya
+  mengingatkan kalau akun masih aktif.
 - Logika form (dipakai bersama oleh Data Karyawan & Profil Saya) ada di
   `js/biodata.js`.
+
+### PTKP otomatis
+
+Kolom `profiles.ptkp` diisi **otomatis oleh trigger database** dari status
+pernikahan + jumlah anak, jadi selalu ikut benar tidak peduli siapa yang
+mengubah datanya (admin, karyawan, atau approval). Nilai yang dikirim dari
+aplikasi selalu ditimpa.
+
+| Status pernikahan | Kode PTKP |
+|---|---|
+| Menikah | `K/n` |
+| Belum Menikah, Cerai Hidup, Cerai Mati | `TK/n` |
+| Belum diisi | kosong |
+
+`n` = jumlah anak, **maksimal 3**. Nominal per tahun: TK/0 Rp54.000.000,
+K/0 Rp58.500.000, tambah Rp4.500.000 tiap tanggungan (angka ada di
+`js/biodata.js`, kalau aturan berubah tinggal ubah di sana).
+
+Batasan yang perlu diketahui:
+
+- **K/I/n** (penghasilan istri digabung) tidak dihitung otomatis.
+- Semua anak dihitung sebagai tanggungan (maks. 3); syarat lain seperti
+  usia/penghasilan anak tidak dicek.
+- **PPh21 di slip gaji saat ini masih memakai persentase tetap per level**
+  (Master Level), belum memakai PTKP. Jadi PTKP saat ini informasi/data
+  acuan, belum memengaruhi angka slip gaji.
 
 Menu **Approval Perubahan Data** defaultnya menyala untuk Admin HR & Super
 Admin HR (sama seperti Approval Izin/Lembur), bisa diatur lewat

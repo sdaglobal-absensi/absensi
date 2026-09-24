@@ -704,11 +704,13 @@ function escapeAttr(s) {
   return String(s).replace(/"/g, "&quot;");
 }
 
-// Hitung "lama bekerja" dari tanggal masuk ke hari ini, format "X tahun Y bulan"
-export function lamaBekerja(joinDateStr) {
+// Hitung "lama bekerja" dari tanggal masuk ke hari ini, format "X tahun Y bulan".
+// Kalau karyawan sudah resign, isi endDateStr (tanggal resign) supaya
+// hitungannya berhenti di tanggal itu, bukan terus bertambah sampai hari ini.
+export function lamaBekerja(joinDateStr, endDateStr = null) {
   if (!joinDateStr) return "-";
   const start = new Date(joinDateStr);
-  const now = new Date();
+  const now = endDateStr ? new Date(endDateStr) : new Date();
   let months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
   if (now.getDate() < start.getDate()) months--;
   if (months < 0) return "-";

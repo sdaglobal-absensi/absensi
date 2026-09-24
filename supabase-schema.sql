@@ -1265,7 +1265,7 @@ create table if not exists public.profile_change_requests (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null references public.profiles(id) on delete cascade,
   -- Catatan: daftar field_key di bawah diperluas (alamat_ktp, jenis_kelamin,
-  -- tempat_lahir, tanggal_lahir) oleh bagian 13 di akhir file ini.
+  -- tempat_lahir, tanggal_lahir, status_pernikahan) oleh bagian 13 di akhir file ini.
   field_key    text not null check (field_key in (
                  'full_name','nik_ktp','npwp','unit_pt','lokasi_kerja','department','bagian','position'
                )),
@@ -1418,8 +1418,9 @@ create policy "employee_children_write_admin" on public.employee_children
 comment on table public.employee_children is
   'Data anak karyawan (nama, tempat/tanggal lahir, pekerjaan). Urutan anak pertama, kedua, dst. lewat kolom urutan.';
 
--- Pengajuan perubahan data (Profil Saya): tambah 4 field yang mirip data
--- KTP -- alamat KTP, jenis kelamin, tempat lahir, tanggal lahir -- supaya perubahannya
+-- Pengajuan perubahan data (Profil Saya): tambah 5 field yang mirip data
+-- KTP/berdampak ke pajak -- alamat KTP, jenis kelamin, tempat lahir, tanggal
+-- lahir, status pernikahan -- supaya perubahannya
 -- ikut lewat approval admin seperti Nama/NIK/NPWP. Constraint lama dicari
 -- dan dibuang dulu berdasarkan isinya (bukan cuma namanya), lalu dipasang
 -- ulang dengan daftar field terbaru.
@@ -1439,6 +1440,105 @@ begin
     add constraint profile_change_requests_field_key_check
     check (field_key in (
       'full_name','nik_ktp','npwp','unit_pt','lokasi_kerja','department','bagian','position',
-      'alamat_ktp','jenis_kelamin','tempat_lahir','tanggal_lahir'
+      'alamat_ktp','jenis_kelamin','tempat_lahir','tanggal_lahir','status_pernikahan'
     ));
 end $$;
+
+
+-- =====================================================================
+-- 14. PTKP OTOMATIS + TANGGAL RESIGN
+-- =====================================================================
+-- Aman dijalankan ulang (idempotent).
+
+-- 14a. Tanggal resign. Kosong = karyawan masih bekerja.
+alter table public.profiles add column if not exists resign_date date;
+
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'profiles_resign_after_join_check') then
+    alter table public.profiles add constraint profiles_resign_after_join_check
+      check (resign_date is null or join_date is null or resign_date >= join_date);
+  end if;
+end $$;
+
+comment on column public.profiles.resign_date is 'Tanggal resign / berhenti bekerja. NULL = masih bekerja.';
+
+-- 14b. PTKP otomatis dari status pernikahan + jumlah anak.
+--   - status "menikah"                                  -> K/n
+--   - status lain (belum menikah, cerai hidup/mati)     -> TK/n
+--   - n = jumlah anak, maksimal 3 (batas tanggungan PTKP)
+--   - status belum diisi                                -> NULL
+-- Yang TIDAK dihitung otomatis: K/I/n (penghasilan istri digabung) dan
+-- syarat tanggungan lain (mis. usia/penghasilan anak) -- sengaja tidak
+-- ditebak dari data yang ada.
+alter table public.profiles add column if not exists ptkp text;
+
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'profiles_ptkp_check') then
+    alter table public.profiles add constraint profiles_ptkp_check
+      check (ptkp ~ '^(TK|K)/[0-3]$');
+  end if;
+end $$;
+
+comment on column public.profiles.ptkp is
+  'Kode PTKP (TK/0..TK/3, K/0..K/3). Diisi OTOMATIS oleh trigger dari status_pernikahan + jumlah anak; nilai yang dikirim dari aplikasi selalu ditimpa.';
+
+create or replace function public.hitung_ptkp(p_status text, p_anak integer)
+returns text language sql immutable as $$
+  select case
+    when p_status is null then null
+    else (case when p_status = 'menikah' then 'K' else 'TK' end)
+         || '/' || least(greatest(coalesce(p_anak, 0), 0), 3)
+  end;
+$$;
+
+-- Trigger di profiles: (1) hitung ulang ptkp; (2) kosongkan data
+-- suami/istri kalau status bukan "menikah". security definer supaya bisa
+-- menghitung anak walau si pemanggil tidak punya akses baca employee_children.
+create or replace function public.profiles_derive_fields()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.status_pernikahan is distinct from 'menikah' then
+    new.pasangan_nama := null;
+    new.pasangan_tempat_lahir := null;
+    new.pasangan_tanggal_lahir := null;
+    new.pasangan_pekerjaan := null;
+  end if;
+  new.ptkp := public.hitung_ptkp(
+    new.status_pernikahan,
+    (select count(*)::int from public.employee_children where user_id = new.id)
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_profiles_derive_fields on public.profiles;
+create trigger trg_profiles_derive_fields
+  before insert or update on public.profiles
+  for each row execute function public.profiles_derive_fields();
+
+-- Trigger di employee_children: tiap anak ditambah/dihapus/dipindah,
+-- PTKP karyawannya dihitung ulang (lewat trigger di atas).
+create or replace function public.employee_children_touch_profile()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op in ('UPDATE', 'DELETE') then
+    update public.profiles set ptkp = ptkp where id = old.user_id;
+  end if;
+  if tg_op = 'INSERT' or (tg_op = 'UPDATE' and new.user_id is distinct from old.user_id) then
+    update public.profiles set ptkp = ptkp where id = new.user_id;
+  end if;
+  return null;
+end;
+$$;
+
+drop trigger if exists trg_employee_children_ptkp on public.employee_children;
+create trigger trg_employee_children_ptkp
+  after insert or update or delete on public.employee_children
+  for each row execute function public.employee_children_touch_profile();
+
+-- Isi PTKP untuk karyawan yang sudah ada (hanya baris yang memang berubah).
+update public.profiles p set ptkp = p.ptkp
+where p.ptkp is distinct from public.hitung_ptkp(
+  p.status_pernikahan,
+  (select count(*)::int from public.employee_children c where c.user_id = p.id)
+);

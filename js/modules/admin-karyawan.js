@@ -2,7 +2,7 @@ import { supabase, supabaseAdminCreate } from "../supabaseClient.js";
 import { toast, roleLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper, STAFF_ROLES, avatarHTML } from "../core.js";
 import {
   personalFieldsHtml, familySectionHtml, wireFamilyForm, fillBiodataForm,
-  readBiodataForm, readChildren, loadChildren, saveChildren,
+  readBiodataForm, readChildren, loadChildren, saveChildren, fmtTanggal,
 } from "../biodata.js";
 
 let masterDepartments = [];
@@ -114,6 +114,11 @@ export async function render(container, user) {
             <label>Tanggal Masuk <input type="date" name="join_date" id="join_date"></label>
             <label>Lama Bekerja <input type="text" id="lama_bekerja" disabled placeholder="-"></label>
           </div>
+          <div class="form-row two-col">
+            <label>Tanggal Resign <input type="date" name="resign_date" id="resign_date"></label>
+            <label class="small muted" style="align-self:end; padding-bottom:10px;">Kosongkan kalau karyawan masih bekerja.</label>
+          </div>
+          <p class="small field-hint hidden" id="resign-hint" style="color:var(--warn);">Tanggal resign sudah diisi, tapi akun masih aktif. Hilangkan centang "Akun aktif" di atas kalau karyawan sudah tidak bekerja.</p>
 
           <div class="modal-actions">
             <button type="button" id="btn-cancel-modal" class="btn-secondary">Batal</button>
@@ -133,9 +138,9 @@ export async function render(container, user) {
     document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
     document.getElementById("form-karyawan").addEventListener("submit", e => onSubmit(e, user, isFullSuperAdmin));
     wireFamilyForm(document.getElementById("form-karyawan"));
-    document.getElementById("join_date").addEventListener("input", e => {
-      document.getElementById("lama_bekerja").value = lamaBekerja(e.target.value);
-    });
+    document.getElementById("join_date").addEventListener("input", refreshTenure);
+    document.getElementById("resign_date").addEventListener("input", refreshTenure);
+    document.querySelector('#form-karyawan input[name="is_active"]').addEventListener("change", refreshTenure);
   }
 
   loadTable(canEdit, isFullSuperAdmin);
@@ -205,7 +210,7 @@ async function loadTable(canEdit, isFullSuperAdmin) {
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th></th><th>Kode</th><th>Nama</th><th>Email</th><th>Departemen</th><th>Jabatan</th><th>Level</th><th>Role</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead>
+      <thead><tr><th></th><th>Kode</th><th>Nama</th><th>Email</th><th>Departemen</th><th>Jabatan</th><th>Level</th><th>PTKP</th><th>Role</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead>
       <tbody>
         ${data.map(k => `
           <tr>
@@ -216,8 +221,12 @@ async function loadTable(canEdit, isFullSuperAdmin) {
             <td>${k.department || "-"}</td>
             <td>${k.position || "-"}</td>
             <td>${k.level || "-"}</td>
+            <td>${k.ptkp || "-"}</td>
             <td>${roleLabel(k.role)}</td>
-            <td><span class="badge badge-${k.is_active ? "ok" : "danger"}">${k.is_active ? "Aktif" : "Nonaktif"}</span></td>
+            <td>
+              <span class="badge badge-${k.is_active ? "ok" : "danger"}">${k.is_active ? "Aktif" : "Nonaktif"}</span>
+              ${k.resign_date ? `<br><span class="muted small">Resign ${fmtTanggal(k.resign_date)}</span>` : ""}
+            </td>
             ${canEdit ? `<td>${canEditRow(k) ? `<button class="btn-link btn-edit" data-id="${k.id}">Edit</button>` : ""}</td>` : ""}
           </tr>
         `).join("")}
@@ -310,6 +319,7 @@ async function openModal(existing = null) {
     form.unit_pt.value = existing.unit_pt || "";
     form.status_karyawan.value = existing.status_karyawan || "bulanan";
     form.join_date.value = existing.join_date || "";
+    form.resign_date.value = existing.resign_date || "";
     form.phone.value = existing.phone || "";
     form.nik_ktp.value = existing.nik_ktp || "";
     form.npwp.value = existing.npwp || "";
@@ -317,8 +327,6 @@ async function openModal(existing = null) {
     form.alamat_ktp.value = existing.alamat_ktp || "";
     form.grade.value = existing.grade || "";
     form.level.value = existing.level || "";
-
-    document.getElementById("lama_bekerja").value = lamaBekerja(existing.join_date);
 
     if (existing.department) {
       ssDepartemen.setValue(existing.department);
@@ -340,6 +348,7 @@ async function openModal(existing = null) {
     form.status_karyawan.value = "bulanan";
   }
   fillBiodataForm(form, existing || {}, children);
+  refreshTenure();
   modal.classList.remove("hidden");
 }
 
@@ -363,6 +372,7 @@ async function onSubmit(e, currentUser, isFullSuperAdmin) {
     lokasi_kerja: ssLokasi.value || null,
     status_karyawan: fd.get("status_karyawan"),
     join_date: fd.get("join_date") || null,
+    resign_date: fd.get("resign_date") || null,
     phone: fd.get("phone") || null,
     nik_ktp: fd.get("nik_ktp") || null,
     npwp: fd.get("npwp") || null,
@@ -420,4 +430,17 @@ async function saveChildrenLabeled(userId, children) {
   } catch (err) {
     throw new Error("Data karyawan sudah tersimpan, tapi data anak gagal disimpan: " + err.message);
   }
+}
+
+// Segarkan bagian yang bergantung pada tanggal masuk & tanggal resign:
+// "Lama Bekerja" (berhenti di tanggal resign kalau ada), batas minimal
+// tanggal resign (tidak boleh sebelum tanggal masuk, sama seperti constraint
+// di database), dan peringatan kalau sudah resign tapi akun masih aktif.
+function refreshTenure() {
+  const join = document.getElementById("join_date").value;
+  const resign = document.getElementById("resign_date");
+  resign.min = join || "";
+  document.getElementById("lama_bekerja").value = lamaBekerja(join, resign.value || null);
+  const stillActive = document.querySelector('#form-karyawan input[name="is_active"]').checked;
+  document.getElementById("resign-hint").classList.toggle("hidden", !(resign.value && stillActive));
 }

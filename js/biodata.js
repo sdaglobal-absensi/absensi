@@ -101,6 +101,32 @@ export function displayProfileValue(key, value) {
   return String(value);
 }
 
+// ---------------------------------------------------------------------
+// PTKP (Penghasilan Tidak Kena Pajak)
+// ---------------------------------------------------------------------
+// SUMBER KEBENARAN adalah database (trigger profiles_derive_fields →
+// kolom profiles.ptkp). Fungsi hitungPtkp di sini hanya untuk PRATINJAU
+// langsung di form sebelum disimpan, dan aturannya harus sama persis
+// dengan fungsi SQL hitung_ptkp():
+//   status "menikah" → K/n, status lain → TK/n, n = jumlah anak maksimal 3,
+//   status belum diisi → null.
+// K/I/n (penghasilan istri digabung) tidak dihitung otomatis.
+export function hitungPtkp(status, jumlahAnak) {
+  if (!status) return null;
+  const n = Math.min(Math.max(Number(jumlahAnak) || 0, 0), 3);
+  return `${status === "menikah" ? "K" : "TK"}/${n}`;
+}
+
+// Nominal PTKP per tahun (rupiah) sesuai ketentuan yang berlaku saat ini:
+// TK/0 Rp54.000.000, K/0 Rp58.500.000, tambahan Rp4.500.000 per tanggungan.
+// Kalau aturan berubah, cukup ubah tiga angka ini.
+const PTKP_DASAR = { TK: 54000000, K: 58500000 };
+const PTKP_PER_TANGGUNGAN = 4500000;
+export function ptkpNominal(kode) {
+  const m = /^(TK|K)\/([0-3])$/.exec(kode || "");
+  return m ? PTKP_DASAR[m[1]] + Number(m[2]) * PTKP_PER_TANGGUNGAN : null;
+}
+
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -157,13 +183,27 @@ export function personalFieldsHtml({ includeIdentity = true } = {}) {
 // Seksi lengkap "Status Pernikahan & Keluarga". Dikembalikan sebagai
 // fragmen (tanpa div pembungkus) supaya gaya .form-section-label tetap
 // benar. Semua wiring dicari lewat atribut data-role di dalam <form>.
-export function familySectionHtml() {
+// includeStatus=true  → ada dropdown Status Pernikahan + kolom PTKP otomatis
+//                       (Data Karyawan, diisi admin).
+// includeStatus=false → tidak ada dropdown: di Profil Saya status pernikahan
+//                       hanya bisa diubah lewat pengajuan (approval admin),
+//                       jadi form ini cuma menampilkan statusnya sebagai
+//                       keterangan dan memakainya untuk menentukan apakah
+//                       blok Suami/Istri ditampilkan.
+export function familySectionHtml({ includeStatus = true } = {}) {
   const max = todayLocalISO();
-  return `
-    <div class="form-section-label">Status Pernikahan &amp; Keluarga</div>
+  const statusRow = includeStatus ? `
     <div class="form-row two-col">
       <label>Status Pernikahan <select name="status_pernikahan">${optionsHtml(OPT_STATUS_NIKAH)}</select></label>
+      <label>PTKP (otomatis) <input data-role="ptkp-display" disabled placeholder="-"></label>
     </div>
+    <p class="small muted field-hint" data-role="ptkp-hint">PTKP dihitung otomatis dari status pernikahan dan jumlah anak (maksimal 3 tanggungan).</p>
+  ` : `
+    <p class="small muted" data-role="status-note" style="margin:0 0 14px;"></p>
+  `;
+  return `
+    <div class="form-section-label">Status Pernikahan &amp; Keluarga</div>
+    ${statusRow}
     <div class="form-row two-col">
       <label>Nama Ayah <input name="nama_ayah"></label>
       <label>Nama Ibu <input name="nama_ibu"></label>
@@ -213,18 +253,41 @@ function childRowHtml(child = {}) {
 // ---------------------------------------------------------------------
 // WIRING & ISI FORM
 // ---------------------------------------------------------------------
+// Status pernikahan yang berlaku untuk form ini: dari dropdown kalau ada
+// (Data Karyawan), kalau tidak ada dari data profil (Profil Saya).
+function currentStatus(form) {
+  const sel = form.elements["status_pernikahan"];
+  return (sel ? sel.value : form.dataset.statusPernikahan) || "";
+}
+
+function updatePtkpPreview(form) {
+  const el = form.querySelector('[data-role="ptkp-display"]');
+  if (!el) return;
+  const kode = hitungPtkp(currentStatus(form), form.querySelectorAll(".child-row").length);
+  const nominal = ptkpNominal(kode);
+  el.value = kode ? `${kode} — Rp ${nominal.toLocaleString("id-ID")}/tahun` : "";
+}
+
 function refreshChildren(form) {
   const rows = form.querySelectorAll(".child-row");
   rows.forEach((row, i) => { row.querySelector(".child-title").textContent = childTitle(i); });
   form.querySelector('[data-role="children-empty"]').classList.toggle("hidden", rows.length > 0);
+  updatePtkpPreview(form);
 }
 
 // Tampilkan blok Suami/Istri hanya kalau status = Menikah, dan rapikan
 // judul "Anak Pertama/Kedua/…". Panggil ulang setiap kali isi form diganti
 // dari luar (form.reset(), atau nilai select diubah lewat kode).
 export function syncFamilyForm(form) {
-  const status = form.elements["status_pernikahan"]?.value;
+  const status = currentStatus(form);
   form.querySelector('[data-role="spouse-block"]').classList.toggle("hidden", status !== "menikah");
+  const note = form.querySelector('[data-role="status-note"]');
+  if (note) {
+    note.innerHTML = status
+      ? `Status pernikahan saat ini: <strong>${escapeHtml(optionLabel("status_pernikahan", status))}</strong>. `
+        + `Untuk mengubahnya, gunakan <strong>Ajukan Perubahan</strong> di tabel "Data Lain" di bawah.`
+      : `Status pernikahan belum diisi. Ajukan lewat <strong>Ajukan Perubahan</strong> di tabel "Data Lain" di bawah.`;
+  }
   refreshChildren(form);
 }
 
@@ -244,7 +307,7 @@ export function addChildRow(form) {
 // Pasang event: ganti status pernikahan, tombol Tambah Anak, tombol Hapus.
 // Cukup dipanggil sekali per form (pakai event delegation untuk tombol Hapus).
 export function wireFamilyForm(form) {
-  form.elements["status_pernikahan"].addEventListener("change", () => syncFamilyForm(form));
+  form.elements["status_pernikahan"]?.addEventListener("change", () => syncFamilyForm(form));
   form.querySelector('[data-role="btn-add-child"]').addEventListener("click", () => addChildRow(form));
   form.querySelector('[data-role="children-list"]').addEventListener("click", e => {
     const btn = e.target.closest(".child-remove");
@@ -257,6 +320,7 @@ export function wireFamilyForm(form) {
 // Isi form dari data profil + daftar anak. Field yang tidak ada di form
 // (mis. jenis kelamin di Profil Saya) dilewati begitu saja.
 export function fillBiodataForm(form, profile = {}, children = []) {
+  form.dataset.statusPernikahan = profile?.status_pernikahan || "";
   [...PERSONAL_KEYS, ...FAMILY_KEYS].forEach(key => {
     const el = form.elements[key];
     if (el) el.value = profile?.[key] ?? "";
@@ -278,8 +342,14 @@ export function readBiodataForm(form) {
     const el = form.elements[key];
     if (el) payload[key] = el.value.trim() || null;
   });
-  if (payload.status_pernikahan !== "menikah") {
-    SPOUSE_KEYS.forEach(key => { payload[key] = null; });
+  if (form.elements["status_pernikahan"]) {
+    // Data Karyawan: status ada di form → data pasangan dikosongkan kalau bukan "menikah".
+    if (payload.status_pernikahan !== "menikah") SPOUSE_KEYS.forEach(key => { payload[key] = null; });
+  } else if (currentStatus(form) !== "menikah") {
+    // Profil Saya: status tidak bisa diubah dari form ini. Kalau bukan "menikah",
+    // data pasangan tidak ikut dikirim sama sekali (database sendiri yang
+    // memastikan datanya kosong untuk status selain "menikah").
+    SPOUSE_KEYS.forEach(key => { delete payload[key]; });
   }
   return payload;
 }

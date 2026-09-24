@@ -1,7 +1,7 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, uploadPhoto, roleLabel, fmtDateTime, confirmDialog, lamaBekerja, updateSidebarAvatar, avatarHTML } from "../core.js";
+import { toast, uploadPhoto, roleLabel, fmtDateTime, confirmDialog, lamaBekerja, updateSidebarAvatar, avatarHTML, fmtRupiah } from "../core.js";
 import {
-  OPT_JENIS_KELAMIN, personalFieldsHtml, familySectionHtml, wireFamilyForm, fillBiodataForm,
+  OPT_JENIS_KELAMIN, OPT_STATUS_NIKAH, ptkpNominal, personalFieldsHtml, familySectionHtml, wireFamilyForm, fillBiodataForm,
   setChildren, readBiodataForm, readChildren, loadChildren, saveChildren, displayProfileValue,
 } from "../biodata.js";
 
@@ -10,9 +10,10 @@ import {
 // mengajukan lewat profile_change_requests, baru diterapkan setelah
 // disetujui admin (lihat admin-profil-approval.js).
 // Alamat sesuai KTP, jenis kelamin, tempat lahir, dan tanggal lahir juga
-// masuk daftar ini karena datanya mengacu ke KTP. Field lain di biodata (pendidikan, agama, status
-// pernikahan, orang tua, pasangan, anak) bisa diubah langsung — lihat
-// form-quick di bawah.
+// masuk daftar ini karena datanya mengacu ke KTP. Status pernikahan juga
+// harus lewat pengajuan karena menentukan PTKP (pajak). Field lain di
+// biodata (pendidikan, agama, orang tua, pasangan, anak) bisa diubah
+// langsung — lihat form-quick di bawah.
 // Field penempatan (staffOnly: true) malah tidak boleh diajukan sama sekali
 // dari sini oleh siapa pun — apapun rolenya (termasuk Super Admin/Super
 // Admin HR/Admin HR yang login dan melihat profilnya sendiri) cuma bisa
@@ -27,12 +28,21 @@ const REQUESTABLE_FIELDS = [
   { key: "jenis_kelamin", label: "Jenis Kelamin", type: "select", options: OPT_JENIS_KELAMIN },
   { key: "tempat_lahir", label: "Tempat Lahir" },
   { key: "tanggal_lahir", label: "Tanggal Lahir", type: "date" },
+  { key: "status_pernikahan", label: "Status Pernikahan", type: "select", options: OPT_STATUS_NIKAH },
   { key: "unit_pt", label: "Unit / PT", staffOnly: true },
   { key: "lokasi_kerja", label: "Lokasi Kerja / Area", staffOnly: true },
   { key: "department", label: "Departemen", staffOnly: true },
   { key: "bagian", label: "Bagian", staffOnly: true },
   { key: "position", label: "Jabatan", staffOnly: true },
+  { key: "level", label: "Level", staffOnly: true,
+    display: p => (p.level ? (p.grade ? `${p.level} (Grade ${p.grade})` : p.level) : "-") },
 ];
+
+// "K/2 — Rp63.000.000/tahun". Kodenya diisi otomatis oleh database.
+function ptkpText(kode) {
+  const nominal = ptkpNominal(kode);
+  return kode ? `${kode} — ${fmtRupiah(nominal)}/tahun` : "-";
+}
 
 let currentUser = null;
 let currentProfile = null;
@@ -83,7 +93,7 @@ export async function render(container, user) {
         <label>Alamat Domisili <input name="alamat" value="${escapeAttr(currentProfile.alamat || "")}"></label>
       </div>
       ${personalFieldsHtml({ includeIdentity: false })}
-      ${familySectionHtml()}
+      ${familySectionHtml({ includeStatus: false })}
       <button type="submit" class="btn-primary">Simpan Perubahan</button>
     </form>
 
@@ -99,12 +109,17 @@ export async function render(container, user) {
           ${REQUESTABLE_FIELDS.map(f => `
             <tr>
               <td data-label="Field">${f.label}</td>
-              <td data-label="Nilai Saat Ini">${escapeHtml(displayProfileValue(f.key, currentProfile[f.key]))}</td>
+              <td data-label="Nilai Saat Ini">${escapeHtml(f.display ? f.display(currentProfile) : displayProfileValue(f.key, currentProfile[f.key]))}</td>
               <td data-label="Aksi">${!f.staffOnly
                 ? `<button type="button" class="btn-link btn-ajukan" data-key="${f.key}" data-label="${escapeAttr(f.label)}">Ajukan Perubahan</button>`
                 : `<span class="muted small">Hubungi Admin/HR</span>`}</td>
             </tr>
           `).join("")}
+          <tr>
+            <td data-label="Field">PTKP</td>
+            <td data-label="Nilai Saat Ini" id="profil-ptkp">${escapeHtml(ptkpText(currentProfile.ptkp))}</td>
+            <td data-label="Aksi" class="muted small">Otomatis dari status pernikahan &amp; jumlah anak</td>
+          </tr>
           <tr>
             <td data-label="Field">Kode Karyawan / Role / Status Karyawan</td>
             <td data-label="Nilai Saat Ini" class="muted small">${escapeHtml(currentProfile.employee_code || "-")} • ${roleLabel(currentProfile.role)} • ${escapeHtml(currentProfile.status_karyawan || "-")}</td>
@@ -181,6 +196,14 @@ async function saveQuickFields(e) {
     const fresh = await loadChildren(supabase, currentUser.id);
     originalChildIds = fresh.map(c => c.id);
     setChildren(form, fresh);
+
+    // PTKP dihitung ulang oleh database setiap data anak berubah — ambil
+    // nilai terbarunya supaya baris PTKP di tabel "Data Lain" tidak basi.
+    const { data: prof } = await supabase.from("profiles").select("ptkp").eq("id", currentUser.id).single();
+    if (prof) {
+      currentProfile.ptkp = prof.ptkp;
+      document.getElementById("profil-ptkp").textContent = ptkpText(prof.ptkp);
+    }
     toast("Data berhasil disimpan", "success");
   } catch (err) {
     toast("Gagal menyimpan: " + err.message, "error");
