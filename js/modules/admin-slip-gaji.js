@@ -8,12 +8,14 @@ import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exp
 //   - Tunjangan (Jabatan, Loyalitas, dst): nominal per karyawan yang diatur
 //     di menu "Master Tunjangan" (beda-beda tiap orang, bukan per level),
 //     otomatis ditambahkan tiap slip selama statusnya aktif.
-//   - Denda keterlambatan & pulang cepat: tabel jam bertingkat, diatur
-//     manual di menu "Master Denda Telat" (tabel late_penalty_rules).
-//     Tier bertipe % dikalikan "Denda Terlambat & Pulang Cepat" (Rp) di
-//     Master Level masing-masing grade/level; tier bertipe nominal tetap
-//     tidak tergantung denda level. Rincian per-hari tidak ditampilkan di
-//     slip gaji karyawan, hanya totalnya.
+//   - Denda keterlambatan & pulang cepat: tabel bertingkat berdasarkan
+//     menit telat/cepat RELATIF terhadap jadwal kerja masing-masing
+//     karyawan (bukan jam dinding tetap), diatur manual di menu "Master
+//     Denda Telat" (tabel late_penalty_rules). Tier bertipe % dikalikan
+//     "Denda Terlambat & Pulang Cepat" (Rp) di Master Level masing-masing
+//     grade/level; tier bertipe nominal tetap tidak tergantung denda
+//     level. Rincian per-hari tidak ditampilkan di slip gaji karyawan,
+//     hanya totalnya.
 //   - BPJS, PPh21, uang dinas: tarif di Master Level
 // Komponen yang tidak tercatat otomatis (dinas, tunjangan/potongan lain)
 // diisi manual per periode lewat "Edit Tunjangan/Potongan" dan disimpan
@@ -22,37 +24,65 @@ import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exp
 
 // ---------------------------------------------------------------------
 // POTONGAN KETERLAMBATAN & PULANG CEPAT
-// Aturan (jam & persen/nominal) diambil dari tabel late_penalty_rules
-// (di-load ke penaltyRules saat loadData), bukan hardcode lagi di sini.
+// Aturan (menit_offset & persen/nominal) diambil dari tabel
+// late_penalty_rules (di-load ke penaltyRules saat loadData). Sejak
+// jadwal kerja karyawan bisa beda-beda (shift pagi/sore/malam), tier-nya
+// disimpan RELATIF terhadap jam masuk/pulang sesuai JADWAL MASING-MASING
+// KARYAWAN (bukan jam dinding tetap) -- lihat resolveShiftWindow() di
+// bawah utk cara mengambil jam masuk/pulang jadwalnya utk satu baris
+// absensi tertentu.
 // ---------------------------------------------------------------------
 
-// Keterlambatan: tier diurutkan naik (jam paling pagi -> paling siang).
-// Yang dipakai adalah tier PALING TERAKHIR yang jam absennya sudah
-// terlampaui (jadi makin siang datangnya, makin besar potongannya).
-function hitungDendaTelat(checkInAt, dayOfWeek, dendaDasar, tz) {
+// Ambil jam masuk & jam pulang (menit sejak 00:00, sesuai jadwal kerja
+// karyawan) yang berlaku untuk SATU baris absensi (ditentukan dari tanggal
+// baris itu, bukan tanggal hari ini). Karyawan tanpa jadwal (schedule_id
+// kosong, atau harinya libur/tidak ketemu di Master Jadwal Kerja) pakai
+// acuan default 08:00-17:00, sama seperti dulu.
+function resolveShiftWindow(emp, dow) {
+  const day = emp.schedule_id ? scheduleDaysByKey[`${emp.schedule_id}_${dow}`] : null;
+  if (day && day.is_working_day && day.start_time && day.end_time) {
+    return {
+      startMin: hmToMinutes(day.start_time.slice(0, 5)),
+      endMin: hmToMinutes(day.end_time.slice(0, 5)),
+      crossesMidnight: !!day.crosses_midnight,
+    };
+  }
+  return { startMin: hmToMinutes("08:00"), endMin: hmToMinutes("17:00"), crossesMidnight: false };
+}
+
+// Keterlambatan: tier diurutkan naik. Yang dipakai adalah tier PALING
+// TERAKHIR yang menit-telatnya sudah terlampaui (makin lama telatnya,
+// makin besar potongannya).
+function hitungDendaTelat(checkInAt, dayOfWeek, dendaDasar, tz, shift) {
   if (!checkInAt || dayOfWeek < 1 || dayOfWeek > 6) return null; // Minggu/tidak absen: tidak ada aturan
   const dayType = dayOfWeek === 6 ? "saturday" : "weekday";
   const rules = penaltyRules.telat[dayType] || [];
-  const mins = zonedMinutesOfDay(checkInAt, tz);
+  let mins = zonedMinutesOfDay(checkInAt, tz);
+  // Check-in dini hari utk shift lintas tengah malam (mis. shift 22:00,
+  // check-in tercatat 00:xx) -- geser +24 jam supaya selisihnya dari jam
+  // masuk terhitung benar (bukan malah jadi "lebih awal").
+  if (shift.crossesMidnight && mins < shift.endMin) mins += 24 * 60;
+  const lateMinutes = mins - shift.startMin;
   let picked = null;
   for (const r of rules) {
-    if (mins > hmToMinutes(r.jam)) picked = r;
+    if (lateMinutes > r.menit_offset) picked = r;
   }
   if (!picked) return null;
   const amount = picked.tipe === "flat" ? picked.nominal : dendaDasar * picked.persen / 100;
   return { amount, label: picked.label };
 }
 
-// Pulang cepat: tier diurutkan naik (jam paling pagi -> paling siang).
-// Yang dipakai adalah tier PERTAMA yang jam pulangnya masih di bawah
-// batas (jadi makin awal pulangnya, makin besar potongannya).
-function hitungDendaPulangCepat(checkOutAt, dayOfWeek, dendaDasar, tz) {
+// Pulang cepat: tier diurutkan naik. Yang dipakai adalah tier PERTAMA
+// yang menit-lebih-cepatnya masih terlampaui (makin cepat pulangnya,
+// makin besar potongannya).
+function hitungDendaPulangCepat(checkOutAt, dayOfWeek, dendaDasar, tz, shift) {
   if (!checkOutAt || dayOfWeek < 1 || dayOfWeek > 6) return null;
   const dayType = dayOfWeek === 6 ? "saturday" : "weekday";
   const rules = penaltyRules.pulang_cepat[dayType] || [];
   const mins = zonedMinutesOfDay(checkOutAt, tz);
+  const earlyMinutes = shift.endMin - mins;
   for (const r of rules) {
-    if (mins < hmToMinutes(r.jam)) {
+    if (earlyMinutes > r.menit_offset) {
       const amount = r.tipe === "flat" ? r.nominal : dendaDasar * r.persen / 100;
       return { amount, label: r.label };
     }
@@ -70,6 +100,7 @@ let overtimeByUser = {};
 let adjByUser = {};
 let allowancesByUser = {}; // { [userId]: [{ nama, nominal }] } — dari Master Tunjangan (aktif saja)
 let penaltyRules = { telat: { weekday: [], saturday: [] }, pulang_cepat: { weekday: [], saturday: [] } };
+let scheduleDaysByKey = {}; // { "${schedule_id}_${day_of_week}": work_schedule_days row } — lihat resolveShiftWindow()
 let tzByLokasi = {}; // { [nama_lokasi]: timezone } — dari Master Lokasi Kantor, dipakai supaya potongan telat/pulang-cepat dihitung sesuai jam SETEMPAT tiap cabang, bukan satu zona global.
 let currentSlip = null; // slip yang sedang dibuka di modal detail
 let cutoffDay = 1; // 1 = kalender biasa; diisi dari payroll_settings saat loadData
@@ -217,7 +248,7 @@ async function loadData(p) {
     : payrollPeriodRange(p, cutoffDay);
   const { start, end } = periodRange;
 
-  const [{ data: emp, error: errEmp }, { data: levels }, { data: wages }, { data: salaries }, { data: att }, { data: ot }, { data: adj }, { data: rules }, { data: types }, { data: alw }, { data: slips }, { data: locs }] = await Promise.all([
+  const [{ data: emp, error: errEmp }, { data: levels }, { data: wages }, { data: salaries }, { data: att }, { data: ot }, { data: adj }, { data: rules }, { data: schedDays }, { data: types }, { data: alw }, { data: slips }, { data: locs }] = await Promise.all([
     supabase.from("profiles").select("*").eq("is_active", true).order("full_name"),
     supabase.from("job_levels").select("*"),
     supabase.from("wage_history").select("*").lte("effective_date", end).order("effective_date", { ascending: false }),
@@ -225,7 +256,8 @@ async function loadData(p) {
     supabase.from("attendance").select("*").gte("date", start).lte("date", end),
     supabase.from("overtime_requests").select("*").eq("status", "approved").gte("date", start).lte("date", end),
     supabase.from("payroll_adjustments").select("*").eq("period", p),
-    supabase.from("late_penalty_rules").select("*").eq("is_active", true).order("jam", { ascending: true }),
+    supabase.from("late_penalty_rules").select("*").eq("is_active", true).order("menit_offset", { ascending: true }),
+    supabase.from("work_schedule_days").select("*"),
     supabase.from("allowance_types").select("*").eq("is_active", true),
     supabase.from("employee_allowances").select("*").eq("is_active", true),
     periodInfo ? supabase.from("payroll_slips").select("*").eq("period", p) : Promise.resolve({ data: [] }),
@@ -259,6 +291,12 @@ async function loadData(p) {
 
   penaltyRules = { telat: { weekday: [], saturday: [] }, pulang_cepat: { weekday: [], saturday: [] } };
   (rules || []).forEach(r => { (penaltyRules[r.jenis]?.[r.day_type] ?? []).push(r); });
+
+  // Jam masuk/pulang per (jadwal, hari-dalam-minggu) -- dipakai resolveShiftWindow()
+  // supaya denda telat/pulang-cepat dihitung relatif thd jadwal MASING-MASING
+  // karyawan, bukan jam dinding tetap (lihat komentar di hitungDendaTelat).
+  scheduleDaysByKey = {};
+  (schedDays || []).forEach(d => { scheduleDaysByKey[`${d.schedule_id}_${d.day_of_week}`] = d; });
 
   tzByLokasi = {};
   (locs || []).forEach(l => { tzByLokasi[l.name] = l.timezone; });
@@ -399,9 +437,10 @@ function computeSlip(emp) {
   const tz = tzByLokasi[emp.lokasi_kerja]; // zona waktu cabang tempat karyawan ini ditempatkan
   for (const a of attRows) {
     const dow = dayOfWeekFromDateStr(a.date);
-    const telat = hitungDendaTelat(a.check_in, dow, dendaDasar, tz);
+    const shift = resolveShiftWindow(emp, dow);
+    const telat = hitungDendaTelat(a.check_in, dow, dendaDasar, tz, shift);
     if (telat) dendaKeterlambatan += telat.amount;
-    const cepat = hitungDendaPulangCepat(a.check_out, dow, dendaDasar, tz);
+    const cepat = hitungDendaPulangCepat(a.check_out, dow, dendaDasar, tz, shift);
     if (cepat) dendaPulangCepat += cepat.amount;
   }
 

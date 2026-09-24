@@ -394,52 +394,91 @@ comment on table public.payroll_slips is 'Snapshot slip gaji per karyawan per pe
 -- 4h. TABEL: late_penalty_rules (Master Denda Terlambat & Pulang Cepat)
 --     Dulu tabel jam bertingkat ini "hardcode" di kode Slip Gaji, sekarang
 --     jadi setting manual yang bisa diubah admin/HR lewat menu Master Data
---     tanpa perlu ubah kode. Satu baris = satu tingkatan (tier) jam untuk
---     satu jenis (telat / pulang_cepat) pada satu kelompok hari
---     (weekday = Senin-Jumat, saturday = Sabtu).
+--     tanpa perlu ubah kode. Satu baris = satu tingkatan (tier) untuk satu
+--     jenis (telat / pulang_cepat) pada satu kelompok hari (weekday =
+--     Senin-Jumat, saturday = Sabtu).
 --
---     - jenis = 'telat'        -> jam = batas jam MULAI dianggap telat
---                                  ("lebih dari jam ..."). Yang dipakai saat
---                                  hitung slip adalah tier PALING TERAKHIR
---                                  yang jam check-in-nya sudah terlampaui.
---     - jenis = 'pulang_cepat' -> jam = batas jam pulang ("kurang dari jam
---                                  ..."). Yang dipakai adalah tier PERTAMA
---                                  (jam paling pagi) yang jam check-out-nya
---                                  masih di bawah batas.
+--     - menit_offset DIHITUNG RELATIF terhadap jam masuk/pulang sesuai
+--       JADWAL MASING-MASING KARYAWAN (Master Jadwal Kerja), BUKAN jam
+--       dinding tetap (mis. "> 08:00") -- supaya tetap benar untuk
+--       karyawan yang shiftnya beda-beda (shift malam, shift sore, dst).
+--       Karyawan tanpa jadwal (schedule_id kosong) pakai acuan default
+--       08:00-17:00 (sama seperti toleransi telat lama).
+--     - jenis = 'telat'        -> menit_offset = berapa menit SETELAH jam
+--                                  masuk jadwalnya dianggap telat. Yang
+--                                  dipakai saat hitung slip adalah tier
+--                                  PALING TERAKHIR yang sudah terlampaui.
+--     - jenis = 'pulang_cepat' -> menit_offset = berapa menit SEBELUM jam
+--                                  pulang jadwalnya dianggap pulang cepat.
+--                                  Yang dipakai adalah tier PERTAMA (paling
+--                                  kecil menit_offset-nya) yang masih
+--                                  terlampaui.
 --     - tipe = 'flat'    -> potongan = nominal (Rp tetap), tidak tergantung
 --                            "Denda Terlambat & Pulang Cepat" di Master Level.
 --     - tipe = 'percent' -> potongan = persen% x "Denda Terlambat & Pulang
 --                            Cepat" (Rp) pada Master Level karyawan ybs.
 -- ---------------------------------------------------------------------
 create table if not exists public.late_penalty_rules (
-  id          uuid primary key default gen_random_uuid(),
-  day_type    text not null check (day_type in ('weekday','saturday')),
-  jenis       text not null check (jenis in ('telat','pulang_cepat')),
-  jam         time not null,
-  tipe        text not null check (tipe in ('flat','percent')) default 'percent',
-  nominal     numeric not null default 0,  -- dipakai kalau tipe='flat'
-  persen      numeric not null default 0,  -- dipakai kalau tipe='percent'
-  label       text,
-  is_active   boolean not null default true,
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now(),
-  unique (day_type, jenis, jam)
+  id            uuid primary key default gen_random_uuid(),
+  day_type      text not null check (day_type in ('weekday','saturday')),
+  jenis         text not null check (jenis in ('telat','pulang_cepat')),
+  menit_offset  integer not null check (menit_offset >= 0),
+  tipe          text not null check (tipe in ('flat','percent')) default 'percent',
+  nominal       numeric not null default 0,  -- dipakai kalau tipe='flat'
+  persen        numeric not null default 0,  -- dipakai kalau tipe='percent'
+  label         text,
+  is_active     boolean not null default true,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  unique (day_type, jenis, menit_offset)
 );
 
--- Seed nilai default (persis konsep awal) supaya perhitungan tidak berubah
--- setelah migrasi. Aman dijalankan ulang (on conflict do nothing).
-insert into public.late_penalty_rules (day_type, jenis, jam, tipe, nominal, persen, label) values
-  ('weekday',  'telat',        '08:00', 'flat',    50000, 0,   'Telat > 08:00'),
-  ('weekday',  'telat',        '10:00', 'percent', 0,     50,  'Telat > 10:00 (50% denda)'),
-  ('weekday',  'telat',        '12:00', 'percent', 0,     100, 'Telat > 12:00 (100% denda)'),
-  ('saturday', 'telat',        '08:00', 'flat',    50000, 0,   'Telat > 08:00'),
-  ('saturday', 'telat',        '09:00', 'percent', 0,     50,  'Telat > 09:00 (50% denda)'),
-  ('saturday', 'telat',        '10:00', 'percent', 0,     100, 'Telat > 10:00 (100% denda)'),
-  ('weekday',  'pulang_cepat', '13:00', 'percent', 0,     100, 'Pulang < 13:00 (100% denda)'),
-  ('weekday',  'pulang_cepat', '14:00', 'percent', 0,     50,  'Pulang 13:00–14:00 (50% denda)'),
-  ('saturday', 'pulang_cepat', '11:00', 'percent', 0,     100, 'Pulang < 11:00 (100% denda)'),
-  ('saturday', 'pulang_cepat', '12:00', 'percent', 0,     50,  'Pulang 11:00–12:00 (50% denda)')
-on conflict (day_type, jenis, jam) do nothing;
+-- ---------------------------------------------------------------------
+-- 4h1. MIGRASI late_penalty_rules: kolom "jam" (jam dinding tetap, mis.
+--      "> 08:00") -> "menit_offset" (relatif thd jadwal masing-masing
+--      karyawan). Untuk database yang sudah pernah menjalankan versi
+--      schema lama dengan kolom "jam". HARUS jalan SEBELUM seed insert di
+--      bawah (tabel lama belum punya kolom menit_offset). Nilai lama
+--      dikonversi memakai asumsi jam kerja standar yang sama dengan seed
+--      di bawah (Senin-Jumat 08:00-17:00, Sabtu 08:00-13:00) -- SILAKAN
+--      DICEK ULANG lewat menu Master Denda Telat setelah migrasi,
+--      terutama kalau jam kerja standar kantor kamu bukan itu. Aman
+--      dijalankan berkali-kali (idempotent).
+-- ---------------------------------------------------------------------
+do $$ begin
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'late_penalty_rules' and column_name = 'jam') then
+    alter table public.late_penalty_rules drop constraint if exists late_penalty_rules_day_type_jenis_jam_key;
+    alter table public.late_penalty_rules add column if not exists menit_offset integer;
+    update public.late_penalty_rules set menit_offset = greatest(0, case
+      when jenis = 'telat' and day_type = 'weekday'  then (extract(hour from jam)*60 + extract(minute from jam)) - 480
+      when jenis = 'telat' and day_type = 'saturday' then (extract(hour from jam)*60 + extract(minute from jam)) - 480
+      when jenis = 'pulang_cepat' and day_type = 'weekday'  then 1020 - (extract(hour from jam)*60 + extract(minute from jam))
+      when jenis = 'pulang_cepat' and day_type = 'saturday' then 780  - (extract(hour from jam)*60 + extract(minute from jam))
+    end::integer)
+    where menit_offset is null;
+    alter table public.late_penalty_rules alter column menit_offset set not null;
+    alter table public.late_penalty_rules add constraint late_penalty_rules_menit_offset_check check (menit_offset >= 0);
+    alter table public.late_penalty_rules drop column jam;
+    alter table public.late_penalty_rules add constraint late_penalty_rules_day_type_jenis_menit_offset_key unique (day_type, jenis, menit_offset);
+  end if;
+end $$;
+
+-- Seed nilai default, setara dengan konsep jam-dinding lama (asumsi jam
+-- kerja standar Senin-Jumat 08:00-17:00, Sabtu 08:00-13:00) tapi sekarang
+-- disimpan relatif supaya otomatis benar untuk jadwal apa pun. Aman
+-- dijalankan ulang (on conflict do nothing).
+insert into public.late_penalty_rules (day_type, jenis, menit_offset, tipe, nominal, persen, label) values
+  ('weekday',  'telat',        0,   'flat',    50000, 0,   'Telat > 0 menit dari jam masuk'),
+  ('weekday',  'telat',        120, 'percent', 0,     50,  'Telat > 2 jam dari jam masuk (50% denda)'),
+  ('weekday',  'telat',        240, 'percent', 0,     100, 'Telat > 4 jam dari jam masuk (100% denda)'),
+  ('saturday', 'telat',        0,   'flat',    50000, 0,   'Telat > 0 menit dari jam masuk'),
+  ('saturday', 'telat',        60,  'percent', 0,     50,  'Telat > 1 jam dari jam masuk (50% denda)'),
+  ('saturday', 'telat',        120, 'percent', 0,     100, 'Telat > 2 jam dari jam masuk (100% denda)'),
+  ('weekday',  'pulang_cepat', 240, 'percent', 0,     100, 'Pulang > 4 jam sebelum jam pulang (100% denda)'),
+  ('weekday',  'pulang_cepat', 180, 'percent', 0,     50,  'Pulang 3-4 jam sebelum jam pulang (50% denda)'),
+  ('saturday', 'pulang_cepat', 120, 'percent', 0,     100, 'Pulang > 2 jam sebelum jam pulang (100% denda)'),
+  ('saturday', 'pulang_cepat', 60,  'percent', 0,     50,  'Pulang 1-2 jam sebelum jam pulang (50% denda)')
+on conflict (day_type, jenis, menit_offset) do nothing;
 
 -- ---------------------------------------------------------------------
 -- 4i. TABEL: allowance_types & employee_allowances (Master Tunjangan)
