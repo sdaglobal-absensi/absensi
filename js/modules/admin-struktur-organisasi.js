@@ -24,10 +24,26 @@ import { esc } from "../approvalHelper.js";
 const TIPE_LABEL = { pusat: "Kantor Pusat", cabang: "Cabang", departemen: "Departemen", bagian: "Bagian", lainnya: "Lainnya" };
 const REQ_LABEL = { izin: "Izin", sakit: "Sakit", cuti: "Cuti", lembur: "Lembur" };
 
+const ICON_PUSAT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V8l8-5 8 5v13"/><path d="M4 21h16"/><path d="M9 21v-6h6v6"/><path d="M9 11h.01M15 11h.01M9 15h.01M15 15h.01"/></svg>`;
 const ICON_CABANG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-7.5-7-12a7 7 0 1114 0c0 4.5-7 12-7 12z"/><circle cx="12" cy="9" r="2.3"/></svg>`;
 const ICON_DEPT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>`;
+const ICON_BAGIAN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L11 3.83A2 2 0 009.83 3H4a1 1 0 00-1 1v5.83a2 2 0 00.59 1.41l9.58 9.58a2 2 0 002.83 0l4.59-4.59a2 2 0 000-2.83z"/><circle cx="7.2" cy="7.2" r="1.4" fill="currentColor" stroke="none"/></svg>`;
+const ICON_LAINNYA = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>`;
 const ICON_CHEVRON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>`;
 const ICON_SEARCH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>`;
+
+// Tampilan (ikon & warna) mengikuti TIPE unit yang sebenarnya, bukan
+// kedalamannya di pohon — supaya Kantor Pusat & Cabang (yang sama-sama ada
+// di level teratas) tetap kelihatan beda, dan Departemen/Bagian tetap
+// konsisten warnanya di kedalaman berapa pun ia diletakkan.
+const TYPE_META = {
+  pusat: { icon: ICON_PUSAT, cls: "pusat" },
+  cabang: { icon: ICON_CABANG, cls: "cabang" },
+  departemen: { icon: ICON_DEPT, cls: "departemen" },
+  bagian: { icon: ICON_BAGIAN, cls: "bagian" },
+  lainnya: { icon: ICON_LAINNYA, cls: "lainnya" },
+};
+const typeMeta = tipe => TYPE_META[tipe] || TYPE_META.lainnya;
 
 // State halaman (dibuat baru tiap render()).
 let S;
@@ -202,6 +218,8 @@ function renderPage() {
       </div>
     </div>
 
+    ${legendHTML()}
+
     <div id="org-tree" class="org-tree">
       ${roots.length ? roots.map(u => nodeHTML(u, 0)).join("") : `<div class="card"><p class="muted">Belum ada unit. ${S.canManage ? "Klik <strong>+ Unit Puncak</strong> untuk memulai (misalnya “Kantor Pusat”), atau <strong>Impor dari Data Lama</strong> untuk membentuknya otomatis dari data Cabang/Departemen/Bagian yang sudah ada." : "Hubungi Super Admin untuk menyusun strukturnya."}</p></div>`}
     </div>
@@ -229,6 +247,18 @@ function renderPage() {
   if (S.q) { search.value = S.q; applyFilter(S.q); }
 }
 
+// Legenda warna: cuma tipe yang benar-benar dipakai di struktur yang ditampilkan,
+// urut sesuai urutan hirarki wajar (Pusat > Cabang > Departemen > Bagian > Lainnya).
+function legendHTML() {
+  const order = ["pusat", "cabang", "departemen", "bagian", "lainnya"];
+  const used = new Set(S.units.map(u => u.tipe));
+  const items = order.filter(t => used.has(t));
+  if (!items.length) return "";
+  return `<div class="org-legend no-print">
+    ${items.map(t => `<span class="org-legend-item"><span class="org-legend-dot org-legend-${t}"></span>${TIPE_LABEL[t] || t}</span>`).join("")}
+  </div>`;
+}
+
 function levelsCardHTML() {
   return `
     <div class="card org-levels-card">
@@ -248,17 +278,21 @@ function nodeHTML(u, depth) {
   const mem = membersOf(u.id);
   const kids = children(u.id);
   const admins = mem.map(m => S.profileMap[m.user_id]).filter(p => isAdminRole(p.role));
-  const cls = depth === 0 ? "org-node-cabang" : depth === 1 ? "org-node-dept" : "org-node-bagian";
-  const icon = depth === 0 ? `<span class="org-icon org-icon-cabang">${ICON_CABANG}</span>` : depth === 1 ? `<span class="org-icon org-icon-dept">${ICON_DEPT}</span>` : "";
+  // Ukuran/kepadatan node mengikuti kedalamannya di pohon (makin dalam makin ringkas)...
+  const sizeCls = depth === 0 ? "org-node-cabang" : depth === 1 ? "org-node-dept" : "org-node-bagian";
+  // ...tapi ikon, warna, dan label selalu mengikuti TIPE unit yang sebenarnya,
+  // supaya mis. Kantor Pusat vs Cabang di level teratas tetap beda tampilan.
+  const meta = typeMeta(u.tipe);
+  const icon = `<span class="org-icon org-icon-${meta.cls}">${meta.icon}</span>`;
 
   return `
-    <details class="org-node ${cls}" data-unit="${u.id}" data-name="${esc(u.nama.toLowerCase())}" ${S.openIds.has(u.id) ? "open" : ""}>
+    <details class="org-node ${sizeCls}" data-unit="${u.id}" data-tipe="${meta.cls}" data-name="${esc(u.nama.toLowerCase())}" ${S.openIds.has(u.id) ? "open" : ""}>
       <summary>
         <span class="org-summary-left">
           <span class="org-chevron">${ICON_CHEVRON}</span>
           ${icon}
           <span class="org-node-title">${esc(u.nama)}</span>
-          <span class="org-tag">${TIPE_LABEL[u.tipe] || u.tipe}</span>
+          <span class="org-tag org-tag-${meta.cls}">${TIPE_LABEL[u.tipe] || u.tipe}</span>
         </span>
         <span class="org-summary-right">
           <span class="org-pill">${mem.length} anggota</span>

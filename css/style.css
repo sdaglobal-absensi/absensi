@@ -399,8 +399,34 @@ button { font-family: 'Inter'; cursor: pointer; }
 
 .org-icon { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; }
 .org-icon svg { width: 16px; height: 16px; stroke-width: 2; }
-.org-icon-cabang { background: var(--primary); color: #F3F1E8; }
-.org-icon-dept { background: var(--ok-bg); color: var(--ok); }
+
+/* Warna ikon per TIPE unit (bukan per kedalaman) — supaya konsisten dikenali
+   di seluruh pohon: Pusat = hijau tua, Cabang = kuning keemasan, Departemen
+   = hijau muda, Bagian/Lainnya = netral. */
+.org-icon-pusat { background: var(--primary); color: #F3F1E8; }
+.org-icon-cabang { background: var(--warn); color: #FFFFFF; }
+.org-icon-departemen { background: var(--ok-bg); color: var(--ok); }
+.org-icon-bagian, .org-icon-lainnya { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+
+/* Garis aksen kiri per TIPE unit, supaya langsung kelihatan tanpa harus baca label */
+.org-node[data-tipe="pusat"] { border-left: 4px solid var(--primary); }
+.org-node[data-tipe="cabang"] { border-left: 4px solid var(--warn); }
+.org-node[data-tipe="departemen"] { border-left: 4px solid var(--ok); }
+.org-node[data-tipe="bagian"], .org-node[data-tipe="lainnya"] { border-left: 3px solid var(--border); }
+
+/* Tag label per TIPE unit */
+.org-tag-pusat { background: var(--primary); color: #F3F1E8; border-color: var(--primary); }
+.org-tag-cabang { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
+.org-tag-departemen { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
+
+/* Legenda warna di atas pohon struktur */
+.org-legend { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; margin: -6px 0 14px; font-size: 0.78rem; color: var(--muted); font-weight: 600; }
+.org-legend-item { display: flex; align-items: center; gap: 6px; }
+.org-legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.org-legend-pusat { background: var(--primary); }
+.org-legend-cabang { background: var(--warn); }
+.org-legend-departemen { background: var(--ok); }
+.org-legend-bagian, .org-legend-lainnya { background: var(--muted); }
 
 .org-node-title { font-family: 'Sora', sans-serif; font-weight: 600; font-size: 0.96rem; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .org-pill { background: var(--bg); color: var(--muted); font-size: 0.75rem; font-weight: 600; padding: 4px 12px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }
@@ -414,10 +440,12 @@ button { font-family: 'Inter'; cursor: pointer; }
 .org-node-dept .org-icon svg { width: 13px; height: 13px; }
 .org-node-dept .org-children { margin: 0 14px 14px 30px; padding-top: 10px; }
 
-.org-node-bagian { background: var(--surface); box-shadow: none; border-color: var(--border); }
+.org-node-bagian { background: var(--surface); box-shadow: none; }
 .org-node-bagian > summary { padding: 10px 14px; }
 .org-node-bagian .org-node-title { font-size: 0.84rem; font-weight: 500; }
 .org-node-bagian .org-pill { font-size: 0.7rem; padding: 3px 10px; }
+.org-node-bagian .org-icon { width: 22px; height: 22px; border-radius: 6px; }
+.org-node-bagian .org-icon svg { width: 11px; height: 11px; }
 
 .org-empty { color: var(--muted); font-size: 0.82rem; padding: 2px 2px 6px; }
 
