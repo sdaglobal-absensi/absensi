@@ -1,5 +1,6 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, fmtDate } from "../core.js";
+import { fetchSteps, stepsHTML } from "../approvalHelper.js";
 
 export async function render(container, user) {
   container.innerHTML = `
@@ -63,9 +64,10 @@ async function loadList(user) {
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data.</p>`; return; }
   if (!data.length) { el.innerHTML = `<p class="muted">Belum ada pengajuan.</p>`; return; }
 
+  const steps = await fetchSteps("leave", data.map(r => r.id));
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Jenis</th><th>Periode</th><th>Alasan</th><th>Status</th></tr></thead>
+      <thead><tr><th>Jenis</th><th>Periode</th><th>Alasan</th><th>Status</th><th>Tahap Approval</th></tr></thead>
       <tbody>
         ${data.map(r => `
           <tr>
@@ -73,6 +75,7 @@ async function loadList(user) {
             <td>${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}</td>
             <td>${escapeHtml(r.reason)}</td>
             <td><span class="badge badge-${r.status === "approved" ? "ok" : r.status === "rejected" ? "danger" : "warn"}">${statusLabel(r.status)}</span></td>
+            <td>${stepsHTML(r, steps[r.id])}</td>
           </tr>
         `).join("")}
       </tbody>

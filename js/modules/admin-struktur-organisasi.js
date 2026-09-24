@@ -1,241 +1,581 @@
 import { supabase } from "../supabaseClient.js";
-import { avatarHTML } from "../core.js";
+import { avatarHTML, toast, confirmDialog, getAllowedMenus, searchSelectHtml, wireSearchSelect } from "../core.js";
+import { esc } from "../approvalHelper.js";
 
 // =======================================================================
-// STRUKTUR ORGANISASI — halaman baca-saja (tidak ada tombol edit di sini;
-// semua editnya tetap lewat "Data Karyawan", "Master Departemen", dan
-// "Master Lokasi Kantor" seperti biasa). Halaman ini cuma MENYUSUN ULANG
-// data yang sudah ada di 3 sumber itu jadi satu pohon bertingkat:
-//   Cabang (office_locations, dicocokkan ke profiles.lokasi_kerja by nama)
-//     -> Departemen (profiles.department)
-//       -> Bagian (profiles.bagian)
-//         -> daftar Karyawan aktif (profiles.position sebagai jabatannya)
-// Karyawan yang lokasi/departemen/bagian-nya belum diisi (atau lokasi_kerja
-// tidak cocok nama cabang manapun yang masih aktif) tetap ditampilkan, tapi
-// dikumpulkan di bucket "Belum Diatur" di level masing-masing supaya tidak
-// hilang dari hitungan -- HR jadi tahu siapa saja yang datanya perlu
-// dilengkapi di menu Data Karyawan.
+// STRUKTUR ORGANISASI BERBASIS UNIT
+//
+//   Unit (org_units)  : pohon bebas kedalaman — Kantor Pusat > Cabang >
+//                       Departemen > Bagian (atau bentuk lain).
+//   Anggota           : org_unit_members. Satu orang boleh ada di banyak
+//                       unit, tapi hanya SATU "unit utama" yang menentukan
+//                       rantai approval pengajuannya.
+//   Approver          : anggota unit yang role-nya Admin (Super Admin /
+//                       Super Admin HR / Admin HR) dan menu approval-nya
+//                       menyala. Kalau unit tidak punya Admin, pengajuan
+//                       naik ke unit induk (aturan lengkap: supabase-org-
+//                       approval.sql).
+//
+// Halaman ini read-only untuk yang punya menu "struktur-organisasi", dan
+// jadi editor untuk yang juga diberi hak "struktur-kelola" (Pengaturan
+// Sistem). Super Admin selalu bisa mengubah.
 // =======================================================================
 
-const NO_LOKASI = "__no_lokasi__";
-const NO_DEPT = "__no_dept__";
-const NO_BAGIAN = "__no_bagian__";
+const TIPE_LABEL = { pusat: "Kantor Pusat", cabang: "Cabang", departemen: "Departemen", bagian: "Bagian", lainnya: "Lainnya" };
+const REQ_LABEL = { izin: "Izin", sakit: "Sakit", cuti: "Cuti", lembur: "Lembur" };
 
-// Ikon SVG (stroke, gaya sama dengan ikon sidebar di core.js) — dipakai
-// langsung di sini (bukan emoji) supaya tampilannya konsisten & rapi di
-// semua perangkat/OS.
 const ICON_CABANG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-7.5-7-12a7 7 0 1114 0c0 4.5-7 12-7 12z"/><circle cx="12" cy="9" r="2.3"/></svg>`;
 const ICON_DEPT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>`;
 const ICON_CHEVRON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>`;
 const ICON_SEARCH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>`;
 
-let tree = null; // hasil buildTree(), disimpan supaya search tidak perlu query ulang
-let stats = { totalKaryawan: 0, totalCabang: 0, totalDept: 0, totalBagian: 0 };
+// State halaman (dibuat baru tiap render()).
+let S;
 
 export async function render(container, user) {
-  container.innerHTML = `
-    <div class="page-header">
-      <div>
-        <h1>Struktur Organisasi</h1>
-        <p class="muted">Disusun otomatis dari data Karyawan, Departemen/Bagian, dan Lokasi Kantor (Cabang) yang aktif. Untuk mengubah isinya, edit lewat menu Data Karyawan / Master Departemen / Master Lokasi Kantor.</p>
-      </div>
-    </div>
+  const allowed = await getAllowedMenus(user); // null = super_admin
+  // Elemen pembungkus baru tiap render, supaya event handler tidak "bocor"
+  // ke halaman lain yang nanti memakai container #content yang sama.
+  container.innerHTML = `<div id="org-root"><p class="muted">Memuat…</p></div>`;
+  const root = container.querySelector("#org-root");
 
-    <div id="org-summary" class="status-grid"><p class="muted">Memuat…</p></div>
-
-    <div class="filter-row no-print" style="margin-bottom:16px;">
-      <div class="org-search-wrap">
-        ${ICON_SEARCH}
-        <input type="text" id="org-search" placeholder="Cari nama karyawan atau kode karyawan…">
-      </div>
-    </div>
-
-    <div id="org-tree" class="org-tree"><p class="muted">Memuat…</p></div>
-  `;
-
-  document.getElementById("org-search").addEventListener("input", e => applyFilter(e.target.value));
-
-  await loadAndRender();
-}
-
-async function loadAndRender() {
-  const treeEl = document.getElementById("org-tree");
-  const [{ data: locs, error: errLocs }, { data: profiles, error: errProf }] = await Promise.all([
-    supabase.from("office_locations").select("name").eq("is_active", true).order("name"),
-    supabase.from("profiles").select("id, employee_code, full_name, role, department, bagian, position, lokasi_kerja, photo_url").eq("is_active", true).order("full_name"),
-  ]);
-
-  if (errLocs || errProf) {
-    treeEl.innerHTML = `<p class="muted">Gagal memuat data: ${(errLocs || errProf).message}</p>`;
-    document.getElementById("org-summary").innerHTML = "";
-    return;
-  }
-
-  tree = buildTree(locs || [], profiles || []);
-  renderSummary();
-  renderTree(treeEl);
-}
-
-// -----------------------------------------------------------------------
-function buildTree(locations, profiles) {
-  const cabangOrder = locations.map(l => l.name); // urutan tampil ikut Master Lokasi Kantor
-  const cabangSet = new Set(cabangOrder);
-  const cabangMap = {};
-  const ensureCabang = key => (cabangMap[key] ??= { deptMap: {} });
-  cabangOrder.forEach(name => ensureCabang(name));
-
-  const deptSet = new Set();
-  const bagianSet = new Set();
-
-  for (const p of profiles) {
-    const cabangKey = p.lokasi_kerja && cabangSet.has(p.lokasi_kerja) ? p.lokasi_kerja : NO_LOKASI;
-    const cabang = ensureCabang(cabangKey);
-
-    const deptKey = p.department || NO_DEPT;
-    if (deptKey !== NO_DEPT) deptSet.add(`${cabangKey}::${deptKey}`);
-    const dept = (cabang.deptMap[deptKey] ??= { bagianMap: {} });
-
-    const bagianKey = p.bagian || NO_BAGIAN;
-    if (bagianKey !== NO_BAGIAN) bagianSet.add(`${cabangKey}::${deptKey}::${bagianKey}`);
-    const bagian = (dept.bagianMap[bagianKey] ??= []);
-
-    bagian.push(p);
-  }
-
-  stats = {
-    totalKaryawan: profiles.length,
-    totalCabang: cabangOrder.length,
-    totalDept: deptSet.size,
-    totalBagian: bagianSet.size,
+  S = {
+    root, user,
+    canManage: allowed === null || allowed.has("struktur-kelola"),
+    units: [], members: [], profiles: [], settings: {},
+    childMap: {}, unitMap: {}, membersByUnit: {}, profileMap: {},
+    openIds: null, // Set id unit yang terbuka; null = belum diinisialisasi
+    q: "",
   };
 
-  // Urutan tampil: cabang aktif (ikut Master Lokasi Kantor), lalu "Belum
-  // Diatur" (NO_LOKASI) paling akhir kalau memang ada isinya.
-  const cabangKeysOrdered = [...cabangOrder, NO_LOKASI].filter(k => cabangMap[k]);
-  return cabangKeysOrdered.map(cKey => ({
-    key: cKey,
-    label: cKey === NO_LOKASI ? "Belum Diatur / Lokasi Tidak Cocok" : cKey,
-    count: countInCabang(cabangMap[cKey]),
-    depts: sortedDeptKeys(cabangMap[cKey].deptMap).map(dKey => ({
-      key: dKey,
-      label: dKey === NO_DEPT ? "Belum Diatur" : dKey,
-      count: countInDept(cabangMap[cKey].deptMap[dKey]),
-      bagians: sortedBagianKeys(cabangMap[cKey].deptMap[dKey].bagianMap).map(bKey => ({
-        key: bKey,
-        label: bKey === NO_BAGIAN ? "Belum Diatur" : bKey,
-        employees: [...cabangMap[cKey].deptMap[dKey].bagianMap[bKey]].sort((a, b) => a.full_name.localeCompare(b.full_name)),
-      })),
-    })),
-  }));
+  root.addEventListener("click", onClick);
+  root.addEventListener("toggle", onToggle, true);
+  await reload();
 }
 
-function countInCabang(c) { return Object.values(c.deptMap).reduce((s, d) => s + countInDept(d), 0); }
-function countInDept(d) { return Object.values(d.bagianMap).reduce((s, list) => s + list.length, 0); }
+async function reload() {
+  const [u, m, p, s] = await Promise.all([
+    supabase.from("org_units").select("*").order("sort_order").order("nama"),
+    supabase.from("org_unit_members").select("*"),
+    supabase.from("profiles").select("id, employee_code, full_name, role, position, photo_url").eq("is_active", true).order("full_name"),
+    supabase.from("approval_settings").select("*"),
+  ]);
+  const err = u.error || m.error || p.error;
+  if (err) {
+    S.root.innerHTML = `<p class="muted">Gagal memuat data: ${esc(err.message)}. Pastikan file <code>supabase-org-approval.sql</code> sudah dijalankan di Supabase.</p>`;
+    return;
+  }
+  S.units = u.data || [];
+  S.members = m.data || [];
+  S.profiles = p.data || [];
+  S.settings = Object.fromEntries((s.data || []).map(r => [r.request_type, r.levels]));
+  index();
+  renderPage();
+}
 
-// "Belum Diatur" (NO_*) selalu ditaruh paling akhir, sisanya urut abjad.
-function sortedDeptKeys(map) {
-  return Object.keys(map).sort((a, b) => a === NO_DEPT ? 1 : b === NO_DEPT ? -1 : a.localeCompare(b));
-}
-function sortedBagianKeys(map) {
-  return Object.keys(map).sort((a, b) => a === NO_BAGIAN ? 1 : b === NO_BAGIAN ? -1 : a.localeCompare(b));
+function index() {
+  S.unitMap = Object.fromEntries(S.units.map(x => [x.id, x]));
+  S.profileMap = Object.fromEntries(S.profiles.map(x => [x.id, x]));
+  S.childMap = {};
+  for (const x of S.units) (S.childMap[x.parent_id || "root"] ??= []).push(x);
+  S.membersByUnit = {};
+  for (const m of S.members) if (S.profileMap[m.user_id]) (S.membersByUnit[m.unit_id] ??= []).push(m);
+  if (!S.openIds) {
+    // Pertama kali: buka dua tingkat teratas.
+    S.openIds = new Set(S.units.filter(x => depthOf(x.id) < 2).map(x => x.id));
+  }
 }
 
-// -----------------------------------------------------------------------
-function renderSummary() {
-  document.getElementById("org-summary").innerHTML = `
-    <div class="status-card done"><span class="status-label">Karyawan Aktif</span><span class="status-value">${stats.totalKaryawan}</span></div>
-    <div class="status-card"><span class="status-label">Cabang</span><span class="status-value">${stats.totalCabang}</span></div>
-    <div class="status-card"><span class="status-label">Departemen</span><span class="status-value">${stats.totalDept}</span></div>
-    <div class="status-card"><span class="status-label">Bagian</span><span class="status-value">${stats.totalBagian}</span></div>
-  `;
-}
+const children = id => S.childMap[id || "root"] || [];
+const membersOf = id => (S.membersByUnit[id] || []).slice().sort((a, b) => S.profileMap[a.user_id].full_name.localeCompare(S.profileMap[b.user_id].full_name));
+
+function depthOf(id) { let d = 0, cur = S.unitMap[id]; while (cur && cur.parent_id) { d++; cur = S.unitMap[cur.parent_id]; } return d; }
+function unitPath(id) { const out = []; let cur = S.unitMap[id]; while (cur) { out.unshift(cur.nama); cur = S.unitMap[cur.parent_id]; } return out.join(" › "); }
+function descendantIds(id) { const out = new Set(); const walk = x => children(x).forEach(c => { out.add(c.id); walk(c.id); }); walk(id); return out; }
+function ancestorIds(id) { const out = new Set(); let cur = S.unitMap[id]; while (cur && cur.parent_id) { out.add(cur.parent_id); cur = S.unitMap[cur.parent_id]; } return out; }
+
+const isAdminRole = role => role && role !== "karyawan";
 
 function roleBadge(role) {
-  const map = {
+  return ({
     super_admin: `<span class="badge badge-danger">Super Admin</span>`,
     super_admin_hr: `<span class="badge badge-warn">Super Admin HR</span>`,
     admin_hr: `<span class="badge badge-ok">Admin HR</span>`,
     karyawan: `<span class="badge">Karyawan</span>`,
-  };
-  return map[role] || "";
-}
-
-// Inisial 1-2 huruf dari nama, dipakai di avatar bulat setiap baris
-// karyawan (huruf pertama dari maks. 2 kata pertama nama, huruf besar).
-function initials(fullName) {
-  return (fullName || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || "").join("") || "?";
-}
-
-function renderTree(el) {
-  if (!tree.length) { el.innerHTML = `<p class="muted">Belum ada data karyawan aktif.</p>`; return; }
-
-  el.innerHTML = tree.map(cabang => `
-    <details class="org-node org-node-cabang">
-      <summary>
-        <span class="org-summary-left">
-          <span class="org-chevron">${ICON_CHEVRON}</span>
-          <span class="org-icon org-icon-cabang">${ICON_CABANG}</span>
-          <span class="org-node-title">${cabang.label}</span>
-        </span>
-        <span class="org-pill">${cabang.count} karyawan</span>
-      </summary>
-      <div class="org-children">
-        ${cabang.depts.length ? cabang.depts.map(dept => `
-          <details class="org-node org-node-dept">
-            <summary>
-              <span class="org-summary-left">
-                <span class="org-chevron">${ICON_CHEVRON}</span>
-                <span class="org-icon org-icon-dept">${ICON_DEPT}</span>
-                <span class="org-node-title">${dept.label}</span>
-              </span>
-              <span class="org-pill">${dept.count} karyawan</span>
-            </summary>
-            <div class="org-children">
-              ${dept.bagians.map(bagian => `
-                <details class="org-node org-node-bagian">
-                  <summary>
-                    <span class="org-summary-left">
-                      <span class="org-chevron">${ICON_CHEVRON}</span>
-                      <span class="org-node-title">${bagian.label}</span>
-                    </span>
-                    <span class="org-pill">${bagian.employees.length} karyawan</span>
-                  </summary>
-                  <div class="org-emp-list">
-                    ${bagian.employees.map(e => `
-                      <div class="org-emp-row" data-search="${(e.full_name + " " + (e.employee_code || "")).toLowerCase()}">
-                        <span class="org-avatar org-avatar-${e.role}">${avatarHTML(e, e.full_name)}</span>
-                        <span class="org-emp-info">
-                          <span class="org-emp-name">${e.full_name}</span>
-                          <span class="org-emp-meta">${e.position || "Jabatan belum diatur"}${e.employee_code ? ` · ${e.employee_code}` : ""}</span>
-                        </span>
-                        ${roleBadge(e.role)}
-                      </div>
-                    `).join("")}
-                  </div>
-                </details>
-              `).join("")}
-            </div>
-          </details>
-        `).join("") : `<p class="org-empty">Belum ada karyawan di cabang ini.</p>`}
-      </div>
-    </details>
-  `).join("");
+  })[role] || "";
 }
 
 // -----------------------------------------------------------------------
-// Pencarian client-side: sembunyikan baris karyawan yang tidak cocok, lalu
-// sembunyikan node (cabang/departemen/bagian) yang tidak punya baris
-// tersisa. Kalau ada kata kunci, node yang masih punya isi otomatis
-// dibuka supaya hasilnya langsung kelihatan tanpa perlu klik satu-satu.
-function applyFilter(query) {
-  const q = query.trim().toLowerCase();
-  const rows = document.querySelectorAll("#org-tree .org-emp-row");
-  rows.forEach(r => r.classList.toggle("org-hidden", !(!q || r.dataset.search.includes(q))));
+function renderPage() {
+  const primaryUsers = new Set(S.members.filter(m => m.is_primary).map(m => m.user_id));
+  const unplaced = S.profiles.filter(p => !primaryUsers.has(p.id));
+  const roots = children(null);
 
-  const nodes = document.querySelectorAll("#org-tree .org-node");
-  nodes.forEach(n => {
-    const hasVisible = !!n.querySelector(".org-emp-row:not(.org-hidden)");
-    n.classList.toggle("org-hidden", !!q && !hasVisible);
-    if (q) n.open = hasVisible;
+  S.root.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h1>Struktur Organisasi</h1>
+        <p class="muted">Susunan unit (kantor pusat, cabang, departemen) beserta anggotanya. Struktur ini jadi acuan <strong>approval izin &amp; lembur</strong>: pengajuan diteruskan ke Admin di unit utama karyawan, lalu naik ke unit induknya bila unit itu tidak punya Admin.</p>
+      </div>
+      ${S.canManage ? `<div class="org-toolbar no-print">
+        <button class="btn-primary" data-act="add-unit" data-id="">+ Unit Puncak</button>
+        ${S.units.length ? "" : `<button class="btn-secondary" data-act="import-legacy">Impor dari Data Lama</button>`}
+      </div>` : ""}
+    </div>
+
+    <div class="status-grid">
+      <div class="status-card"><span class="status-label">Unit</span><span class="status-value">${S.units.length}</span></div>
+      <div class="status-card done"><span class="status-label">Karyawan Aktif</span><span class="status-value">${S.profiles.length}</span></div>
+      <div class="status-card ${unplaced.length ? "" : "done"}"><span class="status-label">Belum Punya Unit Utama</span><span class="status-value">${unplaced.length}</span></div>
+    </div>
+
+    ${S.canManage ? levelsCardHTML() : ""}
+
+    <div class="filter-row no-print" style="margin:16px 0;">
+      <div class="org-search-wrap">
+        ${ICON_SEARCH}
+        <input type="text" id="org-search" placeholder="Cari nama karyawan, kode, atau unit…">
+      </div>
+    </div>
+
+    <div id="org-tree" class="org-tree">
+      ${roots.length ? roots.map(u => nodeHTML(u, 0)).join("") : `<div class="card"><p class="muted">Belum ada unit. ${S.canManage ? "Klik <strong>+ Unit Puncak</strong> untuk memulai (misalnya “Kantor Pusat”), atau <strong>Impor dari Data Lama</strong> untuk membentuknya otomatis dari data Cabang/Departemen/Bagian yang sudah ada." : "Hubungi Super Admin untuk menyusun strukturnya."}</p></div>`}
+    </div>
+
+    ${unplaced.length ? `
+      <h2 class="section-title">Belum Punya Unit Utama (${unplaced.length})</h2>
+      <p class="muted small" style="margin:-6px 0 12px;">Pengajuan izin/lembur mereka sementara diteruskan ke Super Admin dan Admin yang berhak approve (tanpa jenjang), sampai ditempatkan di sebuah unit.</p>
+      <div class="org-emp-list org-unplaced">
+        ${unplaced.map(p => `
+          <div class="org-emp-row" data-search="${esc((p.full_name + " " + (p.employee_code || "")).toLowerCase())}">
+            <span class="org-avatar org-avatar-${p.role}">${avatarHTML(p, p.full_name)}</span>
+            <span class="org-emp-info">
+              <span class="org-emp-name">${esc(p.full_name)}</span>
+              <span class="org-emp-meta">${esc(p.position || "Jabatan belum diatur")}${p.employee_code ? ` · ${esc(p.employee_code)}` : ""}</span>
+            </span>
+            ${roleBadge(p.role)}
+            ${S.canManage && S.units.length ? `<button class="org-mini-btn" data-act="place" data-user="${p.id}">Tempatkan</button>` : ""}
+          </div>`).join("")}
+      </div>` : ""}
+  `;
+
+  const search = document.getElementById("org-search");
+  search.addEventListener("input", e => applyFilter(e.target.value));
+  if (S.q) { search.value = S.q; applyFilter(S.q); }
+}
+
+function levelsCardHTML() {
+  return `
+    <div class="card org-levels-card">
+      <h3>Jumlah Tingkat Approval</h3>
+      <p class="muted small">Berapa Admin berbeda yang harus menyetujui, dihitung naik dari unit karyawan. Unit yang tidak punya Admin dilewati. Kalau jenjang yang tersedia lebih sedikit dari angka ini, dipakai yang ada. Berlaku untuk pengajuan baru.</p>
+      <div class="org-levels-grid">
+        ${["izin", "sakit", "cuti", "lembur"].map(k => `
+          <label>${REQ_LABEL[k]}
+            <input type="number" min="1" max="5" step="1" data-level="${k}" value="${S.settings[k] ?? 1}">
+          </label>`).join("")}
+        <button class="btn-primary" data-act="save-levels">Simpan</button>
+      </div>
+    </div>`;
+}
+
+function nodeHTML(u, depth) {
+  const mem = membersOf(u.id);
+  const kids = children(u.id);
+  const admins = mem.map(m => S.profileMap[m.user_id]).filter(p => isAdminRole(p.role));
+  const cls = depth === 0 ? "org-node-cabang" : depth === 1 ? "org-node-dept" : "org-node-bagian";
+  const icon = depth === 0 ? `<span class="org-icon org-icon-cabang">${ICON_CABANG}</span>` : depth === 1 ? `<span class="org-icon org-icon-dept">${ICON_DEPT}</span>` : "";
+
+  return `
+    <details class="org-node ${cls}" data-unit="${u.id}" data-name="${esc(u.nama.toLowerCase())}" ${S.openIds.has(u.id) ? "open" : ""}>
+      <summary>
+        <span class="org-summary-left">
+          <span class="org-chevron">${ICON_CHEVRON}</span>
+          ${icon}
+          <span class="org-node-title">${esc(u.nama)}</span>
+          <span class="org-tag">${TIPE_LABEL[u.tipe] || u.tipe}</span>
+        </span>
+        <span class="org-summary-right">
+          <span class="org-pill">${mem.length} anggota</span>
+          ${S.canManage ? `
+            <span class="org-actions no-print">
+              <button class="org-mini-btn" data-act="add-member" data-id="${u.id}">+ Anggota</button>
+              <button class="org-mini-btn" data-act="add-unit" data-id="${u.id}">+ Sub-unit</button>
+              <button class="org-mini-btn" data-act="edit-unit" data-id="${u.id}">Ubah</button>
+              <button class="org-mini-btn" data-act="copy-unit" data-id="${u.id}">Salin Struktur</button>
+              <button class="org-mini-btn org-mini-danger" data-act="del-unit" data-id="${u.id}">Hapus</button>
+            </span>` : ""}
+        </span>
+      </summary>
+      <div class="org-approver-line ${admins.length ? "" : "org-approver-none"}">
+        ${admins.length
+          ? `Admin di unit ini: <strong>${admins.map(a => esc(a.full_name)).join(", ")}</strong>`
+          : `Tidak ada Admin di unit ini — pengajuan naik ke ${u.parent_id ? "unit induk" : "Super Admin"}.`}
+      </div>
+      ${mem.length ? `<div class="org-emp-list">${mem.map(m => memberRowHTML(m, u)).join("")}</div>` : ""}
+      ${kids.length ? `<div class="org-children">${kids.map(k => nodeHTML(k, depth + 1)).join("")}</div>` : ""}
+    </details>`;
+}
+
+function memberRowHTML(m, u) {
+  const p = S.profileMap[m.user_id];
+  const otherUnits = S.members.filter(x => x.user_id === p.id && x.unit_id !== u.id).length;
+  return `
+    <div class="org-emp-row" data-search="${esc((p.full_name + " " + (p.employee_code || "")).toLowerCase())}">
+      <span class="org-avatar org-avatar-${p.role}">${avatarHTML(p, p.full_name)}</span>
+      <span class="org-emp-info">
+        <span class="org-emp-name">${esc(p.full_name)}</span>
+        <span class="org-emp-meta">${esc(p.position || "Jabatan belum diatur")}${p.employee_code ? ` · ${esc(p.employee_code)}` : ""}${otherUnits ? ` · juga di ${otherUnits} unit lain` : ""}</span>
+      </span>
+      ${m.is_primary ? `<span class="badge badge-ok" title="Unit ini menentukan rantai approval karyawan">Unit Utama</span>` : ""}
+      ${roleBadge(p.role)}
+      ${S.canManage ? `
+        <span class="org-actions no-print">
+          ${m.is_primary ? "" : `<button class="org-mini-btn" data-act="set-primary" data-user="${p.id}" data-unit="${u.id}">Jadikan Utama</button>`}
+          <button class="org-mini-btn org-mini-danger" data-act="rm-member" data-id="${m.id}">Keluarkan</button>
+        </span>` : ""}
+    </div>`;
+}
+
+// -----------------------------------------------------------------------
+// Pencarian client-side: cocokkan nama/kode karyawan ATAU nama unit.
+function applyFilter(query) {
+  S.q = query;
+  const q = query.trim().toLowerCase();
+  const rows = document.querySelectorAll("#org-root .org-emp-row");
+  const nodes = [...document.querySelectorAll("#org-tree .org-node")];
+  rows.forEach(r => r.classList.remove("org-hidden"));
+  nodes.forEach(n => n.classList.remove("org-hidden"));
+  if (!q) return;
+
+  // Baris cocok bila teksnya cocok, atau nama unit tempat ia berada cocok.
+  rows.forEach(r => {
+    const unitNode = r.closest(".org-node");
+    const hit = r.dataset.search.includes(q) || (unitNode && unitNode.dataset.name.includes(q));
+    r.classList.toggle("org-hidden", !hit);
   });
+  // Dari node terdalam ke luar: tampilkan node bila ada isi yang cocok.
+  nodes.reverse().forEach(n => {
+    const childVisible = !!n.querySelector(":scope > .org-children > .org-node:not(.org-hidden)");
+    const rowVisible = !!n.querySelector(":scope > .org-emp-list > .org-emp-row:not(.org-hidden)");
+    const show = childVisible || rowVisible || n.dataset.name.includes(q);
+    n.classList.toggle("org-hidden", !show);
+    if (show) n.open = true;
+  });
+}
+
+function onToggle(e) {
+  const d = e.target;
+  if (!d || !d.dataset || !d.dataset.unit) return;
+  if (d.open) S.openIds.add(d.dataset.unit); else S.openIds.delete(d.dataset.unit);
+}
+
+// -----------------------------------------------------------------------
+// Klik (delegasi) — semua aksi lewat atribut data-act.
+async function onClick(e) {
+  const btn = e.target.closest("[data-act]");
+  if (!btn || !S.canManage) return;
+  e.preventDefault();
+  e.stopPropagation(); // tombol di dalam <summary> jangan ikut membuka/menutup node
+  const { act, id, user, unit } = btn.dataset;
+  try {
+    if (act === "add-unit") return openUnitModal({ parentId: id || null });
+    if (act === "edit-unit") return openUnitModal({ editId: id });
+    if (act === "del-unit") return await deleteUnit(id);
+    if (act === "add-member") return openPlaceModal({ unitId: id });
+    if (act === "place") return openPlaceModal({ userId: user });
+    if (act === "set-primary") return await setPrimary(user, unit);
+    if (act === "rm-member") return await removeMember(id);
+    if (act === "copy-unit") return openCopyModal(id);
+    if (act === "import-legacy") return await openImportModal();
+    if (act === "save-levels") return await saveLevels();
+  } catch (err) {
+    console.error(err);
+    toast("Terjadi kesalahan: " + err.message, "error");
+  }
+}
+
+// -----------------------------------------------------------------------
+function openModal(title, bodyHtml) {
+  const modal = document.createElement("div");
+  modal.className = "modal";
+  modal.innerHTML = `<div class="modal-box">${`<h3>${title}</h3>`}${bodyHtml}</div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.addEventListener("mousedown", e => { if (e.target === modal) close(); });
+  modal.querySelectorAll("[data-x='cancel']").forEach(b => b.addEventListener("click", close));
+  return { modal, close, $: sel => modal.querySelector(sel) };
+}
+
+function unitOptionsHTML(list, selected = "") {
+  return list
+    .slice()
+    .sort((a, b) => unitPath(a.id).localeCompare(unitPath(b.id)))
+    .map(u => `<option value="${u.id}" ${u.id === selected ? "selected" : ""}>${esc(unitPath(u.id))}</option>`).join("");
+}
+
+function fail(error, prefix = "Gagal menyimpan") {
+  toast(`${prefix}: ${error.message}`, "error");
+}
+
+// --- Tambah / ubah unit --------------------------------------------------
+function openUnitModal({ parentId = null, editId = null }) {
+  const editing = editId ? S.unitMap[editId] : null;
+  const parent = editing ? editing.parent_id : parentId;
+  const parentTipe = parent ? S.unitMap[parent]?.tipe : null;
+  const defaultTipe = editing ? editing.tipe : (!parent ? "pusat" : parentTipe === "pusat" ? "cabang" : "departemen");
+  const blocked = editing ? new Set([editing.id, ...descendantIds(editing.id)]) : new Set();
+  const title = editing ? "Ubah Unit" : (parent ? `Sub-unit baru di “${esc(S.unitMap[parent].nama)}”` : "Unit puncak baru");
+
+  const { close, $ } = openModal(title, `
+    <form id="unit-form">
+      <div class="form-row"><label>Nama Unit <input name="nama" required maxlength="80" placeholder="mis. Kantor Pusat, Cabang Surabaya, Departemen HRD" value="${esc(editing?.nama || "")}"></label></div>
+      <div class="form-row"><label>Jenis
+        <select name="tipe">${Object.entries(TIPE_LABEL).map(([v, l]) => `<option value="${v}" ${v === defaultTipe ? "selected" : ""}>${l}</option>`).join("")}</select>
+      </label></div>
+      ${editing ? `<div class="form-row"><label>Unit Induk
+        <select name="parent_id"><option value="">— Puncak (tanpa induk) —</option>${unitOptionsHTML(S.units.filter(u => !blocked.has(u.id)), editing.parent_id || "")}</select>
+      </label></div>` : ""}
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" data-x="cancel">Batal</button>
+        <button type="submit" class="btn-primary">Simpan</button>
+      </div>
+    </form>`);
+
+  $("#unit-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const nama = fd.get("nama").trim();
+    if (!nama) return;
+    let error;
+    if (editing) {
+      ({ error } = await supabase.from("org_units").update({ nama, tipe: fd.get("tipe"), parent_id: fd.get("parent_id") || null }).eq("id", editing.id));
+    } else {
+      ({ error } = await supabase.from("org_units").insert({ nama, tipe: fd.get("tipe"), parent_id: parent }));
+      if (!error && parent) S.openIds.add(parent); // buka induknya supaya unit baru langsung kelihatan
+    }
+    if (error) return fail(error);
+    toast(editing ? "Unit diperbarui" : "Unit ditambahkan", "success");
+    close();
+    await reload();
+  });
+}
+
+async function deleteUnit(id) {
+  const u = S.unitMap[id];
+  if (children(id).length) { toast("Unit ini masih punya sub-unit. Hapus atau pindahkan sub-unitnya dulu.", "error"); return; }
+  const n = membersOf(id).length;
+  const ok = await confirmDialog({
+    title: `Hapus unit “${u.nama}”?`,
+    message: n ? `${n} anggota akan dikeluarkan dari unit ini (akun karyawannya tetap ada). Yang unit utamanya di sini akan jadi “Belum Punya Unit Utama”.` : "Unit ini kosong dan akan dihapus.",
+    confirmLabel: "Ya, Hapus", confirmClass: "btn-secondary",
+  });
+  if (!ok) return;
+  const { error } = await supabase.from("org_units").delete().eq("id", id);
+  if (error) return fail(error, "Gagal menghapus");
+  toast("Unit dihapus", "success");
+  await reload();
+}
+
+// --- Tempatkan anggota ---------------------------------------------------
+// unitId terisi -> pilih orangnya; userId terisi -> pilih unitnya.
+function openPlaceModal({ unitId = null, userId = null }) {
+  const fixedUser = userId ? S.profileMap[userId] : null;
+  const fixedUnit = unitId ? S.unitMap[unitId] : null;
+  const already = unitId ? new Set((S.membersByUnit[unitId] || []).map(m => m.user_id)) : new Set();
+  const candidates = S.profiles.filter(p => !already.has(p.id));
+
+  const { close, $ } = openModal(fixedUnit ? `Tambah anggota ke “${esc(fixedUnit.nama)}”` : `Tempatkan ${esc(fixedUser.full_name)}`, `
+    <form id="place-form">
+      ${fixedUser
+        ? `<div class="form-row"><label>Karyawan <input value="${esc(fixedUser.full_name)}" disabled></label></div>`
+        : searchSelectHtml({ id: "ss-member", label: "Karyawan", placeholder: "Ketik nama atau kode karyawan…", required: true })}
+      ${fixedUnit
+        ? ""
+        : `<div class="form-row"><label>Unit <select name="unit" required>${unitOptionsHTML(S.units)}</select></label></div>`}
+      <div class="form-row"><label class="check-row"><input type="checkbox" id="place-primary"> Jadikan <strong>unit utama</strong> (menentukan rantai approval)</label>
+        <span class="small muted">Satu karyawan hanya punya satu unit utama; unit lain hanya keanggotaan tambahan.</span></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" data-x="cancel">Batal</button>
+        <button type="submit" class="btn-primary">Simpan</button>
+      </div>
+    </form>`);
+
+  const primaryUsers = new Set(S.members.filter(m => m.is_primary).map(m => m.user_id));
+  const primaryEl = $("#place-primary");
+  let ss = null;
+  if (fixedUser) primaryEl.checked = !primaryUsers.has(fixedUser.id);
+  else ss = wireSearchSelect("ss-member", candidates, {
+    getLabel: p => `${p.full_name}${p.employee_code ? ` (${p.employee_code})` : ""}`,
+    getValue: p => p.id,
+    onSelect: p => { primaryEl.checked = !primaryUsers.has(p.id); },
+  });
+
+  $("#place-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const uid = fixedUser ? fixedUser.id : ss.value;
+    const targetUnit = fixedUnit ? fixedUnit.id : new FormData(e.target).get("unit");
+    if (!uid) { toast("Pilih karyawan dari daftar dulu", "error"); return; }
+    let error;
+    if (primaryEl.checked) {
+      ({ error } = await supabase.rpc("set_primary_unit", { p_user: uid, p_unit: targetUnit }));
+    } else {
+      ({ error } = await supabase.from("org_unit_members").upsert(
+        { unit_id: targetUnit, user_id: uid, is_primary: false },
+        { onConflict: "unit_id,user_id", ignoreDuplicates: true }
+      ));
+    }
+    if (error) return fail(error);
+    S.openIds.add(targetUnit);
+    toast("Anggota ditempatkan", "success");
+    close();
+    await reload();
+  });
+}
+
+async function setPrimary(userId, unitId) {
+  const { error } = await supabase.rpc("set_primary_unit", { p_user: userId, p_unit: unitId });
+  if (error) return fail(error);
+  toast("Unit utama diperbarui", "success");
+  await reload();
+}
+
+async function removeMember(memberId) {
+  const m = S.members.find(x => x.id === memberId);
+  const p = S.profileMap[m.user_id];
+  const ok = await confirmDialog({
+    title: `Keluarkan ${p.full_name} dari “${S.unitMap[m.unit_id].nama}”?`,
+    message: m.is_primary ? "Ini unit utamanya — setelah dikeluarkan, pengajuannya diteruskan ke Super Admin sampai ditempatkan di unit utama baru." : "Akun karyawan tetap ada; hanya keanggotaan di unit ini yang dilepas.",
+    confirmLabel: "Ya, Keluarkan", confirmClass: "btn-secondary",
+  });
+  if (!ok) return;
+  const { error } = await supabase.from("org_unit_members").delete().eq("id", memberId);
+  if (error) return fail(error, "Gagal mengeluarkan");
+  toast("Anggota dikeluarkan", "success");
+  await reload();
+}
+
+// --- Salin struktur (mis. cabang baru meniru kantor pusat) ---------------
+function openCopyModal(targetId) {
+  const target = S.unitMap[targetId];
+  // Sub-unit yang boleh disalin: yang TIDAK mengandung tujuan (yaitu bukan target
+  // itu sendiri dan bukan leluhurnya) — kalau tidak, salinan akan menyalin dirinya.
+  // Unit sumbernya sendiri boleh leluhur target (mis. cabang baru meniru Kantor Pusat).
+  const bad = new Set([targetId, ...ancestorIds(targetId)]);
+  const copyable = id => children(id).filter(k => !bad.has(k.id));
+  const sources = S.units.filter(u => u.id !== targetId && copyable(u.id).length);
+  if (!sources.length) { toast("Belum ada unit lain yang punya sub-unit untuk disalin.", "error"); return; }
+
+  const { close, $ } = openModal(`Salin struktur ke “${esc(target.nama)}”`, `
+    <p class="muted small">Menyalin sub-unit (beserta turunannya) dari unit lain ke dalam “${esc(target.nama)}”. Hanya <strong>susunan unit</strong> yang disalin — anggota tidak ikut.</p>
+    <form id="copy-form">
+      <div class="form-row"><label>Salin dari <select id="copy-src">${unitOptionsHTML(sources)}</select></label></div>
+      <div id="copy-kids" class="org-copy-kids"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" data-x="cancel">Batal</button>
+        <button type="submit" class="btn-primary">Salin</button>
+      </div>
+    </form>`);
+
+  const kidsEl = $("#copy-kids");
+  const drawKids = () => {
+    const src = $("#copy-src").value;
+    kidsEl.innerHTML = `<div class="small muted" style="margin-bottom:6px;">Pilih sub-unit yang disalin (cabang tidak dicentang otomatis):</div>` +
+      copyable(src).map(k => `<label class="check-row"><input type="checkbox" value="${k.id}" ${k.tipe === "cabang" ? "" : "checked"}> ${esc(k.nama)} <span class="org-tag">${TIPE_LABEL[k.tipe] || k.tipe}</span></label>`).join("");
+  };
+  $("#copy-src").addEventListener("change", drawKids);
+  drawKids();
+
+  $("#copy-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const picked = [...kidsEl.querySelectorAll("input:checked")].map(i => i.value);
+    if (!picked.length) { toast("Pilih minimal satu sub-unit", "error"); return; }
+    try {
+      let total = 0;
+      for (const id of picked) total += await cloneSubtree(id, targetId);
+      S.openIds.add(targetId);
+      toast(`${total} unit disalin`, "success");
+      close();
+      await reload();
+    } catch (err) { fail(err, "Gagal menyalin"); }
+  });
+}
+
+async function cloneSubtree(srcId, newParentId) {
+  const src = S.unitMap[srcId];
+  const { data, error } = await supabase.from("org_units")
+    .insert({ parent_id: newParentId, nama: src.nama, tipe: src.tipe, sort_order: src.sort_order })
+    .select("id").single();
+  if (error) throw error;
+  let n = 1;
+  for (const k of children(srcId)) n += await cloneSubtree(k.id, data.id);
+  return n;
+}
+
+// --- Impor dari data lama (Cabang > Departemen > Bagian di profiles) -----
+async function openImportModal() {
+  const { data: locs } = await supabase.from("office_locations").select("name").eq("is_active", true);
+  const cabang = new Set((locs || []).map(l => l.name));
+  const { close, $ } = openModal("Impor dari Data Lama", `
+    <p class="muted small">Membentuk struktur otomatis dari data yang sudah ada: <strong>Lokasi Kantor (cabang) → Departemen → Bagian</strong>, lalu menempatkan tiap karyawan aktif di unit terdalamnya sebagai unit utama. Setelah itu kamu bebas mengubah, memindah, dan menambah unit.</p>
+    <form id="imp-form">
+      <div class="form-row"><label>Nama unit puncak <input name="root" required value="Kantor Pusat" maxlength="80"></label></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" data-x="cancel">Batal</button>
+        <button type="submit" class="btn-primary">Impor</button>
+      </div>
+    </form>`);
+
+  $("#imp-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const btn = e.target.querySelector("button[type=submit]");
+    btn.disabled = true; btn.textContent = "Mengimpor…";
+    try {
+      const { data: profs, error: pe } = await supabase.from("profiles").select("id, department, bagian, lokasi_kerja").eq("is_active", true);
+      if (pe) throw pe;
+      const rootName = new FormData(e.target).get("root").trim();
+      const cache = {};
+      const ensure = async (parentId, nama, tipe) => {
+        const key = `${parentId}|${nama}`;
+        if (cache[key]) return cache[key];
+        const { data, error } = await supabase.from("org_units").insert({ parent_id: parentId, nama, tipe }).select("id").single();
+        if (error) throw error;
+        return (cache[key] = data.id);
+      };
+      const rootId = await ensure(null, rootName, "pusat");
+      const rows = [];
+      for (const p of profs) {
+        let parent = rootId;
+        if (p.lokasi_kerja && cabang.has(p.lokasi_kerja)) parent = await ensure(parent, p.lokasi_kerja, "cabang");
+        if (p.department) parent = await ensure(parent, p.department, "departemen");
+        if (p.bagian) parent = await ensure(parent, p.bagian, "bagian");
+        rows.push({ unit_id: parent, user_id: p.id, is_primary: true });
+      }
+      if (rows.length) {
+        const { error } = await supabase.from("org_unit_members").insert(rows);
+        if (error) throw error;
+      }
+      toast(`Struktur dibentuk: ${Object.keys(cache).length} unit, ${rows.length} karyawan ditempatkan`, "success");
+      close();
+      S.openIds = null;
+      await reload();
+    } catch (err) {
+      fail(err, "Gagal mengimpor");
+      btn.disabled = false; btn.textContent = "Impor";
+    }
+  });
+}
+
+// --- Jumlah tingkat approval ---------------------------------------------
+async function saveLevels() {
+  const rows = [...S.root.querySelectorAll("[data-level]")].map(i => ({
+    request_type: i.dataset.level,
+    levels: Math.min(5, Math.max(1, parseInt(i.value, 10) || 1)),
+    updated_by: S.user.id,
+    updated_at: new Date().toISOString(),
+  }));
+  const { error } = await supabase.from("approval_settings").upsert(rows, { onConflict: "request_type" });
+  if (error) return fail(error);
+  rows.forEach(r => (S.settings[r.request_type] = r.levels));
+  toast("Jumlah tingkat approval disimpan (berlaku untuk pengajuan baru)", "success");
 }

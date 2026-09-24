@@ -115,6 +115,58 @@ bukan cuma "disembunyikan", tapi benar-benar tertutup di sisi server. Toggle
 akses Admin HR dan Karyawan disimpan terpisah (per role), jadi mematikan
 suatu menu untuk satu role tidak memengaruhi role lainnya.
 
+## Struktur Organisasi & Approval Bertingkat
+
+Approval izin/sakit/cuti dan lembur tidak lagi "siapa saja yang punya menu
+approval bisa menyetujui semua", tapi mengikuti **struktur organisasi berbasis
+unit**.
+
+**Unit & anggota** (menu **Struktur Organisasi**)
+- Unit membentuk pohon bebas kedalaman: Kantor Pusat → Cabang → Departemen →
+  Bagian (atau bentuk lain). Cabang bisa dibuat di bawah Kantor Pusat dan
+  isinya bisa **disalin** dari unit lain (tombol *Salin Struktur*).
+- Satu karyawan boleh menjadi anggota **banyak unit**, tapi hanya satu yang
+  ditandai **Unit Utama** — unit inilah yang menentukan rantai approval
+  pengajuannya. Keanggotaan lain hanya untuk kolaborasi/tampilan.
+- Struktur bisa dibentuk otomatis dari data lama (Lokasi Kantor → Departemen →
+  Bagian) lewat tombol *Impor dari Data Lama* saat struktur masih kosong.
+
+**Siapa approver?**
+1. Approver adalah **anggota unit yang role-nya Admin** (Super Admin, Super
+   Admin HR, Admin HR) **dan** menu approval terkait (*Approval Izin* /
+   *Approval Lembur*) menyala untuk role itu di Pengaturan Sistem. Role
+   Karyawan tidak pernah jadi approver walau ditaruh di unit mana pun.
+2. Pencarian mulai dari Unit Utama pemohon. Kalau unit itu tidak punya Admin,
+   otomatis **naik ke unit induk**, dan seterusnya.
+3. **Jumlah tingkat** per jenis pengajuan (izin, sakit, cuti, lembur) diatur di
+   halaman Struktur Organisasi. Tiap tingkat = satu unit berbeda yang punya
+   Admin; unit tanpa Admin dilewati. Beberapa Admin dalam satu unit: **salah
+   satunya cukup** menyetujui tahap itu.
+4. Belum punya Unit Utama, atau tidak ada Admin di seluruh rantai atas →
+   diteruskan ke Super Admin + staff yang berhak approve (tanpa jenjang,
+   sama seperti perilaku sebelum ada struktur). Super Admin yang mengajukan
+   sendiri dan tidak punya approver di atasnya disetujui otomatis.
+5. Approver dicatat (snapshot) saat pengajuan dibuat: memindahkan orang atau
+   mengganti role sesudahnya **tidak** mengubah pengajuan yang sudah berjalan.
+   Perubahan jumlah tingkat hanya berlaku untuk pengajuan baru.
+
+**Hak akses menu.** *Struktur Organisasi* (lihat) dan *Struktur Organisasi —
+Boleh Mengubah* (`struktur-kelola`: ubah unit/anggota/tingkat approval) diatur
+di Pengaturan Sistem seperti menu lain. Default: hanya Super Admin HR yang boleh
+mengubah; Super Admin selalu boleh. Tombol Setujui/Tolak baru muncul saat
+**giliran** user itu; server mengecek ulang lewat fungsi `decide_approval`.
+
+**Keamanan.** Karyawan tidak lagi bisa mengubah status pengajuannya sendiri lewat
+API (policy `leave_update`/`overtime_update` kini hanya Super Admin), status
+awal dipaksa `pending` oleh trigger, dan approve/tolak hanya lewat RPC
+`decide_approval`. Daftar pengajuan di halaman approval dibatasi ke pengajuan
+yang melibatkan user itu, tetapi izin *baca* tabel pengajuan masih mengikuti
+toggle menu approval (dipakai juga oleh Laporan & Slip Gaji).
+
+**Migrasi database yang sudah berjalan:** jalankan `supabase-org-approval.sql`
+(aman diulang; pengajuan yang masih pending otomatis dibentuk tahap approvalnya).
+Instalasi baru cukup menjalankan `supabase-schema.sql` (sudah termasuk).
+
 ## Fitur
 
 - **Karyawan**: check-in/check-out dengan foto + validasi lokasi GPS terhadap
@@ -138,6 +190,7 @@ js/supabaseClient.js       Koneksi Supabase (isi URL & anon key di sini)
 js/auth.js                  Login, logout, proteksi halaman per role
 js/core.js                   Util bersama: sidebar (dinamis sesuai permission), role helper,
                               periode cut-off slip gaji, GPS, kamera, upload foto, format
+js/approvalHelper.js       Helper approval bertingkat (daftar per approver, tahap, keputusan via RPC)
 js/biodata.js               Form & logika biodata pribadi/keluarga (dipakai admin-karyawan.js & employee-profil.js)
 js/modules/
   employee-absensi.js       Check-in/out (GPS + kamera); alurnya juga dipakai kartu absen di dashboard.js
@@ -147,15 +200,17 @@ js/modules/
   employee-profil.js         Profil Saya: edit langsung (HP/alamat domisili/foto/biodata keluarga) + ajukan perubahan data sensitif
   admin-karyawan.js          CRUD data karyawan termasuk biodata pribadi & keluarga (menu "karyawan")
   admin-absensi.js           Monitor absensi semua karyawan (menu "absensi-monitor")
-  admin-izin.js              Approval izin (menu "izin-approval")
+  admin-izin.js              Approval izin bertingkat (menu "izin-approval")
   admin-profil-approval.js   Approval pengajuan perubahan data profil (menu "profil-approval")
-  admin-lembur.js            Approval lembur (menu "lembur-approval")
+  admin-lembur.js            Approval lembur bertingkat (menu "lembur-approval")
+  admin-struktur-organisasi.js  Pohon unit + anggota + tingkat approval; editor untuk yang punya hak "struktur-kelola"
   admin-kenaikan-upah.js     Riwayat & input kenaikan upah/gaji (menu "kenaikan-upah")
   admin-slip-gaji.js         Hitung & cetak slip gaji, ikut periode cut-off, bisa difinalisasi/dikunci (menu "slip-gaji")
   admin-laporan.js           Laporan bulanan + export (menu "laporan")
   admin-master-*.js          Master data (level, tunjangan, denda, departemen, jadwal, libur, lokasi)
   super-pengaturan.js        Kelola akses menu Admin HR + atur cut-off slip gaji (khusus Super Admin/Super Admin HR)
 supabase-schema.sql         Semua tabel, RLS policy, trigger, storage bucket
+supabase-org-approval.sql   Migrasi struktur organisasi + approval bertingkat (sudah termasuk di supabase-schema.sql)
 ```
 
 ## Setup

@@ -1,6 +1,7 @@
 import { supabase } from "../supabaseClient.js";
 import { fmtTime, fmtDate, todayISO, roleLabel, resolveMenu, ICONS, resolveUserTimezone, tzLabel } from "../core.js";
 import { loadAttendanceState, cameraModalHtml, openCamera } from "./employee-absensi.js";
+import { countPendingForMe } from "../approvalHelper.js";
 
 // Menu personal yang sudah punya kartu ringkasannya sendiri di dashboard —
 // tidak perlu diulang lagi di grid "Menu Lainnya" di bawah.
@@ -171,12 +172,12 @@ async function loadOrgStats(user) {
       cards.push({ label: "Telat Hari Ini", value: telat, tone: telat > 0 ? "warn" : "ok" });
     }
     if (canIzin) {
-      const { count: izinPending } = await supabase.from("leave_requests").select("id", { count: "exact", head: true }).eq("status", "pending");
-      cards.push({ label: "Izin/Cuti Menunggu Approval", value: izinPending ?? 0, tone: izinPending ? "warn" : "ok", target: "izin-approval" });
+      const izinPending = await countPendingForMe("leave", user);
+      cards.push({ label: "Izin/Cuti Menunggu Approvalmu", value: izinPending ?? 0, tone: izinPending ? "warn" : "ok", target: "izin-approval" });
     }
     if (canLembur) {
-      const { count: lemburPending } = await supabase.from("overtime_requests").select("id", { count: "exact", head: true }).eq("status", "pending");
-      cards.push({ label: "Lembur Menunggu Approval", value: lemburPending ?? 0, tone: lemburPending ? "warn" : "ok", target: "lembur-approval" });
+      const lemburPending = await countPendingForMe("overtime", user);
+      cards.push({ label: "Lembur Menunggu Approvalmu", value: lemburPending ?? 0, tone: lemburPending ? "warn" : "ok", target: "lembur-approval" });
     }
   } catch (e) {
     // RLS/permission edge-case — diam saja, jangan sampai dashboard error total.

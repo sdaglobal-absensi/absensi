@@ -446,6 +446,46 @@ button { font-family: 'Inter'; cursor: pointer; }
 
 .org-hidden { display: none !important; }
 
+/* ---- Struktur berbasis unit: aksi, tag, garis approver, kartu tingkat ---- */
+.org-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+.org-summary-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.org-tag { background: var(--bg); color: var(--muted); border: 1px solid var(--border); font-size: 0.68rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.org-actions { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.org-mini-btn {
+  background: var(--surface); color: var(--primary); border: 1px solid var(--border); border-radius: 8px;
+  font-size: 0.74rem; font-weight: 600; padding: 4px 10px; cursor: pointer; white-space: nowrap;
+}
+.org-mini-btn:hover { border-color: var(--primary); }
+.org-mini-danger { color: var(--danger); }
+.org-mini-danger:hover { border-color: var(--danger); }
+.org-approver-line { margin: 0 18px 12px; font-size: 0.8rem; color: var(--muted); }
+.org-approver-line strong { color: var(--ink); }
+.org-approver-none { font-style: italic; }
+.org-node-dept > .org-approver-line, .org-node-bagian > .org-approver-line { margin: 0 14px 10px; }
+.org-unplaced { padding: 0; }
+.org-levels-card { margin-top: 16px; }
+.org-levels-card h3 { margin-bottom: 4px; }
+.org-levels-grid { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px; }
+.org-levels-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; font-weight: 600; }
+.org-levels-grid input { width: 84px; }
+.org-copy-kids { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 12px; }
+.check-row { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; font-weight: 500; cursor: pointer; }
+.check-row input { width: auto; }
+@media (max-width: 760px) {
+  .org-node > summary { flex-direction: column; align-items: flex-start; }
+  .org-summary-right { justify-content: flex-start; }
+  .org-emp-row { flex-wrap: wrap; }
+}
+
+/* ---- Rincian tahap approval (tabel approval & riwayat karyawan) ---- */
+.step-line { display: flex; align-items: baseline; gap: 6px; margin: 2px 0; }
+.step-no { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--bg); border: 1px solid var(--border); font-size: 0.68rem; font-weight: 700; color: var(--muted); flex-shrink: 0; }
+.step-who { font-weight: 600; }
+.step-pending .step-no { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
+.step-approved .step-no { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.step-rejected .step-no { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+.step-skipped, .step-waiting { opacity: 0.7; }
+
 @media print {
   .no-print { display: none !important; }
   .org-node { break-inside: avoid; box-shadow: none; }

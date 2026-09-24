@@ -1,5 +1,6 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, fmtDate, fmtTime, roundOvertimeHours, fmtJam, dayOfWeekFromDateStr } from "../core.js";
+import { fetchSteps, stepsHTML } from "../approvalHelper.js";
 
 export async function render(container, user) {
   container.innerHTML = `
@@ -79,9 +80,10 @@ async function loadList(user) {
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data.</p>`; return; }
   if (!data.length) { el.innerHTML = `<p class="muted">Belum ada pengajuan lembur.</p>`; return; }
 
+  const steps = await fetchSteps("overtime", data.map(r => r.id));
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Tanggal</th><th>Jam</th><th>Total Jam</th><th>Jenis Hari</th><th>Keterangan</th><th>Status</th></tr></thead>
+      <thead><tr><th>Tanggal</th><th>Jam</th><th>Total Jam</th><th>Jenis Hari</th><th>Keterangan</th><th>Status</th><th>Tahap Approval</th></tr></thead>
       <tbody>
         ${data.map(r => `
           <tr>
@@ -91,6 +93,7 @@ async function loadList(user) {
             <td>${r.is_hari_libur ? "Hari Libur" : "Hari Biasa"}</td>
             <td>${escapeHtml(r.reason)}</td>
             <td><span class="badge badge-${r.status === "approved" ? "ok" : r.status === "rejected" ? "danger" : "warn"}">${statusLabel(r.status)}</span></td>
+            <td>${stepsHTML(r, steps[r.id])}</td>
           </tr>
         `).join("")}
       </tbody>
