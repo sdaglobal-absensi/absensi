@@ -196,6 +196,7 @@ js/auth.js                  Login, logout, proteksi halaman per role
 js/core.js                   Util bersama: sidebar (dinamis sesuai permission), role helper,
                               periode cut-off slip gaji, GPS, kamera, upload foto, format
 js/approvalHelper.js       Helper approval bertingkat (daftar per approver, tahap, keputusan via RPC)
+js/approvalUI.js           Tampilan bersama halaman Approval: tab status, cari, urut A–Z, tabel/kartu, badge, tombol aksi
 js/biodata.js               Form & logika biodata pribadi/keluarga (dipakai admin-karyawan.js & employee-profil.js)
 js/modules/
   employee-absensi.js       Check-in/out (GPS + kamera); alurnya juga dipakai kartu absen di dashboard.js

@@ -1,5 +1,6 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, invalidatePermissionCache, invalidatePayrollSettingsCache, payrollPeriodRange, fmtDate } from "../core.js";
+import { ICON_SEARCH } from "../approvalUI.js";
 
 // =======================================================================
 // PENGATURAN SISTEM — dibuka default oleh Super Admin (satu-satunya role
@@ -40,6 +41,7 @@ const MENU_LABELS = {
   "absensi-monitor": "Monitor Absensi",
   "izin-approval": "Approval Izin",
   "lembur-approval": "Approval Lembur",
+  "profil-approval": "Approval Perubahan Data",
   "kenaikan-upah": "Kenaikan Upah & Gaji",
   "slip-gaji": "Slip Gaji",
   "laporan": "Laporan",
@@ -51,6 +53,12 @@ const MENU_LABELS = {
   "master-libur": "Master Hari Libur",
   "master-lokasi": "Master Lokasi Kantor",
   "pengaturan-sistem": "Pengaturan Sistem (Kelola Akses & Cut-Off Gaji)",
+};
+
+// Catatan kecil di bawah nama menu (opsional) — untuk hal yang perlu diketahui
+// sebelum menyalakan menu itu.
+const MENU_HINTS = {
+  "profil-approval": "Menyetujui akan menimpa data di Data Karyawan, jadi menu Data Karyawan perlu ikut diizinkan untuk role yang sama.",
 };
 
 // Menu pribadi (absensi/izin/lembur/riwayat sendiri).
@@ -110,6 +118,20 @@ export async function render(container, user) {
       sendiri) dan Periode Cut-Off Slip Gaji. Nyalakan hanya kalau memang mau didelegasikan
       sebagai admin cadangan (biasanya cukup untuk Super Admin HR saja).
     </p>
+    <div class="ap-toolbar perm-toolbar">
+      <div class="ap-tools">
+        <div class="ap-search">
+          ${ICON_SEARCH}
+          <input type="search" id="perm-search" placeholder="Cari menu…" autocomplete="off" aria-label="Cari menu">
+        </div>
+        <select id="perm-sort" class="ap-sort" aria-label="Urutkan menu">
+          <option value="default">Urutan bawaan</option>
+          <option value="az">Menu A–Z</option>
+          <option value="za">Menu Z–A</option>
+        </select>
+      </div>
+      <span class="ap-meta" id="perm-meta"></span>
+    </div>
     <div id="perm-list" class="table-wrap" style="margin-bottom:32px;"><p class="muted">Memuat…</p></div>
 
     <h3 style="margin-bottom:10px;">Periode Cut-Off Slip Gaji</h3>
@@ -139,18 +161,55 @@ export async function render(container, user) {
 }
 
 // -----------------------------------------------------------------------
-// Satu tabel, satu query, dua kolom checkbox (Admin HR & Karyawan) per
-// baris menu. role_permissions sekarang satu baris per (role, menu_id),
-// jadi toggle Admin HR & Karyawan disimpan & diubah independen walau
-// menu_id-nya sama.
+// Satu tabel, satu query, satu kolom checkbox per role (Super Admin HR, Admin
+// HR, Admin, Karyawan) di setiap baris menu. role_permissions satu baris per
+// (role, menu_id), jadi toggle tiap role disimpan & diubah independen walau
+// menu_id-nya sama. Pencarian & urutan A–Z cuma memengaruhi tampilan (di
+// browser); status toggle tetap disimpan di permState.
+const permState = { enabledMap: {}, q: "", sort: "default", user: null };
+
+const normText = s => String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
 async function loadPermissions(user) {
   const el = document.getElementById("perm-list");
   const { data, error } = await supabase.from("role_permissions").select("*");
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
 
   // enabledMap["admin_hr:absensi"] = true/false, dst — gampang dicari per baris/kolom.
-  const enabledMap = {};
-  (data || []).forEach(r => { enabledMap[`${r.role}:${r.menu_id}`] = r.enabled; });
+  permState.enabledMap = {};
+  (data || []).forEach(r => { permState.enabledMap[`${r.role}:${r.menu_id}`] = r.enabled; });
+  permState.user = user;
+
+  const search = document.getElementById("perm-search");
+  const sort = document.getElementById("perm-sort");
+  let timer;
+  search.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { permState.q = search.value; paintPermissions(); }, 120);
+  });
+  sort.addEventListener("change", () => { permState.sort = sort.value; paintPermissions(); });
+
+  paintPermissions();
+}
+
+function paintPermissions() {
+  const el = document.getElementById("perm-list");
+  const meta = document.getElementById("perm-meta");
+  const { enabledMap, user } = permState;
+
+  const tokens = normText(permState.q).split(/\s+/).filter(Boolean);
+  let rows = tokens.length
+    ? ALL_MENU_ROWS.filter(r => { const hay = normText(r.label + " " + (MENU_HINTS[r.id] || "")); return tokens.every(t => hay.includes(t)); })
+    : ALL_MENU_ROWS.slice();
+  if (permState.sort === "az") rows.sort((a, b) => a.label.localeCompare(b.label, "id", { sensitivity: "base" }));
+  if (permState.sort === "za") rows.sort((a, b) => b.label.localeCompare(a.label, "id", { sensitivity: "base" }));
+
+  meta.textContent = tokens.length ? `Menampilkan ${rows.length} dari ${ALL_MENU_ROWS.length} menu` : `${ALL_MENU_ROWS.length} menu`;
+
+  if (!rows.length) {
+    el.innerHTML = `<p class="muted" style="padding:20px;">Tidak ada menu yang cocok dengan “${escapeHtml(permState.q.trim())}”.</p>`;
+    return;
+  }
 
   const cell = (row, role) => {
     const enabled = !!enabledMap[`${role}:${row.id}`];
@@ -168,9 +227,9 @@ async function loadPermissions(user) {
     <table class="table">
       <thead><tr><th>Menu</th><th>Akses Super Admin HR</th><th>Akses Admin HR</th><th>Akses Admin</th><th>Akses Karyawan</th></tr></thead>
       <tbody>
-        ${ALL_MENU_ROWS.map(row => `
+        ${rows.map(row => `
           <tr>
-            <td>${row.label}</td>
+            <td>${row.label}${MENU_HINTS[row.id] ? `<div class="small muted perm-hint">${MENU_HINTS[row.id]}</div>` : ""}</td>
             ${ROLES.map(role => cell(row, role)).join("")}
           </tr>
         `).join("")}
@@ -181,6 +240,10 @@ async function loadPermissions(user) {
   el.querySelectorAll(".perm-toggle").forEach(cb => {
     cb.addEventListener("change", () => onTogglePermission(cb, user));
   });
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 function roleDisplayName(role) {
@@ -217,6 +280,7 @@ async function onTogglePermission(checkbox, user) {
     return;
   }
 
+  permState.enabledMap[`${role}:${menuId}`] = enabled;
   checkbox.closest("label").querySelector("span").textContent = enabled ? "Diizinkan" : "Tidak diizinkan";
   invalidatePermissionCache();
   toast(`Akses "${menuLabel(menuId)}" untuk ${roleDisplayName(role)} ${enabled ? "diaktifkan" : "dimatikan"}`, "success");

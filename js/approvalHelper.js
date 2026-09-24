@@ -56,16 +56,19 @@ export function stepsHTML(req, steps) {
   }
   const label = s => ({
     waiting: `menunggu giliran`,
-    pending: `<strong>menunggu</strong>`,
+    pending: `menunggu persetujuan`,
     approved: `disetujui${s.decided_by_name ? " oleh " + esc(s.decided_by_name) : ""}`,
     rejected: `ditolak${s.decided_by_name ? " oleh " + esc(s.decided_by_name) : ""}${s.notes ? ": " + esc(s.notes) : ""}`,
     skipped: `dilewati`,
   }[s.status] || s.status);
-  return steps.map(s => `
+  return `<div class="step-list">` + steps.map(s => `
     <div class="step-line step-${s.status}">
       <span class="step-no">${s.step_order}</span>
-      <span class="small"><span class="step-who">${esc(s.approver_names || "-")}</span> — ${label(s)}</span>
-    </div>`).join("");
+      <span class="step-body">
+        <span class="step-who">${esc(s.approver_names || "-")}</span>
+        <span class="step-state">${label(s)}</span>
+      </span>
+    </div>`).join("") + `</div>`;
 }
 
 // Daftar pengajuan yang relevan untuk sebuah approver:
@@ -111,6 +114,14 @@ export async function countPendingForMe(kind, user) {
   return count ?? 0;
 }
 
+// detail: string biasa (lama) ATAU array [[label, nilai], ...] (tampil rapi sebagai daftar).
+function detailHTML(detail) {
+  if (Array.isArray(detail)) {
+    return `<dl class="ap-detail">${detail.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v ?? "-")}</dd>`).join("")}</dl>`;
+  }
+  return `<p class="muted" style="white-space:pre-line; margin-top:8px;">${esc(detail)}</p>`;
+}
+
 // Modal konfirmasi + catatan opsional. Resolve { notes } bila lanjut, null bila batal.
 export function askDecision({ title, detail, decision }) {
   return new Promise(resolve => {
@@ -118,9 +129,9 @@ export function askDecision({ title, detail, decision }) {
     modal.className = "modal";
     const approve = decision === "approved";
     modal.innerHTML = `
-      <div class="modal-box">
+      <div class="modal-box ap-modal">
         <h3>${esc(title)}</h3>
-        <p class="muted" style="white-space:pre-line; margin-top:8px;">${esc(detail)}</p>
+        ${detailHTML(detail)}
         <div class="form-row" style="margin-top:14px;">
           <label>Catatan ${approve ? "(opsional)" : "(alasan penolakan, opsional)"}
             <textarea id="decision-notes" rows="2" placeholder="Tulis catatan untuk pemohon…"></textarea>

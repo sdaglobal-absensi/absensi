@@ -1,74 +1,94 @@
 import { toast, fmtDate } from "../core.js";
 import { esc, loadApprovalList, canDecide, stepsHTML, askDecision, decideRequest } from "../approvalHelper.js";
+import {
+  pageHTML, initToolbar, filterAndSort, setMeta, emptyHTML, errorHTML,
+  employeeCell, statusPill, cell, actionsCell, reviewNote, tableHTML, bindActions,
+} from "../approvalUI.js";
 
 // Approval Izin BERTINGKAT — daftar hanya berisi pengajuan yang melibatkan
 // user ini sebagai approver (Super Admin: semua). Tombol Setujui/Tolak baru
 // muncul saat GILIRAN user ini (tahap sebelumnya sudah selesai).
+// Pencarian & urut abjad dikerjakan di browser atas data yang sudah dimuat.
+let state = { data: [], steps: {} };
+let ui;
+let seq = 0; // cegah respons lama menimpa respons baru saat tab cepat berganti
+
 export async function render(container, user) {
-  container.innerHTML = `
-    <div class="page-header">
-      <div>
-        <h1>Approval Izin</h1>
-        <p class="muted">Pengajuan yang menunggu persetujuanmu sesuai struktur organisasi. Kalau ada beberapa tingkat, tombol Setujui/Tolak baru muncul saat tiba giliranmu.</p>
-      </div>
-      <select id="filter-status">
-        <option value="pending">Menunggu</option>
-        <option value="approved">Disetujui</option>
-        <option value="rejected">Ditolak</option>
-        <option value="all">Semua</option>
-      </select>
-    </div>
-    <div id="izin-table" class="table-wrap"><p class="muted">Memuat…</p></div>
-  `;
-  document.getElementById("filter-status").addEventListener("change", () => load(user));
-  load(user);
+  container.innerHTML = pageHTML({
+    title: "Approval Izin",
+    subtitle: "Pengajuan yang menunggu persetujuanmu sesuai struktur organisasi. Kalau ada beberapa tingkat, tombol Setujui/Tolak baru muncul saat tiba giliranmu.",
+    searchPlaceholder: "Cari nama, jenis, atau alasan…",
+  });
+  ui = initToolbar(container, { onStatus: () => load(user), onView: () => paint(user) });
+  await load(user);
 }
 
 async function load(user) {
-  const status = document.getElementById("filter-status").value;
-  const el = document.getElementById("izin-table");
-  const { data, steps, error } = await loadApprovalList(
-    "leave", user, status, "*, profiles!leave_requests_user_id_fkey(full_name, department)"
+  const my = ++seq;
+  const el = document.getElementById("ap-table");
+  el.innerHTML = `<p class="muted ap-loading">Memuat…</p>`;
+  const res = await loadApprovalList(
+    "leave", user, ui.status,
+    "*, profiles!leave_requests_user_id_fkey(full_name, department, employee_code, photo_url)"
   );
-  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${esc(error.message)}</p>`; return; }
-  if (!data.length) { el.innerHTML = `<p class="muted">Tidak ada pengajuan.</p>`; return; }
-
-  el.innerHTML = `
-    <table class="table">
-      <thead><tr><th>Karyawan</th><th>Jenis</th><th>Periode</th><th>Alasan</th><th>Status</th><th>Tahap Approval</th><th></th></tr></thead>
-      <tbody>
-        ${data.map(r => `
-          <tr>
-            <td>${esc(r.profiles?.full_name || "-")}${r.profiles?.department ? `<div class="small muted">${esc(r.profiles.department)}</div>` : ""}</td>
-            <td class="capitalize">${esc(r.type)}</td>
-            <td>${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}</td>
-            <td>${esc(r.reason)}${r.review_notes && r.status !== "pending" ? `<div class="small muted">Catatan: ${esc(r.review_notes)}</div>` : ""}</td>
-            <td><span class="badge badge-${r.status === "approved" ? "ok" : r.status === "rejected" ? "danger" : "warn"}">${statusLabel(r.status)}</span></td>
-            <td>${stepsHTML(r, steps[r.id])}</td>
-            <td>
-              ${canDecide(r, steps[r.id], user) ? `
-                <button class="btn-link btn-approve" data-id="${r.id}">Setujui</button>
-                <button class="btn-link btn-reject" data-id="${r.id}">Tolak</button>
-              ` : ""}
-            </td>
-          </tr>
-        `).join("")}
-      </tbody>
-    </table>
-  `;
-
-  el.querySelectorAll(".btn-approve").forEach(b => b.addEventListener("click", () => confirmDecide(b.dataset.id, "approved", user, data)));
-  el.querySelectorAll(".btn-reject").forEach(b => b.addEventListener("click", () => confirmDecide(b.dataset.id, "rejected", user, data)));
+  if (my !== seq) return;
+  if (res.error) { el.innerHTML = errorHTML(res.error.message); return; }
+  state = { data: res.data, steps: res.steps };
+  paint(user);
 }
 
-async function confirmDecide(id, decision, user, allData) {
-  const row = allData.find(r => r.id === id);
+function paint(user) {
+  const el = document.getElementById("ap-table");
+  const { data, steps } = state;
+
+  const rows = filterAndSort(data, ui, {
+    name: r => r.profiles?.full_name,
+    text: r => [
+      r.profiles?.full_name, r.profiles?.employee_code, r.profiles?.department,
+      r.type, r.reason, r.review_notes, fmtDate(r.start_date), fmtDate(r.end_date),
+    ].join(" "),
+  });
+  setMeta(rows.length, data.length, ui);
+  if (!rows.length) { el.innerHTML = emptyHTML(ui, data.length); return; }
+
+  el.innerHTML = tableHTML(
+    ["Karyawan", "Jenis & Periode", "Alasan", "Status", "Tahap Approval", ""],
+    rows.map(r => `
+      <tr>
+        ${cell("Karyawan", employeeCell(r.profiles), "ap-td-emp")}
+        ${cell("Periode", `<span class="ap-chip">${esc(r.type)}</span>${periodHTML(r)}`)}
+        ${cell("Alasan", `<div class="ap-reason">${esc(r.reason)}</div>${reviewNote(r)}`)}
+        ${cell("Status", `${statusPill(r.status)}<div class="ap-sub">Diajukan ${fmtDate(r.created_at)}</div>`)}
+        ${cell("Tahap", stepsHTML(r, steps[r.id]), "ap-td-steps")}
+        ${actionsCell(r, canDecide(r, steps[r.id], user))}
+      </tr>
+    `).join("")
+  );
+
+  bindActions(el,
+    id => confirmDecide(id, "approved", user),
+    id => confirmDecide(id, "rejected", user));
+}
+
+function periodHTML(r) {
+  const same = r.start_date === r.end_date;
+  const days = Math.round((new Date(r.end_date) - new Date(r.start_date)) / 86400000) + 1;
+  return `
+    <div class="ap-main ap-main-gap">${same
+      ? `<span class="nw">${fmtDate(r.start_date)}</span>`
+      : `<span class="nw">${fmtDate(r.start_date)}</span> – <span class="nw">${fmtDate(r.end_date)}</span>`}</div>
+    ${Number.isFinite(days) && days > 0 ? `<div class="ap-sub">${days} hari</div>` : ""}`;
+}
+
+async function confirmDecide(id, decision, user) {
+  const row = state.data.find(r => r.id === id);
+  if (!row) return;
   const detail = [
-    `Karyawan: ${row.profiles?.full_name || "-"}`,
-    `Jenis: ${row.type}`,
-    `Periode: ${fmtDate(row.start_date)} – ${fmtDate(row.end_date)}`,
-    `Alasan: ${row.reason}`,
-  ].join("\n");
+    ["Karyawan", row.profiles?.full_name || "-"],
+    ["Jenis", row.type],
+    ["Periode", `${fmtDate(row.start_date)} – ${fmtDate(row.end_date)}`],
+    ["Alasan", row.reason],
+  ];
 
   const res = await askDecision({
     title: decision === "approved" ? "Setujui pengajuan ini?" : "Tolak pengajuan ini?",
@@ -86,5 +106,3 @@ async function confirmDecide(id, decision, user, allData) {
   );
   load(user);
 }
-
-function statusLabel(s) { return { pending: "Menunggu", approved: "Disetujui", rejected: "Ditolak" }[s] || s; }
