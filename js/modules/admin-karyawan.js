@@ -1,5 +1,5 @@
 import { supabase, supabaseAdminCreate } from "../supabaseClient.js";
-import { toast, roleLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper, STAFF_ROLES, avatarHTML } from "../core.js";
+import { toast, roleLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper, avatarHTML } from "../core.js";
 import {
   personalFieldsHtml, familySectionHtml, wireFamilyForm, fillBiodataForm,
   readBiodataForm, readChildren, loadChildren, saveChildren, fmtTanggal,
@@ -11,8 +11,6 @@ let masterLocations = [];
 let ssDepartemen, ssBagian, ssJabatan, ssGrade, ssLokasi;
 // Izin user yang sedang login, dipakai lagi di openModal() waktu membangun
 // pilihan Role untuk baris yang sedang diedit.
-let currentIsFullSuperAdmin = false;
-let currentCanAssignHrRoles = false;
 // ID anak yang sudah tersimpan untuk karyawan yang sedang dibuka di modal —
 // dipakai saat simpan untuk tahu anak mana yang dihapus dari form.
 let originalChildIds = [];
@@ -22,17 +20,11 @@ export async function render(container, user) {
   // (super_admin/super_admin_hr selalu, admin_hr cuma kalau diizinkan lewat
   // Pengaturan Sistem) — jadi semua yang bisa membuka halaman ini boleh edit.
   const canEdit = true;
-  // Super Admin adalah satu-satunya yang boleh membuat/mengedit akun Super
-  // Admin dan menaikkan siapa pun ke role Super Admin — RLS di server juga
-  // menegakkan ini (bukan cuma disembunyikan di UI).
+  // Role TIDAK diatur dari halaman ini: akun baru selalu dibuat sebagai Karyawan,
+  // dan role diubah lewat Struktur Organisasi (tombol Ubah Role) supaya yang
+  // hanya punya akses Data Karyawan tidak salah memberi role. RLS di server
+  // juga menolak perubahan role lewat tabel profiles kecuali oleh Super Admin.
   const isFullSuperAdmin = isSuper(user.role);
-  // Super Admin HR & Admin HR (bukan role "karyawan" biasa yang kebetulan
-  // diberi akses menu ini) boleh mengedit karyawan dan menaikkan role
-  // sampai Admin HR / Super Admin HR, tapi TIDAK BOLEH menaikkan ke Super
-  // Admin — itu tetap eksklusif milik Super Admin.
-  const canAssignHrRoles = STAFF_ROLES.includes(user.role);
-  currentIsFullSuperAdmin = isFullSuperAdmin;
-  currentCanAssignHrRoles = canAssignHrRoles;
 
   container.innerHTML = `
     <div class="page-header">
@@ -54,8 +46,8 @@ export async function render(container, user) {
           <div class="form-row two-col">
             <label>Kode Karyawan <input name="employee_code" required></label>
             <label>Role
-              <select name="role" id="role-select"></select>
-              <div id="role-hint"></div>
+              <input id="role-display" value="Karyawan" disabled>
+              <div id="role-hint" class="small muted">Diatur lewat Struktur Organisasi → Ubah Role.</div>
             </label>
           </div>
           <div class="form-row two-col" id="email-row">
@@ -204,8 +196,8 @@ async function loadTable(canEdit, isFullSuperAdmin) {
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
 
   // Tombol Edit sekarang muncul untuk SEMUA baris tanpa kecuali (termasuk
-  // akun Super Admin) -- pembatasannya dipindah ke level field Role di
-  // dalam modal (lihat renderRoleOptions), bukan menyembunyikan tombolnya.
+  // akun Super Admin) -- role tidak diubah dari sini
+  // (lihat renderRoleDisplay) -- diatur lewat Struktur Organisasi.
   const canEditRow = () => canEdit;
 
   el.innerHTML = `
@@ -244,42 +236,10 @@ async function loadTable(canEdit, isFullSuperAdmin) {
   }
 }
 
-// Membangun ulang pilihan di dropdown Role tiap kali modal dibuka, karena
-// pilihannya tergantung DUA hal: role user yang sedang login (siapa boleh
-// menaikkan role sampai mana) DAN role baris yang sedang diedit (baris
-// ber-role Super Admin dikunci -- tidak bisa diubah -- kalau yang mengedit
-// bukan Super Admin, walau field lain di baris itu tetap boleh diedit).
-function renderRoleOptions(existing) {
-  const select = document.getElementById("role-select");
-  const hint = document.getElementById("role-hint");
-  const lockedSuperAdmin = existing && existing.role === "super_admin" && !currentIsFullSuperAdmin;
-
-  if (lockedSuperAdmin) {
-    // Cuma satu opsi & itu pun sama dengan nilai sekarang -- secara efektif
-    // terkunci tanpa perlu disabled (select disabled tidak ikut terkirim
-    // lewat FormData saat submit).
-    select.innerHTML = `<option value="super_admin" selected>Super Admin</option>`;
-    hint.innerHTML = `<span class="small muted">Role Super Admin cuma bisa diubah oleh sesama Super Admin. Data lain di akun ini tetap bisa Anda edit.</span>`;
-    return;
-  }
-
-  select.innerHTML = `
-    <option value="karyawan">Karyawan</option>
-    ${currentCanAssignHrRoles ? `
-      <option value="admin_hr">Admin HR</option>
-      <option value="admin_approval">Admin</option>
-      <option value="super_admin_hr">Super Admin HR</option>
-    ` : ""}
-    ${currentIsFullSuperAdmin ? `<option value="super_admin">Super Admin</option>` : ""}
-  `;
-
-  if (!currentCanAssignHrRoles) {
-    hint.innerHTML = `<span class="small muted">Cuma Admin HR ke atas yang bisa mengatur role selain Karyawan.</span>`;
-  } else if (!currentIsFullSuperAdmin) {
-    hint.innerHTML = `<span class="small muted">Role Super Admin cuma bisa diatur oleh Super Admin.</span>`;
-  } else {
-    hint.innerHTML = "";
-  }
+// Role hanya ditampilkan (read-only). Akun baru selalu Karyawan; untuk mengubah
+// role (Admin, Admin HR, dst.) pakai Struktur Organisasi -> Ubah Role.
+function renderRoleDisplay(existing) {
+  document.getElementById("role-display").value = roleLabel(existing?.role || "karyawan");
 }
 
 async function openModal(existing = null) {
@@ -303,7 +263,7 @@ async function openModal(existing = null) {
   ssDepartemen.clear(); ssBagian.setOptions([]); ssBagian.clear();
   ssJabatan.setOptions([]); ssJabatan.clear(); ssGrade.clear(); ssLokasi.clear();
   document.getElementById("lama_bekerja").value = "";
-  renderRoleOptions(existing);
+  renderRoleDisplay(existing);
 
   document.getElementById("modal-title").textContent = existing ? "Edit Karyawan" : "Tambah Karyawan";
   document.getElementById("email-row").classList.toggle("hidden", !!existing);
@@ -315,7 +275,6 @@ async function openModal(existing = null) {
     form.id.value = existing.id;
     form.full_name.value = existing.full_name || "";
     form.employee_code.value = existing.employee_code || "";
-    form.role.value = existing.role || "karyawan";
     form.is_active.checked = existing.is_active;
     form.unit_pt.value = existing.unit_pt || "";
     form.status_karyawan.value = existing.status_karyawan || "bulanan";
@@ -380,7 +339,6 @@ async function onSubmit(e, currentUser, isFullSuperAdmin) {
     alamat: fd.get("alamat") || null,
     alamat_ktp: fd.get("alamat_ktp") || null,
     ...readBiodataForm(e.target),
-    role: fd.get("role"),
     is_active: fd.get("is_active") === "on",
   };
   const children = readChildren(e.target);
@@ -398,8 +356,8 @@ async function onSubmit(e, currentUser, isFullSuperAdmin) {
       // Catatan keamanan: trigger di server SENGAJA mengabaikan "role" yang
       // dikirim lewat signUp metadata (siapa pun bisa memanggil signUp
       // langsung lewat anon key, jadi role tidak boleh dipercaya dari sini).
-      // Profil selalu dibuat dengan role 'karyawan' dulu, lalu di baris di
-      // bawah ini role sebenarnya baru diatur lewat update yang tunduk RLS.
+      // Profil selalu dibuat dengan role 'karyawan' dan role TIDAK ikut dikirim di
+      // update di bawah; role diubah lewat Struktur Organisasi (Ubah Role).
       const { data: signUpData, error: signUpError } = await supabaseAdminCreate.auth.signUp({
         email, password,
         options: { data: { full_name: payload.full_name, employee_code: payload.employee_code } },

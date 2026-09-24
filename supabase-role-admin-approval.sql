@@ -1,5 +1,6 @@
 -- =====================================================================
 -- MIGRASI: ROLE BARU "Admin" (nilai di database: admin_approval)
+--          + ubah role dari Struktur Organisasi (bukan lagi Data Karyawan)
 --
 -- Untuk database yang SUDAH berjalan. Aman dijalankan berulang (idempotent).
 -- Jalankan sekali di Supabase > SQL Editor. Instalasi baru tidak perlu file
@@ -9,11 +10,12 @@
 -- Yang berubah:
 --   1. Role 'admin_approval' diizinkan di profiles & role_permissions.
 --   2. Toggle menu default untuk role itu (pribadi + Approval Izin/Lembur).
---   3. Admin HR / Super Admin HR boleh menetapkan role ini di Data Karyawan.
+--   3. ROLE TIDAK BISA lagi diubah lewat tabel profiles (Data Karyawan) kecuali
+--      oleh Super Admin. Akun baru selalu 'karyawan'.
 --   4. Role Admin ikut dihitung sebagai approver di rantai unit
 --      (resolve_approval_chain). Fallback "tanpa unit" TIDAK berubah.
 --   5. Approver boleh membaca profil pemohon yang ada di rantainya saja.
---   6. Fungsi set_member_role: tombol Jadikan/Cabut Admin di Struktur Organisasi.
+--   6. Fungsi set_member_role: Ubah Role di Struktur Organisasi.
 --
 -- Pengajuan yang SUDAH dibuat tidak berubah (approver-nya sudah tercatat).
 -- =====================================================================
@@ -60,42 +62,27 @@ insert into public.role_permissions (role, menu_id, enabled) values
   ('admin_approval', 'pengaturan-sistem', false)
 on conflict (role, menu_id) do nothing;
 
--- 3. Siapa boleh menetapkan role ------------------------------------------
+-- 3. Role tidak bisa diubah lewat Data Karyawan ---------------------------
 drop policy if exists "profiles_admin_all" on public.profiles;
 create policy "profiles_admin_all" on public.profiles
   for all
-  -- USING: baris mana yg boleh disentuh (dibaca utk update/delete). Semua
-  -- baris boleh disentuh oleh siapa pun yg punya akses menu "Data
-  -- Karyawan", TERMASUK baris ber-role Super Admin -- supaya Admin HR/
-  -- Super Admin HR tetap bisa mengedit field LAIN (nama, no HP, dst) punya
-  -- akun Super Admin. Pembatasan supaya role-nya sendiri tidak ikut
-  -- berubah ada di WITH CHECK di bawah, bukan di sini.
+  -- USING: baris mana yg boleh disentuh. Semua baris boleh disentuh oleh siapa
+  -- pun yg punya akses menu "Data Karyawan" (untuk edit field selain role).
   using ( public.is_super() or public.has_menu_access('karyawan') )
   with check (
-    -- WITH CHECK: nilai role BARU yang boleh disimpan.
-    -- - super_admin: bebas (root, all akses).
-    -- - super_admin_hr/admin_hr (staff) dgn menu "Data Karyawan": boleh
-    --   menyimpan role 'karyawan', 'admin_hr', 'admin_approval', atau 'super_admin_hr' --
-    --   TAPI TIDAK PERNAH boleh menaikkan siapa pun (termasuk dirinya) ke
-    --   'super_admin'. is_super() di sini SENGAJA tetap hardcoded ke role
-    --   super_admin saja supaya kemampuan membuat akun Super Admin baru
-    --   selalu ada di satu role yang jelas & tidak pernah bisa mati lewat
-    --   toggle menu "Data Karyawan".
-    -- - PENGECUALIAN: kalau baris yg diedit SEBELUMNYA sudah 'super_admin'
-    --   (role_of(id) = 'super_admin') dan field role yg disimpan TETAP
-    --   'super_admin' (tidak diubah), izinkan juga -- ini yang membuat
-    --   Admin HR/Super Admin HR bisa menyimpan perubahan field lain punya
-    --   akun Super Admin tanpa bisa menurunkan/menaikkan role siapa pun
-    --   ke/dari Super Admin.
-    -- - karyawan biasa yg kebetulan diberi akses menu ini: tetap cuma
-    --   boleh role 'karyawan'.
+    -- WITH CHECK: ROLE tidak bisa diubah lewat Data Karyawan. Akun baru selalu
+    -- 'karyawan' (trigger handle_new_user), dan role diubah lewat fungsi
+    -- set_member_role (halaman Struktur Organisasi -> Ubah Role) supaya yang
+    -- hanya punya akses Data Karyawan tidak salah memberi role.
+    -- - super_admin (is_super): bebas.
+    -- - lainnya dgn menu "Data Karyawan": role harus TETAP sama dengan role
+    --   sebelumnya (role_of(id)), atau baris baru (role_of null) dgn 'karyawan'.
     public.is_super()
     or (
       public.has_menu_access('karyawan')
       and (
-        ( public.my_role() in ('super_admin_hr','admin_hr') and role in ('karyawan','admin_hr','admin_approval','super_admin_hr') )
-        or ( role = 'karyawan' )
-        or ( role = 'super_admin' and public.role_of(id) = 'super_admin' )
+        role = public.role_of(id)
+        or ( public.role_of(id) is null and role = 'karyawan' )
       )
     )
   );
@@ -202,40 +189,55 @@ drop policy if exists "profiles_select_approver" on public.profiles;
 create policy "profiles_select_approver" on public.profiles
   for select using ( public.is_approver_of_user(id) );
 
--- 6. Ganti status Admin dari Struktur Organisasi ----------------------------
+-- 6. Ubah role dari Struktur Organisasi -------------------------------------
 -- ---------------------------------------------------------------------
--- 9b. FUNGSI: set_member_role — ganti status Admin langsung dari halaman
---     Struktur Organisasi (tanpa buka Data Karyawan). Hanya untuk yang punya
---     hak 'struktur-kelola', hanya antara 'karyawan' <-> 'admin_approval'
---     (label UI: Admin), tidak boleh untuk diri sendiri, dan tidak bisa
---     menyentuh role lain (Admin HR / Super Admin HR / Super Admin tetap
---     diatur lewat Data Karyawan) -- jadi tidak bisa dipakai menaikkan
---     seseorang lebih tinggi dari 'admin_approval'.
+-- 9b. FUNGSI: set_member_role — ubah role dari halaman Struktur Organisasi
+--     (Data Karyawan TIDAK lagi mengatur role: akun baru selalu 'karyawan').
+--     Harus punya hak 'struktur-kelola'. Kewenangan:
+--       Super Admin              : semua role.
+--       Super Admin HR / Admin HR: karyawan, admin_approval (label UI: Admin),
+--                                  admin_hr, super_admin_hr -- TIDAK boleh
+--                                  menyentuh/menetapkan super_admin.
+--       lainnya (mis. Karyawan/Admin yang diberi hak kelola): hanya
+--                                  karyawan <-> admin_approval.
+--     Tidak boleh mengubah role diri sendiri.
 -- ---------------------------------------------------------------------
 create or replace function public.set_member_role(p_user uuid, p_role text)
 returns void language plpgsql security definer set search_path = public as $$
 declare
-  v_old text;
+  v_caller text := public.my_role();
+  v_old    text;
 begin
   if auth.uid() is null then raise exception 'Belum login'; end if;
   if not public.has_menu_access('struktur-kelola') then
     raise exception 'Tidak punya akses mengelola struktur organisasi';
   end if;
-  if p_role not in ('karyawan', 'admin_approval') then
-    raise exception 'Role tidak valid untuk diubah dari sini';
+  if p_role not in ('karyawan', 'admin_approval', 'admin_hr', 'super_admin_hr', 'super_admin') then
+    raise exception 'Role tidak valid';
   end if;
   if p_user = auth.uid() then
-    raise exception 'Tidak bisa mengubah role diri sendiri dari sini';
+    raise exception 'Tidak bisa mengubah role diri sendiri';
   end if;
+
   select role into v_old from public.profiles where id = p_user;
   if v_old is null then raise exception 'Karyawan tidak ditemukan'; end if;
-  if v_old not in ('karyawan', 'admin_approval') then
-    raise exception 'Role % hanya bisa diubah lewat Data Karyawan', v_old;
+  if v_old = p_role then return; end if;
+
+  if v_caller = 'super_admin' then
+    null; -- bebas
+  elsif v_caller in ('super_admin_hr', 'admin_hr') then
+    if p_role = 'super_admin' or v_old = 'super_admin' then
+      raise exception 'Role Super Admin hanya bisa diatur oleh Super Admin';
+    end if;
+  else
+    if p_role not in ('karyawan', 'admin_approval') or v_old not in ('karyawan', 'admin_approval') then
+      raise exception 'Role ini hanya bisa diatur oleh Admin HR ke atas';
+    end if;
   end if;
+
   update public.profiles set role = p_role where id = p_user;
 end;
 $$;
 
 revoke execute on function public.set_member_role(uuid, text) from public, anon;
 grant execute on function public.set_member_role(uuid, text) to authenticated;
-
