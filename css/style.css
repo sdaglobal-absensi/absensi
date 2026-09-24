@@ -298,6 +298,8 @@ button { font-family: 'Inter'; cursor: pointer; }
   padding: 18px 20px; display: flex; flex-direction: column; gap: 6px;
 }
 .status-card.done { border-left: 3px solid var(--ok); }
+/* Tombol absen di dalam kartu status Dashboard */
+.btn-card-action { align-self: flex-start; margin-top: 8px; padding: 9px 18px; font-size: 0.88rem; }
 .status-label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
 .status-value { font-family: 'Sora'; font-size: 1.3rem; font-weight: 600; }
 

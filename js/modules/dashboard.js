@@ -1,5 +1,6 @@
 import { supabase } from "../supabaseClient.js";
-import { fmtTime, todayISO, roleLabel, resolveMenu, ICONS, resolveUserTimezone, tzLabel } from "../core.js";
+import { fmtTime, fmtDate, todayISO, roleLabel, resolveMenu, ICONS, resolveUserTimezone, tzLabel } from "../core.js";
+import { loadAttendanceState, cameraModalHtml, openCamera } from "./employee-absensi.js";
 
 // Menu personal yang sudah punya kartu ringkasannya sendiri di dashboard —
 // tidak perlu diulang lagi di grid "Menu Lainnya" di bawah.
@@ -40,6 +41,8 @@ export async function render(container, user) {
 
     <h2 class="section-title">Menu Lainnya</h2>
     <div class="quick-links-grid" id="dash-quick-links"><p class="muted">Memuat menu…</p></div>
+
+    ${cameraModalHtml()}
   `;
 
   startClock(tz);
@@ -84,23 +87,42 @@ function greeting(tz) {
 // =====================================================================
 async function loadPersonalStats(user, tz) {
   const today = todayISO(tz);
-  const [{ data: att }, { count: izinPending }, { count: lemburPending }] = await Promise.all([
-    supabase.from("attendance").select("*").eq("user_id", user.id).eq("date", today).maybeSingle(),
+  // Status absen memakai fungsi yang SAMA dengan halaman Absensi (termasuk
+  // shift lintas hari & sesi lama yang lupa check-out), jadi Dashboard dan
+  // halaman Absensi tidak pernah menampilkan status yang berbeda.
+  const [state, allowedMenu, { count: izinPending }, { count: lemburPending }] = await Promise.all([
+    loadAttendanceState(user, tz),
+    resolveMenu(user).then(menu => new Set(menu.map(m => m.id))),
     supabase.from("leave_requests").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "pending"),
     supabase.from("overtime_requests").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "pending"),
   ]);
 
   const el = document.getElementById("dash-personal-stats");
   if (!el) return;
+
+  const att = state.activeRow;
+  // Tombol absen hanya untuk yang menu "Absensi"-nya diizinkan (di server,
+  // insert absensi juga ditolak kalau menu itu mati — jadi tombolnya
+  // sekalian tidak ditampilkan).
+  const canAbsen = allowedMenu.has("absensi");
+  const canCheckIn = canAbsen && !state.openShift && !state.completedToday;
+  const canCheckOut = canAbsen && state.openShift;
+  // Sesi yang dimulai bukan hari ini (shift lintas hari) diberi keterangan tanggalnya.
+  const otherDay = att && att.date !== today ? `<span class="muted small">Sesi ${fmtDate(att.date)}</span>` : "";
+
   el.innerHTML = `
     <div class="status-card ${att?.check_in ? "done" : ""}">
       <span class="status-label">Check-in Hari Ini</span>
       <span class="status-value">${att?.check_in ? fmtTime(att.check_in) : "Belum absen"}</span>
       ${att?.check_in_status ? `<span class="badge badge-${att.check_in_status === "telat" ? "warn" : "ok"}">${att.check_in_status === "telat" ? "Telat" : "Tepat waktu"}</span>` : ""}
+      ${otherDay}
+      ${state.staleOpen ? `<span class="small" style="color:var(--warn);">⚠️ Check-in ${fmtDate(state.latest.date)} belum di-check-out.</span>` : ""}
+      ${canCheckIn ? `<button type="button" class="btn-primary btn-card-action" data-mode="in">Check-in Sekarang</button>` : ""}
     </div>
     <div class="status-card ${att?.check_out ? "done" : ""}">
       <span class="status-label">Check-out Hari Ini</span>
       <span class="status-value">${att?.check_out ? fmtTime(att.check_out) : "Belum absen"}</span>
+      ${canCheckOut ? `<button type="button" class="btn-primary btn-card-action" data-mode="out">Check-out Sekarang</button>` : ""}
     </div>
     <div class="status-card">
       <span class="status-label">Pengajuan Saya Pending</span>
@@ -108,6 +130,15 @@ async function loadPersonalStats(user, tz) {
       <span class="muted small">${izinPending || 0} izin/cuti • ${lemburPending || 0} lembur</span>
     </div>
   `;
+
+  // Alur absen (GPS + selfie + penentuan telat) memakai kode yang sama
+  // dengan halaman Absensi. Setelah berhasil, Dashboard dimuat ulang supaya
+  // kartu di atas dan ringkasan perusahaan langsung ikut ter-update.
+  el.querySelectorAll(".btn-card-action").forEach(btn => {
+    btn.addEventListener("click", () => {
+      openCamera(btn.dataset.mode, user, state.activeRow, tz, () => render(document.getElementById("content"), user));
+    });
+  });
 }
 
 // =====================================================================

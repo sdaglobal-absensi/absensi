@@ -118,7 +118,9 @@ suatu menu untuk satu role tidak memengaruhi role lainnya.
 ## Fitur
 
 - **Karyawan**: check-in/check-out dengan foto + validasi lokasi GPS terhadap
-  radius kantor, ajukan izin/sakit/cuti/lembur, lihat riwayat & rekap kehadiran sendiri.
+  radius kantor (bisa dari menu **Absensi** maupun langsung dari kartu
+  Check-in/Check-out di **Dashboard** — tombolnya hanya muncul kalau menu
+  Absensi diizinkan untuk role itu), ajukan izin/sakit/cuti/lembur, lihat riwayat & rekap kehadiran sendiri.
 - **Admin HR**: monitor absensi semua karyawan, approve/reject izin & lembur,
   lihat laporan — plus menu tambahan (Data Karyawan, Slip Gaji, dst.) kalau
   diizinkan Super Admin.
@@ -138,7 +140,7 @@ js/core.js                   Util bersama: sidebar (dinamis sesuai permission), 
                               periode cut-off slip gaji, GPS, kamera, upload foto, format
 js/biodata.js               Form & logika biodata pribadi/keluarga (dipakai admin-karyawan.js & employee-profil.js)
 js/modules/
-  employee-absensi.js       Check-in/out (GPS + kamera)
+  employee-absensi.js       Check-in/out (GPS + kamera); alurnya juga dipakai kartu absen di dashboard.js
   employee-izin.js           Form & riwayat pengajuan izin
   employee-lembur.js         Form & riwayat pengajuan lembur
   employee-riwayat.js        Riwayat & rekap absensi pribadi

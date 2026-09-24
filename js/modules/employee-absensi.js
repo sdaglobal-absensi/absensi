@@ -6,10 +6,13 @@ const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu
 let stream = null;
 let capturedBlob = null;
 let pendingMode = null; // 'in' | 'out'
+let afterSubmit = null; // dipanggil setelah absen berhasil (lihat openCamera)
 
-export async function render(container, user) {
-  const tz = await resolveUserTimezone(user);
-
+// Status absensi karyawan saat ini: sesi terbuka, sudah lengkap hari ini, atau
+// ada sesi lama yang lupa di-check-out. Dipakai bersama oleh halaman Absensi
+// dan kartu absen di Dashboard supaya keduanya SELALU menampilkan hasil
+// yang sama.
+export async function loadAttendanceState(user, tz) {
   // Ambil absensi TERBARU milik user (bukan cuma "hari ini"), supaya shift
   // yang lintas hari (misal masuk jam 22:00, pulang besok jam 06:00) tetap
   // terdeteksi sebagai satu sesi yang sama saat check-out.
@@ -40,6 +43,13 @@ export async function render(container, user) {
 
   const completedToday = !!(latest && latest.check_out && latest.date === today);
   const activeRow = openShift || completedToday ? latest : null;
+
+  return { latest, openShift, staleOpen, completedToday, activeRow };
+}
+
+export async function render(container, user) {
+  const tz = await resolveUserTimezone(user);
+  const { latest, openShift, staleOpen, completedToday, activeRow } = await loadAttendanceState(user, tz);
 
   const scheduleInfo = await loadMySchedule(user);
 
@@ -78,6 +88,18 @@ export async function render(container, user) {
       }
     </div>
 
+    ${cameraModalHtml()}
+  `;
+
+  const btnOpen = document.getElementById("btn-open-camera");
+  if (btnOpen) btnOpen.addEventListener("click", () => openCamera(btnOpen.dataset.mode, user, activeRow, tz));
+
+  startLiveClock(tz);
+}
+
+// Modal kamera absen. Dipisah supaya bisa disisipkan juga di Dashboard.
+export function cameraModalHtml() {
+  return `
     <div id="camera-modal" class="modal hidden">
       <div class="modal-box">
         <h3 id="camera-title">Ambil Foto</h3>
@@ -95,13 +117,6 @@ export async function render(container, user) {
       </div>
     </div>
   `;
-
-  const btnOpen = document.getElementById("btn-open-camera");
-  if (btnOpen) btnOpen.addEventListener("click", () => openCamera(btnOpen.dataset.mode, user, activeRow, tz));
-
-  document.getElementById("btn-cancel").addEventListener("click", closeCamera);
-
-  startLiveClock(tz);
 }
 
 // Jam berjalan realtime di header halaman, mengikuti zona waktu LOKASI KERJA
@@ -248,9 +263,18 @@ async function resolveShiftDate(user, now, tz) {
   return { dateStr: todayStr, dow: todayDow };
 }
 
-async function openCamera(mode, user, activeRow, tz) {
+// Dipanggil dari halaman Absensi maupun Dashboard.
+// onDone = fungsi yang dijalankan setelah absen BERHASIL terkirim (mis. muat
+// ulang halaman yang sedang tampil). Kalau tidak diisi, halaman Absensi yang
+// dimuat ulang.
+export async function openCamera(mode, user, activeRow, tz, onDone = null) {
   pendingMode = mode;
   capturedBlob = null;
+  afterSubmit = onDone;
+  // Kembalikan tampilan modal ke keadaan awal (video tampil, tombol Ambil Foto).
+  // Tanpa ini, kalau sebelumnya foto sudah diambil lalu dibatalkan, modal yang
+  // dibuka lagi masih menampilkan foto lama, bukan kamera.
+  retake();
   const modal = document.getElementById("camera-modal");
   modal.classList.remove("hidden");
   document.getElementById("camera-title").textContent = mode === "in" ? "Check-in" : "Check-out";
@@ -292,6 +316,7 @@ async function openCamera(mode, user, activeRow, tz) {
     document.getElementById("camera-status").textContent = "❌ Tidak bisa mengakses kamera: " + err.message;
   }
 
+  document.getElementById("btn-cancel").onclick = closeCamera;
   document.getElementById("btn-capture").onclick = capturePhoto;
   document.getElementById("btn-retake").onclick = retake;
   document.getElementById("btn-submit").onclick = () => submitAttendance(user, activeRow, tz);
@@ -404,7 +429,8 @@ async function submitAttendance(user, activeRow, tz) {
     }
 
     closeCamera();
-    render(document.getElementById("content"), user);
+    if (afterSubmit) afterSubmit();
+    else render(document.getElementById("content"), user);
   } catch (err) {
     toast("Gagal mengirim absen: " + err.message, "error");
     submitBtn.disabled = false;
