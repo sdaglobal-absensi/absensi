@@ -102,7 +102,7 @@
 
     (async function init() {
       try {
-        currentUser = await requireAuth(["super_admin", "super_admin_hr", "admin_hr", "karyawan"]);
+        currentUser = await requireAuth(["super_admin", "super_admin_hr", "admin_hr", "admin_approval", "karyawan"]);
       } catch (err) {
         console.error("Gagal memeriksa sesi:", err);
         document.getElementById("content").innerHTML =

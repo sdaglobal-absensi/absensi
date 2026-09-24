@@ -267,6 +267,7 @@ function renderRoleOptions(existing) {
     <option value="karyawan">Karyawan</option>
     ${currentCanAssignHrRoles ? `
       <option value="admin_hr">Admin HR</option>
+      <option value="admin_approval">Admin</option>
       <option value="super_admin_hr">Super Admin HR</option>
     ` : ""}
     ${currentIsFullSuperAdmin ? `<option value="super_admin">Super Admin</option>` : ""}

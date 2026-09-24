@@ -438,6 +438,7 @@ button { font-family: 'Inter'; cursor: pointer; }
 .org-avatar-super_admin { background: var(--danger); }
 .org-avatar-super_admin_hr { background: var(--warn); }
 .org-avatar-admin_hr { background: var(--ok); }
+.org-avatar-admin_approval { background: var(--ok); }
 .org-avatar-karyawan { background: var(--primary-light); }
 
 .org-emp-info { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }

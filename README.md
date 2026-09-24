@@ -1,8 +1,8 @@
 # Absensi & Database Karyawan
 
 Aplikasi absensi karyawan berbasis web (vanilla JS + Supabase). Absensi memakai
-verifikasi **GPS lokasi** + **foto selfie** saat check-in/check-out. Ada 4 role:
-**Super Admin**, **Super Admin HR**, **Admin HR**, dan **Karyawan**.
+verifikasi **GPS lokasi** + **foto selfie** saat check-in/check-out. Ada 5 role:
+**Super Admin**, **Super Admin HR**, **Admin HR**, **Admin**, dan **Karyawan**.
 
 ## Role
 
@@ -11,6 +11,7 @@ verifikasi **GPS lokasi** + **foto selfie** saat check-in/check-out. Ada 4 role:
 | **Super Admin** | All Akses — semua menu, semua data, satu-satunya role "root" yang tidak bisa dibatasi lewat toggle apapun. Satu-satunya yang bisa mengatur akses ketiga role lain lewat menu **Pengaturan Sistem** (default) & satu-satunya yang selalu tetap bisa membuka halaman itu apa pun kondisinya. |
 | **Super Admin HR** | TIDAK otomatis All Akses lagi — diperlakukan generik & sama persis seperti Admin HR/Karyawan: menu mana saja yang boleh dibuka diatur satu-satu lewat **Pengaturan Sistem**. Defaultnya menyala untuk hampir semua menu operasional (setara "full akses" versi lama), **kecuali** menu **Pengaturan Sistem** itu sendiri, yang defaultnya mati. Super Admin bisa menyalakan menu itu untuk Super Admin HR kalau memang mau didelegasikan jadi admin cadangan (lihat bagian 6 di bawah). |
 | **Admin HR** | Akses dibatasi. Menu mana saja yang boleh dibuka diatur oleh Super Admin (atau Super Admin HR, kalau sudah didelegasikan) lewat menu **Pengaturan Sistem** — baik menu staff (approval, laporan, master data, dst) maupun menu pribadi (absensi/izin/lembur sendiri, karena Admin HR juga karyawan). Secara default: boleh monitor absensi, approve izin & lembur, lihat laporan, dan absen/ajukan izin & lembur sendiri — tapi *tidak* boleh buka Data Karyawan, Slip Gaji, Kenaikan Upah, Master Data, atau Pengaturan Sistem sampai dinyalakan manual. |
+| **Admin** | Admin ringan (nilai di database: `admin_approval`). Bukan staff HR: tidak otomatis bisa membaca data karyawan/gaji atau mengatur role orang lain. Akses menunya murni dari toggle **Pengaturan Sistem**. Default: menu pribadi + **Approval Izin** & **Approval Lembur** menyala, semua menu staff lain mati. Ditetapkan lewat **Data Karyawan → Ubah → Role** (oleh Admin HR ke atas), lalu ditempatkan sebagai anggota unit di **Struktur Organisasi**. Di halaman approval ia hanya bisa membaca profil pemohon yang ada di rantai approval-nya. |
 | **Karyawan** | Check-in/out, ajukan izin & lembur, lihat riwayat sendiri. Menu mana saja dari keempat ini yang aktif juga diatur lewat **Pengaturan Sistem** (default: semua menyala, sama seperti sebelumnya). |
 
 Menu pribadi (Absensi, Pengajuan Izin, Pengajuan Lembur, Riwayat Saya) kini
@@ -133,7 +134,7 @@ unit**.
 
 **Siapa approver?**
 1. Approver adalah **anggota unit yang role-nya Admin** (Super Admin, Super
-   Admin HR, Admin HR) **dan** menu approval terkait (*Approval Izin* /
+   Admin HR, Admin HR, Admin) **dan** menu approval terkait (*Approval Izin* /
    *Approval Lembur*) menyala untuk role itu di Pengaturan Sistem. Role
    Karyawan tidak pernah jadi approver walau ditaruh di unit mana pun.
 2. Pencarian mulai dari Unit Utama pemohon. Kalau unit itu tidak punya Admin,
@@ -173,6 +174,8 @@ Instalasi baru cukup menjalankan `supabase-schema.sql` (sudah termasuk).
   radius kantor (bisa dari menu **Absensi** maupun langsung dari kartu
   Check-in/Check-out di **Dashboard** — tombolnya hanya muncul kalau menu
   Absensi diizinkan untuk role itu), ajukan izin/sakit/cuti/lembur, lihat riwayat & rekap kehadiran sendiri.
+- **Admin**: menyetujui/menolak izin & lembur karyawan di unitnya (dan unit di bawahnya bila
+  admin di unit itu tidak ada), plus menu pribadi. Tidak ada akses lain kecuali dinyalakan.
 - **Admin HR**: monitor absensi semua karyawan, approve/reject izin & lembur,
   lihat laporan — plus menu tambahan (Data Karyawan, Slip Gaji, dst.) kalau
   diizinkan Super Admin.
@@ -211,6 +214,7 @@ js/modules/
   super-pengaturan.js        Kelola akses menu Admin HR + atur cut-off slip gaji (khusus Super Admin/Super Admin HR)
 supabase-schema.sql         Semua tabel, RLS policy, trigger, storage bucket
 supabase-org-approval.sql   Migrasi struktur organisasi + approval bertingkat (sudah termasuk di supabase-schema.sql)
+supabase-role-admin-approval.sql  Migrasi role Admin untuk database yang SUDAH berjalan (instalasi baru tidak perlu; sudah termasuk di dua file di atas)
 ```
 
 ## Setup
@@ -225,6 +229,10 @@ Buka **SQL Editor** di dashboard Supabase → paste isi `supabase-schema.sql` �
 Karyawan, satu baris per role per menu), dan tabel `payroll_settings` (default
 cut-off = tanggal 1, alias kalender biasa).
 
+> **Upgrade ke role Admin** (database yang sudah berjalan): jalankan sekali
+> `supabase-role-admin-approval.sql` di SQL Editor, lalu deploy file JS/HTML yang baru.
+> Aman dijalankan ulang. Pengajuan yang sudah dibuat tidak berubah.
+>
 > Kalau ini upgrade dari versi lama (role `admin`/`hr`), script yang sama aman
 > dijalankan ulang — akun `admin` otomatis jadi `super_admin`, akun `hr`
 > otomatis jadi `admin_hr`, tanpa perlu bikin ulang akun.
@@ -268,7 +276,7 @@ dibuat lewat panel admin. Untuk akun Super Admin pertama:
    menambah karyawan/Admin HR lain lewat menu **Data Karyawan** (otomatis
    membuat akun login untuk mereka).
 
-### 6. Atur akses Super Admin HR, Admin HR, akses Karyawan & periode cut-off slip gaji
+### 6. Atur akses Super Admin HR, Admin HR, Admin, akses Karyawan & periode cut-off slip gaji
 Login sebagai Super Admin (atau Super Admin HR, kalau sudah didelegasikan
 akses ke menu ini — lihat poin terakhir di bawah) → buka menu **Pengaturan
 Sistem**:

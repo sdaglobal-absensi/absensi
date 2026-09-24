@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { avatarHTML, toast, confirmDialog, getAllowedMenus, searchSelectHtml, wireSearchSelect } from "../core.js";
+import { avatarHTML, toast, confirmDialog, getAllowedMenus, searchSelectHtml, wireSearchSelect, APPROVER_ROLES } from "../core.js";
 import { esc } from "../approvalHelper.js";
 
 // =======================================================================
@@ -94,13 +94,14 @@ function unitPath(id) { const out = []; let cur = S.unitMap[id]; while (cur) { o
 function descendantIds(id) { const out = new Set(); const walk = x => children(x).forEach(c => { out.add(c.id); walk(c.id); }); walk(id); return out; }
 function ancestorIds(id) { const out = new Set(); let cur = S.unitMap[id]; while (cur && cur.parent_id) { out.add(cur.parent_id); cur = S.unitMap[cur.parent_id]; } return out; }
 
-const isAdminRole = role => role && role !== "karyawan";
+const isAdminRole = role => APPROVER_ROLES.includes(role);
 
 function roleBadge(role) {
   return ({
     super_admin: `<span class="badge badge-danger">Super Admin</span>`,
     super_admin_hr: `<span class="badge badge-warn">Super Admin HR</span>`,
     admin_hr: `<span class="badge badge-ok">Admin HR</span>`,
+    admin_approval: `<span class="badge badge-ok">Admin</span>`,
     karyawan: `<span class="badge">Karyawan</span>`,
   })[role] || "";
 }

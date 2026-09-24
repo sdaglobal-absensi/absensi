@@ -18,7 +18,7 @@ create table if not exists public.profiles (
   id              uuid primary key references auth.users(id) on delete cascade,
   employee_code   text unique,
   full_name       text not null,
-  role            text not null default 'karyawan' check (role in ('super_admin','super_admin_hr','admin_hr','karyawan')),
+  role            text not null default 'karyawan' check (role in ('super_admin','super_admin_hr','admin_hr','admin_approval','karyawan')),
   department      text,
   bagian          text,
   position        text,
@@ -80,11 +80,11 @@ update public.profiles set role = 'admin_hr' where role = 'hr';
 do $$ begin
   if not exists (select 1 from pg_constraint where conname = 'profiles_role_check') then
     alter table public.profiles add constraint profiles_role_check
-      check (role in ('super_admin','super_admin_hr','admin_hr','karyawan'));
+      check (role in ('super_admin','super_admin_hr','admin_hr','admin_approval','karyawan'));
   end if;
 end $$;
 
-comment on table public.profiles is 'Data profil & role setiap pengguna. role: super_admin | super_admin_hr | admin_hr | karyawan';
+comment on table public.profiles is 'Data profil & role setiap pengguna. role: super_admin | super_admin_hr | admin_hr | admin_approval | karyawan';
 
 -- ---------------------------------------------------------------------
 -- 2. TABEL: office_locations (titik kantor untuk validasi radius GPS)
@@ -573,7 +573,7 @@ create trigger trg_on_auth_user_created
 --     lewat is_super(), apapun isi tabel ini.
 -- ---------------------------------------------------------------------
 create table if not exists public.role_permissions (
-  role        text not null check (role in ('super_admin_hr', 'admin_hr', 'karyawan')),
+  role        text not null check (role in ('super_admin_hr', 'admin_hr', 'admin_approval', 'karyawan')),
   menu_id     text not null,
   enabled     boolean not null default false,
   updated_by  uuid references public.profiles(id),
@@ -625,7 +625,7 @@ begin
     alter table public.role_permissions drop constraint role_permissions_role_check;
   end if;
   alter table public.role_permissions add constraint role_permissions_role_check
-    check (role in ('super_admin_hr', 'admin_hr', 'karyawan'));
+    check (role in ('super_admin_hr', 'admin_hr', 'admin_approval', 'karyawan'));
 end $$;
 
 -- Default Admin HR setelah migrasi: yang sudah jadi kerjaan harian HR
@@ -713,6 +713,38 @@ insert into public.role_permissions (role, menu_id, enabled) values
   ('super_admin_hr', 'lembur', true),
   ('super_admin_hr', 'riwayat', true),
   ('super_admin_hr', 'pengaturan-sistem', false)
+on conflict (role, menu_id) do nothing;
+
+-- Default role Admin (admin_approval): menu pribadi + Approval Izin
+-- & Approval Lembur menyala; semua menu staff lain mati -- Super Admin bisa
+-- menyalakan satu-satu lewat Pengaturan Sistem (mis. Approval Perubahan Data).
+-- Role ini SENGAJA tidak masuk is_staff(): akses datanya murni lewat toggle
+-- ini, jadi tidak otomatis bisa membaca data gaji/karyawan orang lain.
+insert into public.role_permissions (role, menu_id, enabled) values
+  ('admin_approval', 'profil', true),
+  ('admin_approval', 'absensi', true),
+  ('admin_approval', 'izin', true),
+  ('admin_approval', 'lembur', true),
+  ('admin_approval', 'riwayat', true),
+  ('admin_approval', 'slip-gaji-saya', true),
+  ('admin_approval', 'izin-approval', true),
+  ('admin_approval', 'lembur-approval', true),
+  ('admin_approval', 'profil-approval', false),
+  ('admin_approval', 'karyawan', false),
+  ('admin_approval', 'struktur-organisasi', false),
+  ('admin_approval', 'struktur-kelola', false),
+  ('admin_approval', 'absensi-monitor', false),
+  ('admin_approval', 'kenaikan-upah', false),
+  ('admin_approval', 'slip-gaji', false),
+  ('admin_approval', 'laporan', false),
+  ('admin_approval', 'master-level', false),
+  ('admin_approval', 'master-tunjangan', false),
+  ('admin_approval', 'master-denda', false),
+  ('admin_approval', 'master-departemen', false),
+  ('admin_approval', 'master-jadwal', false),
+  ('admin_approval', 'master-libur', false),
+  ('admin_approval', 'master-lokasi', false),
+  ('admin_approval', 'pengaturan-sistem', false)
 on conflict (role, menu_id) do nothing;
 
 -- ---------------------------------------------------------------------
@@ -822,7 +854,7 @@ create policy "profiles_admin_all" on public.profiles
     -- WITH CHECK: nilai role BARU yang boleh disimpan.
     -- - super_admin: bebas (root, all akses).
     -- - super_admin_hr/admin_hr (staff) dgn menu "Data Karyawan": boleh
-    --   menyimpan role 'karyawan', 'admin_hr', atau 'super_admin_hr' --
+    --   menyimpan role 'karyawan', 'admin_hr', 'admin_approval', atau 'super_admin_hr' --
     --   TAPI TIDAK PERNAH boleh menaikkan siapa pun (termasuk dirinya) ke
     --   'super_admin'. is_super() di sini SENGAJA tetap hardcoded ke role
     --   super_admin saja supaya kemampuan membuat akun Super Admin baru
@@ -840,7 +872,7 @@ create policy "profiles_admin_all" on public.profiles
     or (
       public.has_menu_access('karyawan')
       and (
-        ( public.my_role() in ('super_admin_hr','admin_hr') and role in ('karyawan','admin_hr','super_admin_hr') )
+        ( public.my_role() in ('super_admin_hr','admin_hr') and role in ('karyawan','admin_hr','admin_approval','super_admin_hr') )
         or ( role = 'karyawan' )
         or ( role = 'super_admin' and public.role_of(id) = 'super_admin' )
       )
@@ -1717,7 +1749,7 @@ begin
       and (
         p.role = 'super_admin'
         or (
-          p.role in ('super_admin_hr', 'admin_hr')
+          p.role in ('super_admin_hr', 'admin_hr', 'admin_approval')
           and exists (
             select 1 from public.role_permissions rp
             where rp.role = p.role and rp.menu_id = p_menu and rp.enabled
@@ -2016,6 +2048,31 @@ create policy "request_approvals_select" on public.request_approvals
     or (request_type = 'overtime' and exists (
           select 1 from public.overtime_requests r where r.id = request_id and r.user_id = auth.uid()))
   );
+
+-- ---------------------------------------------------------------------
+-- 11b. Approver boleh MEMBACA profil pemohon yang pengajuannya menunggu /
+--      pernah melewati dirinya (untuk menampilkan nama & departemen di
+--      halaman Approval). Terbatas ke pemohon di rantainya saja -- Admin
+--      Approval tidak dianggap staff (is_staff), jadi tanpa ini nama
+--      pemohon tidak terbaca.
+-- ---------------------------------------------------------------------
+create or replace function public.is_approver_of_user(p_user uuid)
+returns boolean language sql security definer stable set search_path = public as $$
+  select exists (
+    select 1 from public.request_approvals a
+    where a.approver_ids @> array[auth.uid()]
+      and (
+        (a.request_type = 'leave' and exists (
+          select 1 from public.leave_requests r where r.id = a.request_id and r.user_id = p_user))
+        or (a.request_type = 'overtime' and exists (
+          select 1 from public.overtime_requests r where r.id = a.request_id and r.user_id = p_user))
+      )
+  );
+$$;
+
+drop policy if exists "profiles_select_approver" on public.profiles;
+create policy "profiles_select_approver" on public.profiles
+  for select using ( public.is_approver_of_user(id) );
 
 -- ---------------------------------------------------------------------
 -- 12. TUTUP CELAH: karyawan bisa mengubah status pengajuannya sendiri.

@@ -5,7 +5,7 @@
 --
 -- Aturan approval:
 --   1. Approver = anggota unit yang role-nya Super Admin / Super Admin HR /
---      Admin HR DAN menu approval terkait (izin-approval / lembur-approval)
+--      Admin HR / Admin (admin_approval) DAN menu approval terkait (izin-approval / lembur-approval)
 --      menyala untuk role itu di Pengaturan Sistem. Role Karyawan tidak
 --      pernah jadi approver.
 --   2. Pencarian mulai dari UNIT UTAMA pemohon. Kalau unit itu tidak punya
@@ -166,7 +166,7 @@ begin
       and (
         p.role = 'super_admin'
         or (
-          p.role in ('super_admin_hr', 'admin_hr')
+          p.role in ('super_admin_hr', 'admin_hr', 'admin_approval')
           and exists (
             select 1 from public.role_permissions rp
             where rp.role = p.role and rp.menu_id = p_menu and rp.enabled
@@ -465,6 +465,31 @@ create policy "request_approvals_select" on public.request_approvals
     or (request_type = 'overtime' and exists (
           select 1 from public.overtime_requests r where r.id = request_id and r.user_id = auth.uid()))
   );
+
+-- ---------------------------------------------------------------------
+-- 11b. Approver boleh MEMBACA profil pemohon yang pengajuannya menunggu /
+--      pernah melewati dirinya (untuk menampilkan nama & departemen di
+--      halaman Approval). Terbatas ke pemohon di rantainya saja -- Admin
+--      Approval tidak dianggap staff (is_staff), jadi tanpa ini nama
+--      pemohon tidak terbaca.
+-- ---------------------------------------------------------------------
+create or replace function public.is_approver_of_user(p_user uuid)
+returns boolean language sql security definer stable set search_path = public as $$
+  select exists (
+    select 1 from public.request_approvals a
+    where a.approver_ids @> array[auth.uid()]
+      and (
+        (a.request_type = 'leave' and exists (
+          select 1 from public.leave_requests r where r.id = a.request_id and r.user_id = p_user))
+        or (a.request_type = 'overtime' and exists (
+          select 1 from public.overtime_requests r where r.id = a.request_id and r.user_id = p_user))
+      )
+  );
+$$;
+
+drop policy if exists "profiles_select_approver" on public.profiles;
+create policy "profiles_select_approver" on public.profiles
+  for select using ( public.is_approver_of_user(id) );
 
 -- ---------------------------------------------------------------------
 -- 12. TUTUP CELAH: karyawan bisa mengubah status pengajuannya sendiri.

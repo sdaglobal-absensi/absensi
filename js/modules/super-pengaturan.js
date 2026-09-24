@@ -73,7 +73,7 @@ const PERSONAL_MENU_LABELS = {
 // supaya bisa didelegasikan ke Super Admin HR (atau, kalau memang mau,
 // Admin HR/Karyawan juga) — defaultnya tetap mati sampai sengaja dinyalakan
 // oleh Super Admin.
-const ROLES = ["super_admin_hr", "admin_hr", "karyawan"];
+const ROLES = ["super_admin_hr", "admin_hr", "admin_approval", "karyawan"];
 const ALL_MENU_ROWS = [
   ...Object.keys(PERSONAL_MENU_LABELS).map(id => ({ id, label: PERSONAL_MENU_LABELS[id] })),
   ...Object.keys(MENU_LABELS).map(id => ({ id, label: MENU_LABELS[id] })),
@@ -91,13 +91,18 @@ export async function render(container, user) {
     <h3 style="margin-bottom:10px;">Kelola Akses Menu</h3>
     <p class="muted small" style="margin-top:-6px; margin-bottom:14px;">
       Nyalakan/matikan menu apa saja untuk role <strong>Super Admin HR</strong>,
-      <strong>Admin HR</strong>, dan <strong>Karyawan</strong> — ketiga toggle di setiap baris
+      <strong>Admin HR</strong>, <strong>Admin</strong>, dan <strong>Karyawan</strong> — keempat toggle di setiap baris
       independen satu sama lain, jadi mematikan sebuah menu untuk satu role tidak memengaruhi role
       lainnya. Ketiganya diperlakukan sama persis, termasuk Super Admin HR — tidak ada lagi akses
       otomatis, semua diatur manual lewat tabel ini. Super Admin sendiri tidak ada di tabel ini:
       akses Super Admin selalu penuh dan tidak bisa dibatasi lewat toggle apapun. Menu yang
       dimatikan otomatis hilang dari sidebar, dan aksesnya tetap ditolak di sisi server walau
       dicoba lewat cara lain.
+      <br><br>
+      <strong>Admin</strong> adalah role admin yang aksesnya diatur penuh di sini: default-nya hanya
+      menu pribadi + <em>Approval Izin</em> &amp; <em>Approval Lembur</em> yang menyala, menu lain
+      tinggal dinyalakan sesuai kebutuhan. Role ini tidak dianggap staff HR, jadi tidak otomatis
+      bisa membaca data karyawan lain atau mengatur role orang.
       <br><br>
       <strong>Catatan soal baris "Pengaturan Sistem":</strong> menu ini adalah halaman yang sedang
       kamu buka sekarang. Menyalakannya untuk sebuah role berarti role itu ikut bisa membuka
@@ -161,7 +166,7 @@ async function loadPermissions(user) {
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Menu</th><th>Akses Super Admin HR</th><th>Akses Admin HR</th><th>Akses Karyawan</th></tr></thead>
+      <thead><tr><th>Menu</th><th>Akses Super Admin HR</th><th>Akses Admin HR</th><th>Akses Admin</th><th>Akses Karyawan</th></tr></thead>
       <tbody>
         ${ALL_MENU_ROWS.map(row => `
           <tr>
@@ -183,6 +188,7 @@ function roleDisplayName(role) {
     super_admin: "Super Admin",
     super_admin_hr: "Super Admin HR",
     admin_hr: "Admin HR",
+    admin_approval: "Admin",
     karyawan: "Karyawan",
   }[role] || role;
 }

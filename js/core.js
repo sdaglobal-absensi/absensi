@@ -31,6 +31,11 @@ export function toast(message, type = "info") {
 // =====================================================================
 export const SUPER_ROLES = ["super_admin"];
 export const STAFF_ROLES = ["super_admin", "super_admin_hr", "admin_hr"];
+// Role yang boleh jadi approver di rantai approval (struktur organisasi).
+// admin_approval (label di UI: "Admin") = admin ringan: bukan staff HR (tidak masuk STAFF_ROLES,
+// jadi tidak otomatis boleh membaca data sensitif / mengatur role), akses menunya
+// murni dari toggle di Pengaturan Sistem.
+export const APPROVER_ROLES = ["super_admin", "super_admin_hr", "admin_hr", "admin_approval"];
 
 export function isSuper(role) {
   return SUPER_ROLES.includes(role);
@@ -46,7 +51,7 @@ export function isSuper(role) {
 // cut-off slip gaji — jadi nyalakan hanya kalau memang mau didelegasikan.
 // super_admin sendiri selalu punya akses penuh, tidak pernah bergantung ke
 // toggle ini (lihat isSuper()/getAllowedMenus() di bawah).
-const TOGGLABLE_ROLES = ["super_admin_hr", "admin_hr", "karyawan"];
+const TOGGLABLE_ROLES = ["super_admin_hr", "admin_hr", "admin_approval", "karyawan"];
 let cachedPermissions = null; // Set<menu_id> enabled=true untuk role user ini, di-cache per sesi halaman
 let cachedPermissionsRole = null; // role yang lagi di-cache, buat jaga-jaga kalau role user berubah di sesi yang sama
 export async function getAllowedMenus(user) {
@@ -216,6 +221,7 @@ export function roleLabel(role) {
     super_admin: "Super Admin",
     super_admin_hr: "Super Admin HR",
     admin_hr: "Admin HR",
+    admin_approval: "Admin",
     karyawan: "Karyawan",
   }[role] || role;
 }

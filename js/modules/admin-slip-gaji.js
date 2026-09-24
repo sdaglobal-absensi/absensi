@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exportXLSX, dayOfWeekFromDateStr, zonedMinutesOfDay, hmToMinutes, getPayrollCutoffDay, payrollPeriodRange } from "../core.js";
+import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exportXLSX, dayOfWeekFromDateStr, zonedMinutesOfDay, hmToMinutes, getPayrollCutoffDay, payrollPeriodRange, STAFF_ROLES } from "../core.js";
 
 // =======================================================================
 // SLIP GAJI — dihitung otomatis dari data yang sudah ada di sistem:
@@ -131,9 +131,9 @@ export async function render(container, user, opts = {}) {
   // Menu "Slip Gaji" biasa (tanpa opts ini) tetap pakai role asli seperti
   // sebelumnya.
   roleFlags = {
-    isKaryawan: opts.forceSelfOnly || user.role === "karyawan",
+    isKaryawan: opts.forceSelfOnly || !STAFF_ROLES.includes(user.role),
     canFinalize: !opts.forceSelfOnly && user.role === "super_admin",
-    canEditAdjust: !opts.forceSelfOnly && user.role !== "karyawan",
+    canEditAdjust: !opts.forceSelfOnly && STAFF_ROLES.includes(user.role),
   };
   period = dateOnlyISO(new Date()).slice(0, 7);
   cutoffDay = await getPayrollCutoffDay();
