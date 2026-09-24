@@ -124,7 +124,7 @@ function renderPage() {
     </div>
 
     <div class="status-grid">
-      <div class="status-card"><span class="status-label">Unit</span><span class="status-value">${S.units.length}</span></div>
+      <div class="status-card"><span class="status-label">Kantor &amp; Cabang</span><span class="status-value">${S.units.filter(u => u.tipe === "pusat" || u.tipe === "cabang").length}</span></div>
       <div class="status-card done"><span class="status-label">Karyawan Aktif</span><span class="status-value">${S.profiles.length}</span></div>
       <div class="status-card ${unplaced.length ? "" : "done"}"><span class="status-label">Belum Punya Unit Utama</span><span class="status-value">${unplaced.length}</span></div>
     </div>
