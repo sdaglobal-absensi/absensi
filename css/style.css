@@ -431,18 +431,23 @@ button { font-family: 'Inter'; cursor: pointer; }
 .org-node-title { font-family: 'Sora', sans-serif; font-weight: 600; font-size: 0.96rem; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .org-pill { background: var(--bg); color: var(--muted); font-size: 0.75rem; font-weight: 600; padding: 4px 12px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }
 
-.org-children { margin: 0 18px 16px 34px; padding: 12px 0 0 20px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+/* Indentasi pohon: tiap level anak digeser cukup jauh ke kanan (bertahap,
+   makin dalam makin kecil kenaikannya) + ada garis vertikal penghubung yang
+   jelas, supaya Pusat → Cabang → Departemen → Bagian kelihatan sebagai
+   jenjang bersarang, bukan daftar yang sejajar. */
+.org-children { position: relative; margin: 0 6px 16px 42px; padding: 14px 0 0 26px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 12px; }
 
-.org-node-dept { background: var(--bg); box-shadow: none; }
+.org-node-dept { background: #FAF9F4; box-shadow: none; }
 .org-node-dept > summary { padding: 12px 14px; }
 .org-node-dept .org-node-title { font-size: 0.88rem; }
 .org-node-dept .org-icon { width: 26px; height: 26px; border-radius: 7px; }
 .org-node-dept .org-icon svg { width: 13px; height: 13px; }
-.org-node-dept .org-children { margin: 0 14px 14px 30px; padding-top: 10px; }
+.org-node-dept .org-children { margin: 0 4px 14px 30px; padding: 10px 0 0 18px; }
 
 .org-node-bagian { background: var(--surface); box-shadow: none; }
 .org-node-bagian > summary { padding: 10px 14px; }
 .org-node-bagian .org-node-title { font-size: 0.84rem; font-weight: 500; }
+.org-node-bagian .org-children { margin: 0 2px 12px 22px; padding: 8px 0 0 14px; }
 .org-node-bagian .org-pill { font-size: 0.7rem; padding: 3px 10px; }
 .org-node-bagian .org-icon { width: 22px; height: 22px; border-radius: 6px; }
 .org-node-bagian .org-icon svg { width: 11px; height: 11px; }
