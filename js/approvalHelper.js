@@ -18,6 +18,47 @@ export function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// ---- Revisi / pengajuan ulang (izin & lembur yang ditolak) -------------
+// Pengajuan ulang = pengajuan BARU yang menaut ke yang ditolak lewat
+// revision_of; pengajuan lama tidak diubah, jadi riwayatnya utuh.
+
+// Alasan penolakan: catatan pada tahap yang menolak, atau catatan pengajuan.
+export function rejectionReason(req, steps) {
+  const s = (steps || []).find(x => x.status === "rejected");
+  return s?.notes || req.review_notes || "";
+}
+
+// Penanda kecil "pengajuan ulang" (dipakai di riwayat karyawan & halaman approval).
+export function revisionBadge(req) {
+  return req.revision_of ? `<div class="small muted revisi-tag">↻ Pengajuan ulang</div>` : "";
+}
+
+// Isi kolom "Aksi" di riwayat karyawan. `all` = semua pengajuan milik user
+// (dipakai untuk tahu apakah yang ditolak sudah pernah diajukan ulang).
+export function revisionActionHTML(req, all) {
+  if (req.status !== "rejected") return `<span class="small muted">-</span>`;
+  return all.some(x => x.revision_of === req.id)
+    ? `<span class="small muted">Sudah diajukan ulang</span>`
+    : `<button type="button" class="btn-secondary btn-sm btn-revisi" data-id="${esc(req.id)}">Ajukan Ulang</button>`;
+}
+
+// Isi banner di atas form saat mode revisi.
+export function revisionBannerHTML(title, reason) {
+  return `
+    <div>
+      <strong>${esc(title)}</strong>
+      <div class="small">${reason ? `Ditolak: “${esc(reason)}”. ` : "Ditolak. "}Perbaiki data yang salah lalu kirim ulang. Pengajuan lama tetap tersimpan di riwayat.</div>
+    </div>
+    <button type="button" class="btn-secondary btn-sm" id="btn-cancel-revisi">Batal</button>`;
+}
+
+// Pesan ramah untuk error kirim pengajuan (mis. revisi ganda).
+export function submitErrorMessage(error) {
+  return error.code === "23505" && /revision_of/.test(error.message || "")
+    ? "Pengajuan ini sudah pernah diajukan ulang"
+    : "Gagal mengirim: " + error.message;
+}
+
 // Ambil semua tahap untuk sekumpulan pengajuan -> { [request_id]: [steps urut] }
 export async function fetchSteps(kind, requestIds) {
   const map = {};

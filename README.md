@@ -217,6 +217,7 @@ js/modules/
   super-pengaturan.js        Kelola akses menu Admin HR + atur cut-off slip gaji (khusus Super Admin/Super Admin HR)
 supabase-schema.sql         Semua tabel, RLS policy, trigger, storage bucket
 supabase-org-approval.sql   Migrasi struktur organisasi + approval bertingkat (sudah termasuk di supabase-schema.sql)
+supabase-revisi-pengajuan.sql  Migrasi pengajuan ulang (revisi) izin & lembur yang ditolak — WAJIB dijalankan sekali sebelum fitur "Ajukan Ulang" dipakai
 supabase-role-admin-approval.sql  Migrasi role Admin untuk database yang SUDAH berjalan (instalasi baru tidak perlu; sudah termasuk di dua file di atas)
 ```
 
@@ -365,3 +366,18 @@ Supabase).
 - Foto disimpan di storage bucket publik `attendance-photos` supaya mudah
   ditampilkan admin; jika perlu lebih privat, ubah bucket jadi private dan
   gunakan signed URL.
+
+
+## Pengajuan ulang (revisi) izin & lembur yang ditolak
+
+Di **Pengajuan Izin** / **Pengajuan Lembur**, pengajuan berstatus *Ditolak* punya tombol **Ajukan Ulang**.
+Form terisi otomatis dengan data lama (plus alasan penolakan di banner), karyawan memperbaiki yang salah
+(alasan, tanggal, atau jam) lalu mengirim ulang.
+
+- Pengajuan ulang tersimpan sebagai pengajuan **baru** (kolom `revision_of` menaut ke yang ditolak) dan
+  melewati alur approval dari awal. Pengajuan lama **tidak diubah**, jadi riwayat ditolak/disetujui,
+  catatan penolakan, dan tahap approvalnya tetap utuh.
+- Satu pengajuan ditolak hanya bisa diajukan ulang **sekali**; kalau revisinya ditolak lagi, tombol
+  muncul di revisi itu. Aturan (milik sendiri, harus berstatus ditolak) dijaga trigger di database.
+- Approver melihat penanda "↻ Pengajuan ulang" di halaman approval.
+- Database yang sudah berjalan: jalankan `supabase-revisi-pengajuan.sql` sekali di SQL Editor.

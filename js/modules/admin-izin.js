@@ -1,5 +1,5 @@
 import { toast, fmtDate } from "../core.js";
-import { esc, loadApprovalList, canDecide, stepsHTML, askDecision, decideRequest } from "../approvalHelper.js";
+import { esc, revisionBadge, loadApprovalList, canDecide, stepsHTML, askDecision, decideRequest } from "../approvalHelper.js";
 import {
   pageHTML, initToolbar, filterAndSort, setMeta, emptyHTML, errorHTML,
   employeeCell, statusPill, cell, actionsCell, reviewNote, tableHTML, bindActions,
@@ -58,7 +58,7 @@ function paint(user) {
         ${cell("Karyawan", employeeCell(r.profiles), "ap-td-emp")}
         ${cell("Periode", `<span class="ap-chip">${esc(r.type)}</span>${periodHTML(r)}`)}
         ${cell("Alasan", `<div class="ap-reason">${esc(r.reason)}</div>${reviewNote(r)}`)}
-        ${cell("Status", `${statusPill(r.status)}<div class="ap-sub">Diajukan ${fmtDate(r.created_at)}</div>`)}
+        ${cell("Status", `${statusPill(r.status)}<div class="ap-sub">Diajukan ${fmtDate(r.created_at)}</div>${revisionBadge(r)}`)}
         ${cell("Tahap", stepsHTML(r, steps[r.id]), "ap-td-steps")}
         ${actionsCell(r, canDecide(r, steps[r.id], user))}
       </tr>

@@ -1,5 +1,5 @@
 import { toast, fmtDate, fmtJam, roundOvertimeHours } from "../core.js";
-import { esc, loadApprovalList, canDecide, stepsHTML, askDecision, decideRequest } from "../approvalHelper.js";
+import { esc, revisionBadge, loadApprovalList, canDecide, stepsHTML, askDecision, decideRequest } from "../approvalHelper.js";
 import {
   pageHTML, initToolbar, filterAndSort, setMeta, emptyHTML, errorHTML,
   employeeCell, statusPill, cell, actionsCell, reviewNote, tableHTML, bindActions,
@@ -63,7 +63,7 @@ function paint(user) {
           <div class="ap-main ap-main-gap"><span class="nw">${fmtDate(r.date)}</span></div>
           <div class="ap-sub"><span class="nw">${esc(r.start_time?.slice(0, 5))} – ${esc(r.end_time?.slice(0, 5))}</span> · <span class="nw">${jam(r)}</span></div>`)}
         ${cell("Keterangan", `<div class="ap-reason">${esc(r.reason)}</div>${reviewNote(r)}`)}
-        ${cell("Status", `${statusPill(r.status)}<div class="ap-sub">Diajukan ${fmtDate(r.created_at)}</div>`)}
+        ${cell("Status", `${statusPill(r.status)}<div class="ap-sub">Diajukan ${fmtDate(r.created_at)}</div>${revisionBadge(r)}`)}
         ${cell("Tahap", stepsHTML(r, steps[r.id]), "ap-td-steps")}
         ${actionsCell(r, canDecide(r, steps[r.id], user))}
       </tr>
