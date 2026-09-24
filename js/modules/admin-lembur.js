@@ -1,9 +1,10 @@
 import { toast, fmtDate, fmtJam, roundOvertimeHours } from "../core.js";
-import { esc, revisionBadge, loadApprovalList, canDecide, stepsHTML, askDecision, decideRequest } from "../approvalHelper.js";
+import { esc, loadApprovalList, canDecide, stepsHTML, askDecision, decideRequest } from "../approvalHelper.js";
 import {
   pageHTML, initToolbar, filterAndSort, setMeta, emptyHTML, errorHTML,
   employeeCell, statusPill, cell, actionsCell, reviewNote, tableHTML, bindActions,
 } from "../approvalUI.js";
+import { fetchAttempts, historyBlockHTML, historyButton, openApproverHistory } from "../requestHistory.js";
 
 // Approval Lembur BERTINGKAT — sama polanya dengan Approval Izin: hanya
 // pengajuan yang melibatkan user ini sebagai approver (Super Admin: semua),
@@ -63,7 +64,7 @@ function paint(user) {
           <div class="ap-main ap-main-gap"><span class="nw">${fmtDate(r.date)}</span></div>
           <div class="ap-sub"><span class="nw">${esc(r.start_time?.slice(0, 5))} – ${esc(r.end_time?.slice(0, 5))}</span> · <span class="nw">${jam(r)}</span></div>`)}
         ${cell("Keterangan", `<div class="ap-reason">${esc(r.reason)}</div>${reviewNote(r)}`)}
-        ${cell("Status", `${statusPill(r.status)}<div class="ap-sub">Diajukan ${fmtDate(r.created_at)}</div>${revisionBadge(r)}`)}
+        ${cell("Status", `${statusPill(r.status)}<div class="ap-sub">Diajukan ${fmtDate(r.created_at)}</div>${historyButton(r)}`)}
         ${cell("Tahap", stepsHTML(r, steps[r.id]), "ap-td-steps")}
         ${actionsCell(r, canDecide(r, steps[r.id], user))}
       </tr>
@@ -73,6 +74,15 @@ function paint(user) {
   bindActions(el,
     id => confirmDecide(id, "approved", user),
     id => confirmDecide(id, "rejected", user));
+  el.querySelectorAll(".btn-hist").forEach(b => b.addEventListener("click", () => {
+    const row = state.data.find(r => r.id === b.dataset.id);
+    if (row) openApproverHistory("overtime", row, `Riwayat Lembur — ${row.profiles?.full_name || "-"}`, describe);
+  }));
+}
+
+// Ringkasan satu pengajuan lembur untuk daftar riwayat.
+function describe(r) {
+  return `${fmtDate(r.date)} · ${esc(r.start_time?.slice(0, 5))} – ${esc(r.end_time?.slice(0, 5))} · ${jam(r)} · ${hari(r)}<div class="hist-reason">${esc(r.reason)}</div>`;
 }
 
 async function confirmDecide(id, decision, user) {
@@ -86,9 +96,12 @@ async function confirmDecide(id, decision, user) {
     ["Keterangan", row.reason],
   ];
 
+  // Pengajuan ulang: tampilkan riwayat pengajuan sebelumnya (setuju/tolak) di popup.
+  const hist = row.revision_of ? await fetchAttempts("overtime", row) : null;
   const res = await askDecision({
     title: decision === "approved" ? "Setujui lembur ini?" : "Tolak lembur ini?",
     detail, decision,
+    extraHTML: hist ? historyBlockHTML(row, hist, describe) : "",
   });
   if (!res) return;
 

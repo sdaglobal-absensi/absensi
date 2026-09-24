@@ -745,3 +745,22 @@ button { font-family: 'Inter'; cursor: pointer; }
 }
 .revisi-reason-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--danger); }
 .revisi-tag { margin-top: 4px; white-space: nowrap; }
+
+/* ---- Riwayat pengajuan (rantai revisi) di popup ---- */
+.row-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.btn-hist.revisi-tag { display: block; margin-top: 4px; font-size: 0.78rem; text-decoration: none; color: var(--primary); font-weight: 600; white-space: nowrap; }
+.btn-hist.revisi-tag:hover { text-decoration: underline; }
+.ap-modal-wide, .hist-modal { max-width: 540px; }
+.hist-block { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.hist-modal .hist-block { border-top: none; padding-top: 0; }
+.hist-block-title { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+.hist-list { display: flex; flex-direction: column; gap: 10px; }
+.hist-item { padding: 11px 13px; background: var(--bg); border-radius: 8px; border-left: 3px solid var(--border); font-size: 0.86rem; }
+.hist-item.hist-rejected { border-left-color: var(--danger); }
+.hist-item.hist-approved { border-left-color: var(--ok); }
+.hist-item.hist-pending { border-left-color: var(--warn); }
+.hist-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 2px; }
+.hist-latest { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--primary); background: var(--ok-bg); padding: 2px 7px; border-radius: 4px; }
+.hist-desc { margin: 8px 0 10px; line-height: 1.45; }
+.hist-reason { margin-top: 2px; color: var(--muted); word-break: break-word; }
+.hist-item .step-list { min-width: 0; }

@@ -196,6 +196,7 @@ js/auth.js                  Login, logout, proteksi halaman per role
 js/core.js                   Util bersama: sidebar (dinamis sesuai permission), role helper,
                               periode cut-off slip gaji, GPS, kamera, upload foto, format
 js/approvalHelper.js       Helper approval bertingkat (daftar per approver, tahap, keputusan via RPC)
+js/requestHistory.js       Riwayat rantai pengajuan ulang (popup karyawan & approver)
 js/approvalUI.js           Tampilan bersama halaman Approval: tab status, cari, urut A–Z, tabel/kartu, badge, tombol aksi
 js/biodata.js               Form & logika biodata pribadi/keluarga (dipakai admin-karyawan.js & employee-profil.js)
 js/modules/
@@ -379,5 +380,10 @@ penolakan di bagian atas. Karyawan memperbaiki yang salah (alasan, tanggal, atau
   catatan penolakan, dan tahap approvalnya tetap utuh.
 - Satu pengajuan ditolak hanya bisa diajukan ulang **sekali**; kalau revisinya ditolak lagi, tombol
   muncul di revisi itu. Aturan (milik sendiri, harus berstatus ditolak) dijaga trigger di database.
-- Approver melihat penanda "↻ Pengajuan ulang" di halaman approval.
+- **Riwayat karyawan** tidak menampilkan setiap percobaan sebagai baris terpisah: satu baris per pengajuan
+  (yang terbaru) dengan penanda "Pengajuan ke-N". Tombol **Riwayat** membuka popup berisi semua percobaan
+  sebelumnya, lengkap dengan status, siapa yang menyetujui/menolak, dan catatannya.
+- **Approver**: popup Setujui/Tolak untuk pengajuan ulang menampilkan riwayat pengajuan sebelumnya
+  (setuju/tolak per tahap + catatan). Baris pengajuan ulang di halaman approval juga punya tautan
+  "Lihat riwayat" (baca-saja).
 - Database yang sudah berjalan: jalankan `supabase-revisi-pengajuan.sql` sekali di SQL Editor.

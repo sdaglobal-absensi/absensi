@@ -1,9 +1,10 @@
 import { toast, fmtDate } from "../core.js";
-import { esc, revisionBadge, loadApprovalList, canDecide, stepsHTML, askDecision, decideRequest } from "../approvalHelper.js";
+import { esc, loadApprovalList, canDecide, stepsHTML, askDecision, decideRequest } from "../approvalHelper.js";
 import {
   pageHTML, initToolbar, filterAndSort, setMeta, emptyHTML, errorHTML,
   employeeCell, statusPill, cell, actionsCell, reviewNote, tableHTML, bindActions,
 } from "../approvalUI.js";
+import { fetchAttempts, historyBlockHTML, historyButton, openApproverHistory } from "../requestHistory.js";
 
 // Approval Izin BERTINGKAT — daftar hanya berisi pengajuan yang melibatkan
 // user ini sebagai approver (Super Admin: semua). Tombol Setujui/Tolak baru
@@ -58,7 +59,7 @@ function paint(user) {
         ${cell("Karyawan", employeeCell(r.profiles), "ap-td-emp")}
         ${cell("Periode", `<span class="ap-chip">${esc(r.type)}</span>${periodHTML(r)}`)}
         ${cell("Alasan", `<div class="ap-reason">${esc(r.reason)}</div>${reviewNote(r)}`)}
-        ${cell("Status", `${statusPill(r.status)}<div class="ap-sub">Diajukan ${fmtDate(r.created_at)}</div>${revisionBadge(r)}`)}
+        ${cell("Status", `${statusPill(r.status)}<div class="ap-sub">Diajukan ${fmtDate(r.created_at)}</div>${historyButton(r)}`)}
         ${cell("Tahap", stepsHTML(r, steps[r.id]), "ap-td-steps")}
         ${actionsCell(r, canDecide(r, steps[r.id], user))}
       </tr>
@@ -68,6 +69,15 @@ function paint(user) {
   bindActions(el,
     id => confirmDecide(id, "approved", user),
     id => confirmDecide(id, "rejected", user));
+  el.querySelectorAll(".btn-hist").forEach(b => b.addEventListener("click", () => {
+    const row = state.data.find(r => r.id === b.dataset.id);
+    if (row) openApproverHistory("leave", row, `Riwayat Izin — ${row.profiles?.full_name || "-"}`, describe);
+  }));
+}
+
+// Ringkasan satu pengajuan izin untuk daftar riwayat.
+function describe(r) {
+  return `<span class="ap-chip">${esc(r.type)}</span> ${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}<div class="hist-reason">${esc(r.reason)}</div>`;
 }
 
 function periodHTML(r) {
@@ -90,9 +100,12 @@ async function confirmDecide(id, decision, user) {
     ["Alasan", row.reason],
   ];
 
+  // Pengajuan ulang: tampilkan riwayat pengajuan sebelumnya (setuju/tolak) di popup.
+  const hist = row.revision_of ? await fetchAttempts("leave", row) : null;
   const res = await askDecision({
     title: decision === "approved" ? "Setujui pengajuan ini?" : "Tolak pengajuan ini?",
     detail, decision,
+    extraHTML: hist ? historyBlockHTML(row, hist, describe) : "",
   });
   if (!res) return;
 

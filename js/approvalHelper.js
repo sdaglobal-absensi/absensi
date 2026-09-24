@@ -28,20 +28,6 @@ export function rejectionReason(req, steps) {
   return s?.notes || req.review_notes || "";
 }
 
-// Penanda kecil "pengajuan ulang" (dipakai di riwayat karyawan & halaman approval).
-export function revisionBadge(req) {
-  return req.revision_of ? `<div class="small muted revisi-tag">↻ Pengajuan ulang</div>` : "";
-}
-
-// Isi kolom "Aksi" di riwayat karyawan. `all` = semua pengajuan milik user
-// (dipakai untuk tahu apakah yang ditolak sudah pernah diajukan ulang).
-export function revisionActionHTML(req, all) {
-  if (req.status !== "rejected") return `<span class="small muted">-</span>`;
-  return all.some(x => x.revision_of === req.id)
-    ? `<span class="small muted">Sudah diajukan ulang</span>`
-    : `<button type="button" class="btn-secondary btn-sm btn-revisi" data-id="${esc(req.id)}">Ajukan Ulang</button>`;
-}
-
 // Popup "Ajukan Ulang": form terisi data lama + alasan penolakan di atasnya.
 //   title/subtitle : judul & ringkasan pengajuan yang direvisi
 //   reason         : alasan penolakan (boleh kosong)
@@ -209,15 +195,16 @@ function detailHTML(detail) {
 }
 
 // Modal konfirmasi + catatan opsional. Resolve { notes } bila lanjut, null bila batal.
-export function askDecision({ title, detail, decision }) {
+export function askDecision({ title, detail, decision, extraHTML = "" }) {
   return new Promise(resolve => {
     const modal = document.createElement("div");
     modal.className = "modal";
     const approve = decision === "approved";
     modal.innerHTML = `
-      <div class="modal-box ap-modal">
+      <div class="modal-box ap-modal${extraHTML ? " ap-modal-wide" : ""}">
         <h3>${esc(title)}</h3>
         ${detailHTML(detail)}
+        ${extraHTML}
         <div class="form-row" style="margin-top:14px;">
           <label>Catatan ${approve ? "(opsional)" : "(alasan penolakan, opsional)"}
             <textarea id="decision-notes" rows="2" placeholder="Tulis catatan untuk pemohon…"></textarea>

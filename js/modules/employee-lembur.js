@@ -1,9 +1,9 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, fmtDate, roundOvertimeHours, fmtJam, dayOfWeekFromDateStr } from "../core.js";
 import {
-  esc, fetchSteps, stepsHTML, rejectionReason, revisionBadge, revisionActionHTML,
-  openRevisionModal, submitErrorMessage,
+  esc, fetchSteps, stepsHTML, rejectionReason, openRevisionModal, submitErrorMessage,
 } from "../approvalHelper.js";
+import { chainOf, employeeActionsHTML, employeeStatusTag, openChainModal } from "../requestHistory.js";
 
 // Pengajuan Lembur karyawan. Pengajuan yang DITOLAK punya tombol "Ajukan
 // Ulang" yang membuka popup berisi form terisi data lama. Hasilnya terkirim
@@ -117,11 +117,16 @@ async function loadList(user) {
 
   const steps = await fetchSteps("overtime", data.map(r => r.id));
   current = { data, steps };
+  // Satu baris per "rantai" pengajuan: hanya yang TERBARU. Pengajuan lama yang
+  // sudah diajukan ulang tidak jadi baris sendiri — dibuka lewat tombol "Riwayat".
+  const heads = data.filter(r => !data.some(x => x.revision_of === r.id));
   el.innerHTML = `
     <table class="table">
       <thead><tr><th>Tanggal</th><th>Jam</th><th>Total Jam</th><th>Jenis Hari</th><th>Keterangan</th><th>Status</th><th>Tahap Approval</th><th></th></tr></thead>
       <tbody>
-        ${data.map(r => `
+        ${heads.map(r => {
+          const n = chainOf(data, r).length;
+          return `
           <tr>
             <td>${fmtDate(r.date)}</td>
             <td>${esc(r.start_time?.slice(0, 5))} – ${esc(r.end_time?.slice(0, 5))}</td>
@@ -130,16 +135,25 @@ async function loadList(user) {
             <td>${esc(r.reason)}</td>
             <td>
               <span class="badge badge-${r.status === "approved" ? "ok" : r.status === "rejected" ? "danger" : "warn"}">${statusLabel(r.status)}</span>
-              ${revisionBadge(r)}
+              ${employeeStatusTag(n)}
             </td>
             <td>${stepsHTML(r, steps[r.id])}</td>
-            <td>${revisionActionHTML(r, data)}</td>
-          </tr>
-        `).join("")}
+            <td>${employeeActionsHTML(r, n)}</td>
+          </tr>`;
+        }).join("")}
       </tbody>
     </table>
   `;
   el.querySelectorAll(".btn-revisi").forEach(b => b.addEventListener("click", () => startRevision(b.dataset.id, user)));
+  el.querySelectorAll(".btn-hist").forEach(b => b.addEventListener("click", () => {
+    const r = data.find(x => x.id === b.dataset.id);
+    if (r) openChainModal("Riwayat Pengajuan Lembur", data, r, steps, describe);
+  }));
+}
+
+// Ringkasan satu pengajuan lembur untuk daftar riwayat.
+function describe(r) {
+  return `${fmtDate(r.date)} · ${esc(r.start_time?.slice(0, 5))} – ${esc(r.end_time?.slice(0, 5))} · ${fmtJam(r.total_jam ?? roundOvertimeHours(r.start_time, r.end_time))} · ${r.is_hari_libur ? "Hari Libur" : "Hari Biasa"}<div class="hist-reason">${esc(r.reason)}</div>`;
 }
 
 function statusLabel(s) {

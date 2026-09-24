@@ -1,9 +1,9 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, fmtDate } from "../core.js";
 import {
-  esc, fetchSteps, stepsHTML, rejectionReason, revisionBadge, revisionActionHTML,
-  openRevisionModal, submitErrorMessage,
+  esc, fetchSteps, stepsHTML, rejectionReason, openRevisionModal, submitErrorMessage,
 } from "../approvalHelper.js";
+import { chainOf, employeeActionsHTML, employeeStatusTag, openChainModal } from "../requestHistory.js";
 
 // Pengajuan Izin karyawan. Pengajuan yang DITOLAK punya tombol "Ajukan Ulang"
 // yang membuka popup berisi form terisi data lama. Hasilnya terkirim sebagai
@@ -108,27 +108,41 @@ async function loadList(user) {
 
   const steps = await fetchSteps("leave", data.map(r => r.id));
   current = { data, steps };
+  // Satu baris per "rantai" pengajuan: hanya yang TERBARU. Pengajuan lama yang
+  // sudah diajukan ulang tidak jadi baris sendiri — dibuka lewat tombol "Riwayat".
+  const heads = data.filter(r => !data.some(x => x.revision_of === r.id));
   el.innerHTML = `
     <table class="table">
       <thead><tr><th>Jenis</th><th>Periode</th><th>Alasan</th><th>Status</th><th>Tahap Approval</th><th></th></tr></thead>
       <tbody>
-        ${data.map(r => `
+        ${heads.map(r => {
+          const n = chainOf(data, r).length;
+          return `
           <tr>
             <td class="capitalize">${esc(r.type)}</td>
             <td>${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}</td>
             <td>${esc(r.reason)}</td>
             <td>
               <span class="badge badge-${r.status === "approved" ? "ok" : r.status === "rejected" ? "danger" : "warn"}">${statusLabel(r.status)}</span>
-              ${revisionBadge(r)}
+              ${employeeStatusTag(n)}
             </td>
             <td>${stepsHTML(r, steps[r.id])}</td>
-            <td>${revisionActionHTML(r, data)}</td>
-          </tr>
-        `).join("")}
+            <td>${employeeActionsHTML(r, n)}</td>
+          </tr>`;
+        }).join("")}
       </tbody>
     </table>
   `;
   el.querySelectorAll(".btn-revisi").forEach(b => b.addEventListener("click", () => startRevision(b.dataset.id, user)));
+  el.querySelectorAll(".btn-hist").forEach(b => b.addEventListener("click", () => {
+    const r = data.find(x => x.id === b.dataset.id);
+    if (r) openChainModal("Riwayat Pengajuan Izin", data, r, steps, describe);
+  }));
+}
+
+// Ringkasan satu pengajuan izin untuk daftar riwayat.
+function describe(r) {
+  return `<span class="capitalize">${esc(r.type)}</span> · ${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}<div class="hist-reason">${esc(r.reason)}</div>`;
 }
 
 function statusLabel(s) {
