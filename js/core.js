@@ -163,6 +163,18 @@ export async function resolveMenu(user) {
   return [DASHBOARD_MENU, ...filtered];
 }
 
+export function updateSidebarAvatar(user) {
+  const avatarEl = document.getElementById("sidebar-avatar");
+  if (!avatarEl) return;
+  const initials = (user.full_name || "?")
+    .trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || "").join("") || "?";
+  if (user.photo_url) {
+    avatarEl.innerHTML = `<img src="${user.photo_url}" alt="${initials}">`;
+  } else {
+    avatarEl.textContent = initials;
+  }
+}
+
 export async function renderSidebar(user, activeId) {
   const menu = await resolveMenu(user);
   const nav = document.getElementById("sidebar-nav");
@@ -182,10 +194,7 @@ export async function renderSidebar(user, activeId) {
   }
   nav.innerHTML = html;
 
-  const initials = (user.full_name || "?")
-    .trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || "").join("") || "?";
-  const avatarEl = document.getElementById("sidebar-avatar");
-  if (avatarEl) avatarEl.textContent = initials;
+  updateSidebarAvatar(user);
   document.getElementById("sidebar-user-name").textContent = user.full_name;
   document.getElementById("sidebar-user-role").textContent = roleLabel(user.role);
   return menu;

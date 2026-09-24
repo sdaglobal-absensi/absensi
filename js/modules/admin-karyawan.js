@@ -191,10 +191,11 @@ async function loadTable(canEdit, isFullSuperAdmin) {
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Kode</th><th>Nama</th><th>Email</th><th>Departemen</th><th>Jabatan</th><th>Level</th><th>Role</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead>
+      <thead><tr><th></th><th>Kode</th><th>Nama</th><th>Email</th><th>Departemen</th><th>Jabatan</th><th>Level</th><th>Role</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead>
       <tbody>
         ${data.map(k => `
           <tr>
+            <td>${k.photo_url ? `<span class="row-avatar"><img src="${k.photo_url}" alt=""></span>` : `<span class="row-avatar row-avatar-placeholder">${(k.full_name || "?").trim().split(/\s+/).slice(0,2).map(w=>w[0]?.toUpperCase()||"").join("") || "?"}</span>`}</td>
             <td>${k.employee_code || "-"}</td>
             <td>${k.full_name}</td>
             <td>${k.email || "-"}</td>

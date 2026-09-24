@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, uploadPhoto, roleLabel, fmtDateTime, confirmDialog, lamaBekerja } from "../core.js";
+import { toast, uploadPhoto, roleLabel, fmtDateTime, confirmDialog, lamaBekerja, updateSidebarAvatar } from "../core.js";
 
 // Field administratif/legal (payroll, BPJS, dokumen resmi) — TIDAK bisa
 // diedit langsung oleh siapa pun lewat halaman Profil Saya, cuma bisa
@@ -149,7 +149,9 @@ async function uploadNewPhoto(e) {
     const { error } = await supabase.from("profiles").update({ photo_url: url }).eq("id", currentUser.id);
     if (error) throw error;
     currentProfile.photo_url = url;
+    currentUser.photo_url = url;
     document.getElementById("profil-avatar").innerHTML = `<img src="${escapeAttr(url)}" alt="Foto profil">`;
+    updateSidebarAvatar(currentUser);
     toast("Foto profil berhasil diperbarui", "success");
   } catch (err) {
     toast("Gagal mengunggah foto: " + err.message, "error");
