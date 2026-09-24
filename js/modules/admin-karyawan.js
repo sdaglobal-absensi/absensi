@@ -50,22 +50,6 @@ export async function render(container, user) {
           <input type="hidden" name="grade">
           <input type="hidden" name="level">
 
-          <div class="form-section-label">Data Pribadi</div>
-          <div class="form-row two-col">
-            <label>Nama Lengkap <input name="full_name" required></label>
-            <label>NIK KTP <input name="nik_ktp" inputmode="numeric" maxlength="16"></label>
-          </div>
-          <div class="form-row two-col">
-            <label>No. HP <input name="phone"></label>
-            <label>NPWP <input name="npwp"></label>
-          </div>
-          <div class="form-row">
-            <label>Alamat Domisili <input name="alamat" placeholder="Alamat tempat tinggal saat ini"></label>
-          </div>
-          ${personalFieldsHtml({ includeIdentity: true })}
-
-          ${familySectionHtml()}
-
           <div class="form-section-label">Data Akun</div>
           <div class="form-row two-col">
             <label>Kode Karyawan <input name="employee_code" required></label>
@@ -85,6 +69,25 @@ export async function render(container, user) {
           <div class="form-row">
             <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Akun aktif</label>
           </div>
+
+          <div class="form-section-label">Data Pribadi</div>
+          <div class="form-row two-col">
+            <label>Nama Lengkap <input name="full_name" required></label>
+            <label>NIK KTP <input name="nik_ktp" inputmode="numeric" maxlength="16"></label>
+          </div>
+          <div class="form-row two-col">
+            <label>No. HP <input name="phone"></label>
+            <label>NPWP <input name="npwp"></label>
+          </div>
+          <div class="form-row">
+            <label>Alamat Sesuai KTP <input name="alamat_ktp" placeholder="Alamat sesuai yang tertera di KTP"></label>
+          </div>
+          <div class="form-row">
+            <label>Alamat Domisili <input name="alamat" placeholder="Alamat tempat tinggal saat ini"></label>
+          </div>
+          ${personalFieldsHtml({ includeIdentity: true })}
+
+          ${familySectionHtml()}
 
           <div class="form-section-label">Penempatan</div>
           <div class="form-row two-col">
@@ -311,6 +314,7 @@ async function openModal(existing = null) {
     form.nik_ktp.value = existing.nik_ktp || "";
     form.npwp.value = existing.npwp || "";
     form.alamat.value = existing.alamat || "";
+    form.alamat_ktp.value = existing.alamat_ktp || "";
     form.grade.value = existing.grade || "";
     form.level.value = existing.level || "";
 
@@ -363,6 +367,7 @@ async function onSubmit(e, currentUser, isFullSuperAdmin) {
     nik_ktp: fd.get("nik_ktp") || null,
     npwp: fd.get("npwp") || null,
     alamat: fd.get("alamat") || null,
+    alamat_ktp: fd.get("alamat_ktp") || null,
     ...readBiodataForm(e.target),
     role: fd.get("role"),
     is_active: fd.get("is_active") === "on",

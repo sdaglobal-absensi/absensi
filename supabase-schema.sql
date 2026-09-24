@@ -1264,8 +1264,8 @@ end $$;
 create table if not exists public.profile_change_requests (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null references public.profiles(id) on delete cascade,
-  -- Catatan: daftar field_key di bawah diperluas (jenis_kelamin, tempat_lahir,
-  -- tanggal_lahir) oleh bagian 13 di akhir file ini.
+  -- Catatan: daftar field_key di bawah diperluas (alamat_ktp, jenis_kelamin,
+  -- tempat_lahir, tanggal_lahir) oleh bagian 13 di akhir file ini.
   field_key    text not null check (field_key in (
                  'full_name','nik_ktp','npwp','unit_pt','lokasi_kerja','department','bagian','position'
                )),
@@ -1331,11 +1331,12 @@ on conflict (role, menu_id) do nothing;
 -- lahir, pendidikan terakhir, status pernikahan, nama ayah & ibu, data
 -- suami/istri, dan daftar anak. Aman dijalankan ulang (idempotent).
 --
--- "Alamat domisili" memakai kolom `alamat` yang SUDAH ADA (tidak dibuat
--- kolom baru supaya data lama tidak hilang/terpisah) -- di aplikasi
--- labelnya sekarang "Alamat Domisili".
+-- Ada DUA alamat: `alamat_ktp` (sesuai KTP, kolom baru) dan `alamat`
+-- (kolom yang SUDAH ADA, sekarang berarti alamat domisili -- data lama
+-- tetap utuh dan otomatis jadi alamat domisili).
 comment on column public.profiles.alamat is 'Alamat domisili (tempat tinggal saat ini)';
 
+alter table public.profiles add column if not exists alamat_ktp             text;
 alter table public.profiles add column if not exists jenis_kelamin          text;
 alter table public.profiles add column if not exists agama                  text;
 alter table public.profiles add column if not exists tempat_lahir           text;
@@ -1348,6 +1349,8 @@ alter table public.profiles add column if not exists pasangan_nama          text
 alter table public.profiles add column if not exists pasangan_tempat_lahir  text;
 alter table public.profiles add column if not exists pasangan_tanggal_lahir date;
 alter table public.profiles add column if not exists pasangan_pekerjaan     text;
+
+comment on column public.profiles.alamat_ktp is 'Alamat sesuai KTP';
 
 do $$ begin
   if not exists (select 1 from pg_constraint where conname = 'profiles_jenis_kelamin_check') then
@@ -1415,8 +1418,8 @@ create policy "employee_children_write_admin" on public.employee_children
 comment on table public.employee_children is
   'Data anak karyawan (nama, tempat/tanggal lahir, pekerjaan). Urutan anak pertama, kedua, dst. lewat kolom urutan.';
 
--- Pengajuan perubahan data (Profil Saya): tambah 3 field yang mirip data
--- KTP -- jenis kelamin, tempat lahir, tanggal lahir -- supaya perubahannya
+-- Pengajuan perubahan data (Profil Saya): tambah 4 field yang mirip data
+-- KTP -- alamat KTP, jenis kelamin, tempat lahir, tanggal lahir -- supaya perubahannya
 -- ikut lewat approval admin seperti Nama/NIK/NPWP. Constraint lama dicari
 -- dan dibuang dulu berdasarkan isinya (bukan cuma namanya), lalu dipasang
 -- ulang dengan daftar field terbaru.
@@ -1436,6 +1439,6 @@ begin
     add constraint profile_change_requests_field_key_check
     check (field_key in (
       'full_name','nik_ktp','npwp','unit_pt','lokasi_kerja','department','bagian','position',
-      'jenis_kelamin','tempat_lahir','tanggal_lahir'
+      'alamat_ktp','jenis_kelamin','tempat_lahir','tanggal_lahir'
     ));
 end $$;

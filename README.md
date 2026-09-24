@@ -27,10 +27,10 @@ sendiri kalau ada yang salah:
   Profil, Pendidikan Terakhir, Agama, Status Pernikahan, dan seluruh
   biodata keluarga (nama ayah & ibu, suami/istri, data anak) — tersimpan
   seketika. Lihat bagian **Biodata Karyawan** di bawah.
-- **Butuh approval admin**: Nama Lengkap, NIK KTP, NPWP, Jenis Kelamin,
-  Tempat Lahir, Tanggal Lahir, Unit/PT, Lokasi Kerja, Departemen, Bagian,
+- **Butuh approval admin**: Nama Lengkap, NIK KTP, NPWP, Alamat Sesuai KTP,
+  Jenis Kelamin, Tempat Lahir, Tanggal Lahir, Unit/PT, Lokasi Kerja, Departemen, Bagian,
   dan Jabatan — field ini berkaitan dengan payroll/BPJS/dokumen resmi
-  (jenis kelamin & tempat/tanggal lahir mengacu ke KTP), jadi karyawan cuma bisa **mengajukan**
+  (alamat KTP, jenis kelamin & tempat/tanggal lahir mengacu ke KTP), jadi karyawan cuma bisa **mengajukan**
   perubahan (lengkap dengan alasan), lalu menunggu disetujui lewat menu
   **Approval Perubahan Data** (Admin HR/Super Admin HR/Super Admin). Begitu
   disetujui, data di Data Karyawan langsung ikut berubah. Karyawan bisa
@@ -46,7 +46,7 @@ melengkapi sendiri lewat **Profil Saya**.
 
 | Kelompok | Field |
 |---|---|
-| Data pribadi | Alamat Domisili, Jenis Kelamin, Agama, Tempat Lahir, Tanggal Lahir, Pendidikan Terakhir |
+| Data pribadi | Alamat Sesuai KTP, Alamat Domisili, Jenis Kelamin, Agama, Tempat Lahir, Tanggal Lahir, Pendidikan Terakhir |
 | Status | Status Pernikahan (Belum Menikah / Menikah / Cerai Hidup / Cerai Mati) |
 | Orang tua | Nama Ayah, Nama Ibu |
 | Suami / Istri | Nama, Tempat Lahir, Tanggal Lahir, Pekerjaan — hanya tampil kalau status **Menikah**; kalau status diganti ke selain Menikah, data pasangan ikut dikosongkan saat disimpan |
@@ -54,8 +54,9 @@ melengkapi sendiri lewat **Profil Saya**.
 
 Catatan teknis:
 
-- **Alamat Domisili** memakai kolom `alamat` yang sudah ada, jadi data
-  alamat lama otomatis jadi alamat domisili — tidak ada yang perlu dimigrasi.
+- Ada **dua alamat**: **Alamat Sesuai KTP** (kolom baru `alamat_ktp`) dan
+  **Alamat Domisili** (kolom `alamat` yang sudah ada, jadi alamat lama
+  otomatis menjadi alamat domisili — tidak ada yang perlu dimigrasi).
 - Data anak disimpan di tabel terpisah `employee_children` (satu baris per
   anak). Membacanya hanya boleh pemiliknya sendiri atau role yang menu
   **Data Karyawan**-nya menyala (Admin HR yang menu itu masih mati tidak

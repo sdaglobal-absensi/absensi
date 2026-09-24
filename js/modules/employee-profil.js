@@ -9,8 +9,8 @@ import {
 // diedit langsung oleh siapa pun lewat halaman Profil Saya, cuma bisa
 // mengajukan lewat profile_change_requests, baru diterapkan setelah
 // disetujui admin (lihat admin-profil-approval.js).
-// Jenis kelamin, tempat lahir, dan tanggal lahir juga masuk daftar ini karena
-// datanya mengacu ke KTP. Field lain di biodata (pendidikan, agama, status
+// Alamat sesuai KTP, jenis kelamin, tempat lahir, dan tanggal lahir juga
+// masuk daftar ini karena datanya mengacu ke KTP. Field lain di biodata (pendidikan, agama, status
 // pernikahan, orang tua, pasangan, anak) bisa diubah langsung — lihat
 // form-quick di bawah.
 // Field penempatan (staffOnly: true) malah tidak boleh diajukan sama sekali
@@ -23,6 +23,7 @@ const REQUESTABLE_FIELDS = [
   { key: "full_name", label: "Nama Lengkap" },
   { key: "nik_ktp", label: "NIK KTP" },
   { key: "npwp", label: "NPWP" },
+  { key: "alamat_ktp", label: "Alamat Sesuai KTP" },
   { key: "jenis_kelamin", label: "Jenis Kelamin", type: "select", options: OPT_JENIS_KELAMIN },
   { key: "tempat_lahir", label: "Tempat Lahir" },
   { key: "tanggal_lahir", label: "Tanggal Lahir", type: "date" },
