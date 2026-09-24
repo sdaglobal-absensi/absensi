@@ -1,4 +1,5 @@
 import { supabase } from "../supabaseClient.js";
+import { avatarHTML } from "../core.js";
 
 // =======================================================================
 // STRUKTUR ORGANISASI — halaman baca-saja (tidak ada tombol edit di sini;
@@ -61,7 +62,7 @@ async function loadAndRender() {
   const treeEl = document.getElementById("org-tree");
   const [{ data: locs, error: errLocs }, { data: profiles, error: errProf }] = await Promise.all([
     supabase.from("office_locations").select("name").eq("is_active", true).order("name"),
-    supabase.from("profiles").select("id, employee_code, full_name, role, department, bagian, position, lokasi_kerja").eq("is_active", true).order("full_name"),
+    supabase.from("profiles").select("id, employee_code, full_name, role, department, bagian, position, lokasi_kerja, photo_url").eq("is_active", true).order("full_name"),
   ]);
 
   if (errLocs || errProf) {
@@ -202,7 +203,7 @@ function renderTree(el) {
                   <div class="org-emp-list">
                     ${bagian.employees.map(e => `
                       <div class="org-emp-row" data-search="${(e.full_name + " " + (e.employee_code || "")).toLowerCase()}">
-                        <span class="org-avatar org-avatar-${e.role}">${initials(e.full_name)}</span>
+                        <span class="org-avatar org-avatar-${e.role}">${avatarHTML(e, e.full_name)}</span>
                         <span class="org-emp-info">
                           <span class="org-emp-name">${e.full_name}</span>
                           <span class="org-emp-meta">${e.position || "Jabatan belum diatur"}${e.employee_code ? ` · ${e.employee_code}` : ""}</span>

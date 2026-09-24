@@ -1,5 +1,5 @@
 import { supabase, supabaseAdminCreate } from "../supabaseClient.js";
-import { toast, roleLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper, STAFF_ROLES } from "../core.js";
+import { toast, roleLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper, STAFF_ROLES, avatarHTML } from "../core.js";
 
 let masterDepartments = [];
 let masterLevels = [];
@@ -195,7 +195,7 @@ async function loadTable(canEdit, isFullSuperAdmin) {
       <tbody>
         ${data.map(k => `
           <tr>
-            <td>${k.photo_url ? `<span class="row-avatar"><img src="${k.photo_url}" alt=""></span>` : `<span class="row-avatar row-avatar-placeholder">${(k.full_name || "?").trim().split(/\s+/).slice(0,2).map(w=>w[0]?.toUpperCase()||"").join("") || "?"}</span>`}</td>
+            <td><span class="row-avatar">${avatarHTML(k, k.full_name)}</span></td>
             <td>${k.employee_code || "-"}</td>
             <td>${k.full_name}</td>
             <td>${k.email || "-"}</td>

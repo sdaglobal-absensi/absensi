@@ -163,16 +163,27 @@ export async function resolveMenu(user) {
   return [DASHBOARD_MENU, ...filtered];
 }
 
+// Ikon siluet orang generik — dipakai sebagai placeholder avatar di
+// SELURUH aplikasi (sidebar, Data Karyawan, Profil Saya, Struktur
+// Organisasi) untuk siapa pun yang belum punya foto profil, menggantikan
+// inisial huruf. "currentColor" supaya warnanya ikut CSS masing-masing
+// tempat avatar itu dipakai.
+export const PERSON_ICON_SVG = `<svg viewBox="0 0 24 24" fill="currentColor" class="avatar-placeholder-icon"><path d="M12 12.5c2.9 0 5.25-2.35 5.25-5.25S14.9 2 12 2 6.75 4.35 6.75 7.25 9.1 12.5 12 12.5zm0 2.25c-3.87 0-11 1.94-11 5.81V22h22v-1.44c0-3.87-7.13-5.81-11-5.81z"/></svg>`;
+
+// Mengembalikan HTML avatar untuk satu orang: foto kalau ada photo_url,
+// kalau tidak selalu tampilkan ikon siluet orang (BUKAN inisial) —
+// berlaku sama untuk semua orang tanpa kecuali.
+export function avatarHTML(person, alt) {
+  if (person && person.photo_url) {
+    return `<img src="${person.photo_url}" alt="${alt || "Foto profil"}">`;
+  }
+  return PERSON_ICON_SVG;
+}
+
 export function updateSidebarAvatar(user) {
   const avatarEl = document.getElementById("sidebar-avatar");
   if (!avatarEl) return;
-  const initials = (user.full_name || "?")
-    .trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || "").join("") || "?";
-  if (user.photo_url) {
-    avatarEl.innerHTML = `<img src="${user.photo_url}" alt="${initials}">`;
-  } else {
-    avatarEl.textContent = initials;
-  }
+  avatarEl.innerHTML = avatarHTML(user, user.full_name);
 }
 
 export async function renderSidebar(user, activeId) {

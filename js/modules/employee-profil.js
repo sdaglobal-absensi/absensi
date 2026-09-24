@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, uploadPhoto, roleLabel, fmtDateTime, confirmDialog, lamaBekerja, updateSidebarAvatar } from "../core.js";
+import { toast, uploadPhoto, roleLabel, fmtDateTime, confirmDialog, lamaBekerja, updateSidebarAvatar, avatarHTML } from "../core.js";
 
 // Field administratif/legal (payroll, BPJS, dokumen resmi) — TIDAK bisa
 // diedit langsung oleh siapa pun lewat halaman Profil Saya, cuma bisa
@@ -36,7 +36,7 @@ export async function render(container, user) {
     <div class="card profil-header-card">
       <div class="profil-avatar-wrap">
         <div class="profil-avatar" id="profil-avatar">
-          ${currentProfile.photo_url ? `<img src="${escapeAttr(currentProfile.photo_url)}" alt="Foto profil">` : initials(currentProfile.full_name)}
+          ${avatarHTML(currentProfile, "Foto profil")}
         </div>
         <label class="btn-secondary btn-photo-upload">
           Ganti Foto
