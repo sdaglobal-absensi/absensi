@@ -736,10 +736,12 @@ button { font-family: 'Inter'; cursor: pointer; }
 
 /* ---- Pengajuan ulang (revisi) izin & lembur yang ditolak ---- */
 .btn-sm { padding: 6px 12px !important; font-size: 0.8rem !important; white-space: nowrap; }
-.revisi-banner {
-  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
-  max-width: 800px; margin-bottom: 14px; padding: 12px 16px; border-radius: var(--radius);
-  background: var(--warn-bg); border: 1px solid #EBD39C; color: #6B4A06; font-size: 0.9rem; line-height: 1.45;
+.revisi-modal { max-width: 520px; }
+.revisi-modal form { margin-top: 14px; }
+.revisi-reason {
+  display: flex; flex-direction: column; gap: 3px; margin-top: 14px; padding: 11px 14px;
+  background: var(--danger-bg); border-left: 3px solid var(--danger); border-radius: 6px;
+  font-size: 0.88rem; line-height: 1.45; word-break: break-word;
 }
-.revisi-banner .small { margin-top: 2px; }
+.revisi-reason-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--danger); }
 .revisi-tag { margin-top: 4px; white-space: nowrap; }

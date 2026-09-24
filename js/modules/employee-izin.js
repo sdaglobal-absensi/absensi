@@ -2,43 +2,70 @@ import { supabase } from "../supabaseClient.js";
 import { toast, fmtDate } from "../core.js";
 import {
   esc, fetchSteps, stepsHTML, rejectionReason, revisionBadge, revisionActionHTML,
-  revisionBannerHTML, submitErrorMessage,
+  openRevisionModal, submitErrorMessage,
 } from "../approvalHelper.js";
 
-// Pengajuan Izin karyawan. Pengajuan yang DITOLAK bisa diajukan ulang: form
-// terisi otomatis dengan data lama, karyawan memperbaiki yang salah, lalu
-// terkirim sebagai pengajuan BARU (menaut lewat revision_of). Pengajuan lama
-// tidak diubah, jadi riwayat ditolak/disetujui tetap tercatat semua.
-let revising = null; // pengajuan ditolak yang sedang direvisi (null = pengajuan biasa)
+// Pengajuan Izin karyawan. Pengajuan yang DITOLAK punya tombol "Ajukan Ulang"
+// yang membuka popup berisi form terisi data lama. Hasilnya terkirim sebagai
+// pengajuan BARU (menaut lewat revision_of); pengajuan lama tidak diubah,
+// jadi riwayat ditolak/disetujui tetap tercatat semua.
 let current = { data: [], steps: {} };
 
+// Isi form (dipakai form utama & popup revisi) — nama field harus sama.
+const FIELDS_HTML = `
+  <div class="form-row">
+    <label>Jenis
+      <select name="type" required>
+        <option value="izin">Izin</option>
+        <option value="sakit">Sakit</option>
+        <option value="cuti">Cuti</option>
+      </select>
+    </label>
+  </div>
+  <div class="form-row two-col">
+    <label>Tanggal mulai <input type="date" name="start_date" required></label>
+    <label>Tanggal selesai <input type="date" name="end_date" required></label>
+  </div>
+  <div class="form-row">
+    <label>Alasan <textarea name="reason" rows="3" required placeholder="Jelaskan alasan pengajuan"></textarea></label>
+  </div>`;
+
+// Validasi + kirim. Mengembalikan true kalau berhasil.
+async function submitRequest(fd, user, revisionOf) {
+  if (fd.get("end_date") < fd.get("start_date")) {
+    toast("Tanggal selesai tidak boleh lebih awal dari tanggal mulai", "error");
+    return false;
+  }
+  const payload = {
+    user_id: user.id,
+    type: fd.get("type"),
+    start_date: fd.get("start_date"),
+    end_date: fd.get("end_date"),
+    reason: fd.get("reason"),
+  };
+  if (revisionOf) payload.revision_of = revisionOf;
+
+  const { error } = await supabase.from("leave_requests").insert(payload);
+  if (error) {
+    toast(submitErrorMessage(error), "error");
+    if (revisionOf) loadList(user); // mis. sudah pernah diajukan ulang -> segarkan riwayat
+    return false;
+  }
+  toast(revisionOf ? "Pengajuan ulang terkirim, menunggu approval" : "Pengajuan terkirim, menunggu approval", "success");
+  loadList(user);
+  return true;
+}
+
 export async function render(container, user) {
-  revising = null;
   container.innerHTML = `
     <div class="page-header">
       <h1>Pengajuan Izin</h1>
       <p class="muted">Ajukan izin, sakit, atau cuti</p>
     </div>
 
-    <div id="rev-banner" class="revisi-banner hidden"></div>
     <form id="form-izin" class="card form-card">
-      <div class="form-row">
-        <label>Jenis
-          <select name="type" required>
-            <option value="izin">Izin</option>
-            <option value="sakit">Sakit</option>
-            <option value="cuti">Cuti</option>
-          </select>
-        </label>
-      </div>
-      <div class="form-row two-col">
-        <label>Tanggal mulai <input type="date" name="start_date" required></label>
-        <label>Tanggal selesai <input type="date" name="end_date" required></label>
-      </div>
-      <div class="form-row">
-        <label>Alasan <textarea name="reason" rows="3" required placeholder="Jelaskan alasan pengajuan"></textarea></label>
-      </div>
-      <button type="submit" id="btn-submit" class="btn-primary btn-block">Kirim Pengajuan</button>
+      ${FIELDS_HTML}
+      <button type="submit" class="btn-primary btn-block">Kirim Pengajuan</button>
     </form>
 
     <h2 class="section-title">Riwayat Pengajuan</h2>
@@ -47,59 +74,24 @@ export async function render(container, user) {
 
   document.getElementById("form-izin").addEventListener("submit", async e => {
     e.preventDefault();
-    const fd = new FormData(e.target);
-    if (fd.get("end_date") < fd.get("start_date")) {
-      toast("Tanggal selesai tidak boleh lebih awal dari tanggal mulai", "error");
-      return;
-    }
-    const payload = {
-      user_id: user.id,
-      type: fd.get("type"),
-      start_date: fd.get("start_date"),
-      end_date: fd.get("end_date"),
-      reason: fd.get("reason"),
-    };
-    if (revising) payload.revision_of = revising.id;
-
-    const { error } = await supabase.from("leave_requests").insert(payload);
-    if (error) { toast(submitErrorMessage(error), "error"); if (revising) loadList(user); return; }
-    toast(revising ? "Pengajuan ulang terkirim, menunggu approval" : "Pengajuan terkirim, menunggu approval", "success");
-    stopRevision();
-    loadList(user);
+    const form = e.target;
+    if (await submitRequest(new FormData(form), user, null)) form.reset();
   });
 
   loadList(user);
 }
 
-function startRevision(id) {
+function startRevision(id, user) {
   const r = current.data.find(x => x.id === id);
   if (!r) return;
-  revising = r;
-  const form = document.getElementById("form-izin");
-  form.elements.type.value = r.type;
-  form.elements.start_date.value = r.start_date;
-  form.elements.end_date.value = r.end_date;
-  form.elements.reason.value = r.reason;
-
-  const banner = document.getElementById("rev-banner");
-  banner.innerHTML = revisionBannerHTML(
-    `Mengajukan ulang: ${r.type} ${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}`,
-    rejectionReason(r, current.steps[r.id])
-  );
-  banner.classList.remove("hidden");
-  banner.querySelector("#btn-cancel-revisi").addEventListener("click", stopRevision);
-  document.getElementById("btn-submit").textContent = "Kirim Pengajuan Ulang";
-  banner.scrollIntoView({ behavior: "smooth", block: "center" });
-  form.elements.reason.focus();
-}
-
-function stopRevision() {
-  revising = null;
-  document.getElementById("form-izin").reset();
-  const banner = document.getElementById("rev-banner");
-  banner.classList.add("hidden");
-  banner.innerHTML = "";
-  document.getElementById("btn-submit").textContent = "Kirim Pengajuan";
+  openRevisionModal({
+    title: "Ajukan Ulang Izin",
+    subtitle: `${r.type} · ${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}`,
+    reason: rejectionReason(r, current.steps[r.id]),
+    fieldsHTML: FIELDS_HTML,
+    values: { type: r.type, start_date: r.start_date, end_date: r.end_date, reason: r.reason },
+    onSubmit: fd => submitRequest(fd, user, r.id),
+  });
 }
 
 async function loadList(user) {
@@ -110,6 +102,7 @@ async function loadList(user) {
     .order("created_at", { ascending: false });
 
   const el = document.getElementById("izin-list");
+  if (!el) return;
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data.</p>`; return; }
   if (!data.length) { el.innerHTML = `<p class="muted">Belum ada pengajuan.</p>`; return; }
 
@@ -135,7 +128,7 @@ async function loadList(user) {
       </tbody>
     </table>
   `;
-  el.querySelectorAll(".btn-revisi").forEach(b => b.addEventListener("click", () => startRevision(b.dataset.id)));
+  el.querySelectorAll(".btn-revisi").forEach(b => b.addEventListener("click", () => startRevision(b.dataset.id, user)));
 }
 
 function statusLabel(s) {

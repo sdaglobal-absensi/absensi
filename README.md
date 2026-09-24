@@ -371,8 +371,8 @@ Supabase).
 ## Pengajuan ulang (revisi) izin & lembur yang ditolak
 
 Di **Pengajuan Izin** / **Pengajuan Lembur**, pengajuan berstatus *Ditolak* punya tombol **Ajukan Ulang**.
-Form terisi otomatis dengan data lama (plus alasan penolakan di banner), karyawan memperbaiki yang salah
-(alasan, tanggal, atau jam) lalu mengirim ulang.
+Tombol itu membuka **popup** berisi form yang terisi otomatis dengan data lama, lengkap dengan alasan
+penolakan di bagian atas. Karyawan memperbaiki yang salah (alasan, tanggal, atau jam) lalu mengirim ulang.
 
 - Pengajuan ulang tersimpan sebagai pengajuan **baru** (kolom `revision_of` menaut ke yang ditolak) dan
   melewati alur approval dari awal. Pengajuan lama **tidak diubah**, jadi riwayat ditolak/disetujui,

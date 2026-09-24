@@ -2,37 +2,71 @@ import { supabase } from "../supabaseClient.js";
 import { toast, fmtDate, roundOvertimeHours, fmtJam, dayOfWeekFromDateStr } from "../core.js";
 import {
   esc, fetchSteps, stepsHTML, rejectionReason, revisionBadge, revisionActionHTML,
-  revisionBannerHTML, submitErrorMessage,
+  openRevisionModal, submitErrorMessage,
 } from "../approvalHelper.js";
 
-// Pengajuan Lembur karyawan. Pengajuan yang DITOLAK bisa diajukan ulang:
-// form terisi otomatis dengan data lama, diperbaiki, lalu terkirim sebagai
-// pengajuan BARU (menaut lewat revision_of) — pengajuan lama tidak diubah,
-// jadi riwayat ditolak/disetujui tetap tercatat semua.
-let revising = null;
+// Pengajuan Lembur karyawan. Pengajuan yang DITOLAK punya tombol "Ajukan
+// Ulang" yang membuka popup berisi form terisi data lama. Hasilnya terkirim
+// sebagai pengajuan BARU (menaut lewat revision_of); pengajuan lama tidak
+// diubah, jadi riwayat ditolak/disetujui tetap tercatat semua.
 let current = { data: [], steps: {} };
 
+// Isi form (dipakai form utama & popup revisi) — nama field harus sama.
+const FIELDS_HTML = `
+  <div class="form-row">
+    <label>Tanggal <input type="date" name="date" required></label>
+  </div>
+  <div class="form-row two-col">
+    <label>Jam Mulai <input type="time" name="start_time" required></label>
+    <label>Jam Selesai <input type="time" name="end_time" required></label>
+  </div>
+  <div class="form-row">
+    <label>Keterangan <textarea name="reason" rows="3" required placeholder="Jelaskan pekerjaan yang dilemburkan"></textarea></label>
+  </div>`;
+
+// Validasi + kirim. Mengembalikan true kalau berhasil.
+async function submitRequest(fd, user, revisionOf) {
+  const date = fd.get("date");
+  const startTime = fd.get("start_time");
+  const endTime = fd.get("end_time");
+
+  if (endTime <= startTime) {
+    toast("Jam selesai harus lebih besar dari jam mulai", "error");
+    return false;
+  }
+
+  const payload = {
+    user_id: user.id,
+    date,
+    start_time: startTime,
+    end_time: endTime,
+    is_hari_libur: await determineIsHoliday(date),
+    total_jam: roundOvertimeHours(startTime, endTime),
+    reason: fd.get("reason"),
+  };
+  if (revisionOf) payload.revision_of = revisionOf;
+
+  const { error } = await supabase.from("overtime_requests").insert(payload);
+  if (error) {
+    toast(submitErrorMessage(error), "error");
+    if (revisionOf) loadList(user);
+    return false;
+  }
+  toast(revisionOf ? "Pengajuan ulang terkirim, menunggu approval" : "Pengajuan lembur terkirim, menunggu approval", "success");
+  loadList(user);
+  return true;
+}
+
 export async function render(container, user) {
-  revising = null;
   container.innerHTML = `
     <div class="page-header">
       <h1>Pengajuan Lembur</h1>
       <p class="muted">Ajukan lembur untuk disetujui admin/HR</p>
     </div>
 
-    <div id="rev-banner" class="revisi-banner hidden"></div>
     <form id="form-lembur" class="card form-card">
-      <div class="form-row">
-        <label>Tanggal <input type="date" name="date" required></label>
-      </div>
-      <div class="form-row two-col">
-        <label>Jam Mulai <input type="time" name="start_time" required></label>
-        <label>Jam Selesai <input type="time" name="end_time" required></label>
-      </div>
-      <div class="form-row">
-        <label>Keterangan <textarea name="reason" rows="3" required placeholder="Jelaskan pekerjaan yang dilemburkan"></textarea></label>
-      </div>
-      <button type="submit" id="btn-submit" class="btn-primary btn-block">Kirim Pengajuan</button>
+      ${FIELDS_HTML}
+      <button type="submit" class="btn-primary btn-block">Kirim Pengajuan</button>
     </form>
 
     <h2 class="section-title">Riwayat Pengajuan Lembur</h2>
@@ -41,69 +75,24 @@ export async function render(container, user) {
 
   document.getElementById("form-lembur").addEventListener("submit", async e => {
     e.preventDefault();
-    const fd = new FormData(e.target);
-    const date = fd.get("date");
-    const startTime = fd.get("start_time");
-    const endTime = fd.get("end_time");
-
-    if (endTime <= startTime) {
-      toast("Jam selesai harus lebih besar dari jam mulai", "error");
-      return;
-    }
-
-    const isHariLibur = await determineIsHoliday(date);
-    const totalJam = roundOvertimeHours(startTime, endTime);
-
-    const payload = {
-      user_id: user.id,
-      date,
-      start_time: startTime,
-      end_time: endTime,
-      is_hari_libur: isHariLibur,
-      total_jam: totalJam,
-      reason: fd.get("reason"),
-    };
-    if (revising) payload.revision_of = revising.id;
-
-    const { error } = await supabase.from("overtime_requests").insert(payload);
-    if (error) { toast(submitErrorMessage(error), "error"); if (revising) loadList(user); return; }
-    toast(revising ? "Pengajuan ulang terkirim, menunggu approval" : "Pengajuan lembur terkirim, menunggu approval", "success");
-    stopRevision();
-    loadList(user);
+    const form = e.target;
+    if (await submitRequest(new FormData(form), user, null)) form.reset();
   });
 
   loadList(user);
 }
 
-function startRevision(id) {
+function startRevision(id, user) {
   const r = current.data.find(x => x.id === id);
   if (!r) return;
-  revising = r;
-  const form = document.getElementById("form-lembur");
-  form.elements.date.value = r.date;
-  form.elements.start_time.value = r.start_time?.slice(0, 5) || "";
-  form.elements.end_time.value = r.end_time?.slice(0, 5) || "";
-  form.elements.reason.value = r.reason;
-
-  const banner = document.getElementById("rev-banner");
-  banner.innerHTML = revisionBannerHTML(
-    `Mengajukan ulang: lembur ${fmtDate(r.date)}, ${r.start_time?.slice(0, 5)} – ${r.end_time?.slice(0, 5)}`,
-    rejectionReason(r, current.steps[r.id])
-  );
-  banner.classList.remove("hidden");
-  banner.querySelector("#btn-cancel-revisi").addEventListener("click", stopRevision);
-  document.getElementById("btn-submit").textContent = "Kirim Pengajuan Ulang";
-  banner.scrollIntoView({ behavior: "smooth", block: "center" });
-  form.elements.reason.focus();
-}
-
-function stopRevision() {
-  revising = null;
-  document.getElementById("form-lembur").reset();
-  const banner = document.getElementById("rev-banner");
-  banner.classList.add("hidden");
-  banner.innerHTML = "";
-  document.getElementById("btn-submit").textContent = "Kirim Pengajuan";
+  openRevisionModal({
+    title: "Ajukan Ulang Lembur",
+    subtitle: `${fmtDate(r.date)} · ${r.start_time?.slice(0, 5)} – ${r.end_time?.slice(0, 5)}`,
+    reason: rejectionReason(r, current.steps[r.id]),
+    fieldsHTML: FIELDS_HTML,
+    values: { date: r.date, start_time: r.start_time?.slice(0, 5), end_time: r.end_time?.slice(0, 5), reason: r.reason },
+    onSubmit: fd => submitRequest(fd, user, r.id),
+  });
 }
 
 // Tanggal Minggu, atau tanggal yang ada di Master Hari Libur (aktif) -> dianggap hari libur
@@ -122,6 +111,7 @@ async function loadList(user) {
     .order("created_at", { ascending: false });
 
   const el = document.getElementById("lembur-list");
+  if (!el) return;
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data.</p>`; return; }
   if (!data.length) { el.innerHTML = `<p class="muted">Belum ada pengajuan lembur.</p>`; return; }
 
@@ -149,7 +139,7 @@ async function loadList(user) {
       </tbody>
     </table>
   `;
-  el.querySelectorAll(".btn-revisi").forEach(b => b.addEventListener("click", () => startRevision(b.dataset.id)));
+  el.querySelectorAll(".btn-revisi").forEach(b => b.addEventListener("click", () => startRevision(b.dataset.id, user)));
 }
 
 function statusLabel(s) {

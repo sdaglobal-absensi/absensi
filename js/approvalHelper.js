@@ -42,14 +42,59 @@ export function revisionActionHTML(req, all) {
     : `<button type="button" class="btn-secondary btn-sm btn-revisi" data-id="${esc(req.id)}">Ajukan Ulang</button>`;
 }
 
-// Isi banner di atas form saat mode revisi.
-export function revisionBannerHTML(title, reason) {
-  return `
-    <div>
-      <strong>${esc(title)}</strong>
-      <div class="small">${reason ? `Ditolak: “${esc(reason)}”. ` : "Ditolak. "}Perbaiki data yang salah lalu kirim ulang. Pengajuan lama tetap tersimpan di riwayat.</div>
-    </div>
-    <button type="button" class="btn-secondary btn-sm" id="btn-cancel-revisi">Batal</button>`;
+// Popup "Ajukan Ulang": form terisi data lama + alasan penolakan di atasnya.
+//   title/subtitle : judul & ringkasan pengajuan yang direvisi
+//   reason         : alasan penolakan (boleh kosong)
+//   fieldsHTML     : isi form (baris input, tanpa tombol)
+//   values         : { namaField: nilaiAwal } untuk mengisi form
+//   onSubmit(fd)   : async; kembalikan true kalau sukses (popup ditutup),
+//                    false kalau gagal/tidak valid (popup tetap terbuka)
+export function openRevisionModal({ title, subtitle, reason, fieldsHTML, values, onSubmit }) {
+  const modal = document.createElement("div");
+  modal.className = "modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.innerHTML = `
+    <div class="modal-box ap-modal revisi-modal">
+      <h3>${esc(title)}</h3>
+      ${subtitle ? `<p class="muted small" style="margin:4px 0 0;">${esc(subtitle)}</p>` : ""}
+      <div class="revisi-reason">
+        <span class="revisi-reason-label">Alasan ditolak</span>
+        <span>${reason ? esc(reason) : "Tidak ada catatan dari approver."}</span>
+      </div>
+      <form id="revisi-form">
+        ${fieldsHTML}
+        <p class="muted small" style="margin:0 0 14px;">Pengajuan lama tetap tersimpan di riwayat. Pengajuan ulang akan diproses sebagai pengajuan baru.</p>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" data-x="cancel">Batal</button>
+          <button type="submit" class="btn-primary" data-x="ok">Kirim Pengajuan Ulang</button>
+        </div>
+      </form>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const form = modal.querySelector("#revisi-form");
+  for (const [k, v] of Object.entries(values || {})) if (form.elements[k]) form.elements[k].value = v ?? "";
+
+  const onKey = e => { if (e.key === "Escape") close(); };
+  const close = () => { document.removeEventListener("keydown", onKey); modal.remove(); };
+  document.addEventListener("keydown", onKey);
+
+  modal.querySelector('[data-x="cancel"]').addEventListener("click", close);
+  modal.addEventListener("mousedown", e => { if (e.target === modal) close(); });
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const okBtn = modal.querySelector('[data-x="ok"]');
+    okBtn.disabled = true;
+    okBtn.textContent = "Mengirim…";
+    let done = false;
+    try { done = await onSubmit(new FormData(form)); } catch (err) { console.error(err); }
+    if (done) { close(); return; }
+    okBtn.disabled = false;
+    okBtn.textContent = "Kirim Pengajuan Ulang";
+  });
+
+  (form.elements.reason || form.elements[0])?.focus();
 }
 
 // Pesan ramah untuk error kirim pengajuan (mis. revisi ganda).
