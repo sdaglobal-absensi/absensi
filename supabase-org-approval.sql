@@ -405,6 +405,42 @@ create trigger trg_overtime_after_insert
   after insert on public.overtime_requests
   for each row execute function public.overtime_after_insert();
 
+-- ---------------------------------------------------------------------
+-- 9b. FUNGSI: set_member_role — ganti status Admin langsung dari halaman
+--     Struktur Organisasi (tanpa buka Data Karyawan). Hanya untuk yang punya
+--     hak 'struktur-kelola', hanya antara 'karyawan' <-> 'admin_approval'
+--     (label UI: Admin), tidak boleh untuk diri sendiri, dan tidak bisa
+--     menyentuh role lain (Admin HR / Super Admin HR / Super Admin tetap
+--     diatur lewat Data Karyawan) -- jadi tidak bisa dipakai menaikkan
+--     seseorang lebih tinggi dari 'admin_approval'.
+-- ---------------------------------------------------------------------
+create or replace function public.set_member_role(p_user uuid, p_role text)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_old text;
+begin
+  if auth.uid() is null then raise exception 'Belum login'; end if;
+  if not public.has_menu_access('struktur-kelola') then
+    raise exception 'Tidak punya akses mengelola struktur organisasi';
+  end if;
+  if p_role not in ('karyawan', 'admin_approval') then
+    raise exception 'Role tidak valid untuk diubah dari sini';
+  end if;
+  if p_user = auth.uid() then
+    raise exception 'Tidak bisa mengubah role diri sendiri dari sini';
+  end if;
+  select role into v_old from public.profiles where id = p_user;
+  if v_old is null then raise exception 'Karyawan tidak ditemukan'; end if;
+  if v_old not in ('karyawan', 'admin_approval') then
+    raise exception 'Role % hanya bisa diubah lewat Data Karyawan', v_old;
+  end if;
+  update public.profiles set role = p_role where id = p_user;
+end;
+$$;
+
+revoke execute on function public.set_member_role(uuid, text) from public, anon;
+grant execute on function public.set_member_role(uuid, text) to authenticated;
+
 -- Fungsi internal tidak boleh dipanggil langsung dari aplikasi.
 revoke execute on function public.create_approval_steps(text, uuid, uuid, text, text) from public, anon, authenticated;
 revoke execute on function public.resolve_approval_chain(uuid, integer, text) from public, anon, authenticated;

@@ -132,6 +132,8 @@ unit**.
 - Struktur bisa dibentuk otomatis dari data lama (Lokasi Kantor → Departemen →
   Bagian) lewat tombol *Impor dari Data Lama* saat struktur masih kosong.
 
+**Jadikan Admin langsung dari pohon.** Yang punya hak *Struktur Organisasi — Boleh Mengubah* melihat tombol **Jadikan Admin** / **Cabut Admin** di tiap anggota (tanpa buka Data Karyawan). Hanya untuk role Karyawan ↔ Admin, tidak untuk diri sendiri; role Admin HR ke atas tetap diatur di Data Karyawan. Diproses lewat fungsi database `set_member_role`.
+
 **Siapa approver?**
 1. Approver adalah **anggota unit yang role-nya Admin** (Super Admin, Super
    Admin HR, Admin HR, Admin) **dan** menu approval terkait (*Approval Izin* /

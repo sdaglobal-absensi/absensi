@@ -13,6 +13,7 @@
 --   4. Role Admin ikut dihitung sebagai approver di rantai unit
 --      (resolve_approval_chain). Fallback "tanpa unit" TIDAK berubah.
 --   5. Approver boleh membaca profil pemohon yang ada di rantainya saja.
+--   6. Fungsi set_member_role: tombol Jadikan/Cabut Admin di Struktur Organisasi.
 --
 -- Pengajuan yang SUDAH dibuat tidak berubah (approver-nya sudah tercatat).
 -- =====================================================================
@@ -200,3 +201,41 @@ $$;
 drop policy if exists "profiles_select_approver" on public.profiles;
 create policy "profiles_select_approver" on public.profiles
   for select using ( public.is_approver_of_user(id) );
+
+-- 6. Ganti status Admin dari Struktur Organisasi ----------------------------
+-- ---------------------------------------------------------------------
+-- 9b. FUNGSI: set_member_role — ganti status Admin langsung dari halaman
+--     Struktur Organisasi (tanpa buka Data Karyawan). Hanya untuk yang punya
+--     hak 'struktur-kelola', hanya antara 'karyawan' <-> 'admin_approval'
+--     (label UI: Admin), tidak boleh untuk diri sendiri, dan tidak bisa
+--     menyentuh role lain (Admin HR / Super Admin HR / Super Admin tetap
+--     diatur lewat Data Karyawan) -- jadi tidak bisa dipakai menaikkan
+--     seseorang lebih tinggi dari 'admin_approval'.
+-- ---------------------------------------------------------------------
+create or replace function public.set_member_role(p_user uuid, p_role text)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_old text;
+begin
+  if auth.uid() is null then raise exception 'Belum login'; end if;
+  if not public.has_menu_access('struktur-kelola') then
+    raise exception 'Tidak punya akses mengelola struktur organisasi';
+  end if;
+  if p_role not in ('karyawan', 'admin_approval') then
+    raise exception 'Role tidak valid untuk diubah dari sini';
+  end if;
+  if p_user = auth.uid() then
+    raise exception 'Tidak bisa mengubah role diri sendiri dari sini';
+  end if;
+  select role into v_old from public.profiles where id = p_user;
+  if v_old is null then raise exception 'Karyawan tidak ditemukan'; end if;
+  if v_old not in ('karyawan', 'admin_approval') then
+    raise exception 'Role % hanya bisa diubah lewat Data Karyawan', v_old;
+  end if;
+  update public.profiles set role = p_role where id = p_user;
+end;
+$$;
+
+revoke execute on function public.set_member_role(uuid, text) from public, anon;
+grant execute on function public.set_member_role(uuid, text) to authenticated;
+

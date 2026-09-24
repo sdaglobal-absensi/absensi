@@ -106,6 +106,34 @@ function roleBadge(role) {
   })[role] || "";
 }
 
+// Tombol ganti status Admin langsung dari pohon (tanpa buka Data Karyawan).
+// Hanya untuk role Karyawan <-> Admin; role lain (Admin HR, Super Admin HR,
+// Super Admin) tetap diatur di Data Karyawan. Tidak tampil untuk diri sendiri.
+function adminToggleBtn(p) {
+  if (!S.canManage || p.id === S.user.id) return "";
+  if (p.role === "karyawan") return `<button class="org-mini-btn" data-act="make-admin" data-user="${p.id}">Jadikan Admin</button>`;
+  if (p.role === "admin_approval") return `<button class="org-mini-btn org-mini-danger" data-act="revoke-admin" data-user="${p.id}">Cabut Admin</button>`;
+  return "";
+}
+
+async function changeRole(userId, newRole) {
+  const p = S.profileMap[userId];
+  const toAdmin = newRole === "admin_approval";
+  const ok = await confirmDialog({
+    title: toAdmin ? `Jadikan ${p.full_name} Admin?` : `Cabut status Admin ${p.full_name}?`,
+    message: toAdmin
+      ? "Ia akan bisa menyetujui pengajuan karyawan di unit tempat ia menjadi anggota (dan unit di bawahnya bila tidak ada Admin di sana), sesuai menu yang dinyalakan untuk role Admin di Pengaturan Sistem. Berlaku untuk pengajuan baru; ia perlu memuat ulang halaman/login ulang untuk melihat menunya."
+      : "Ia kembali menjadi Karyawan biasa dan tidak lagi dihitung sebagai approver untuk pengajuan baru. Pengajuan yang sudah menunggu gilirannya tetap tercatat atas namanya sampai diproses.",
+    confirmLabel: toAdmin ? "Ya, Jadikan Admin" : "Ya, Cabut",
+    confirmClass: toAdmin ? "btn-primary" : "btn-secondary",
+  });
+  if (!ok) return;
+  const { error } = await supabase.rpc("set_member_role", { p_user: userId, p_role: newRole });
+  if (error) return fail(error, "Gagal mengubah role");
+  toast(toAdmin ? `${p.full_name} sekarang Admin` : `${p.full_name} kembali jadi Karyawan`, "success");
+  await reload();
+}
+
 // -----------------------------------------------------------------------
 function renderPage() {
   const primaryUsers = new Set(S.members.filter(m => m.is_primary).map(m => m.user_id));
@@ -155,6 +183,7 @@ function renderPage() {
               <span class="org-emp-meta">${esc(p.position || "Jabatan belum diatur")}${p.employee_code ? ` · ${esc(p.employee_code)}` : ""}</span>
             </span>
             ${roleBadge(p.role)}
+            ${adminToggleBtn(p)}
             ${S.canManage && S.units.length ? `<button class="org-mini-btn" data-act="place" data-user="${p.id}">Tempatkan</button>` : ""}
           </div>`).join("")}
       </div>` : ""}
@@ -232,6 +261,7 @@ function memberRowHTML(m, u) {
       ${roleBadge(p.role)}
       ${S.canManage ? `
         <span class="org-actions no-print">
+          ${adminToggleBtn(p)}
           ${m.is_primary ? "" : `<button class="org-mini-btn" data-act="set-primary" data-user="${p.id}" data-unit="${u.id}">Jadikan Utama</button>`}
           <button class="org-mini-btn org-mini-danger" data-act="rm-member" data-id="${m.id}">Keluarkan</button>
         </span>` : ""}
@@ -285,6 +315,8 @@ async function onClick(e) {
     if (act === "del-unit") return await deleteUnit(id);
     if (act === "add-member") return openPlaceModal({ unitId: id });
     if (act === "place") return openPlaceModal({ userId: user });
+    if (act === "make-admin") return await changeRole(user, "admin_approval");
+    if (act === "revoke-admin") return await changeRole(user, "karyawan");
     if (act === "set-primary") return await setPrimary(user, unit);
     if (act === "rm-member") return await removeMember(id);
     if (act === "copy-unit") return openCopyModal(id);
