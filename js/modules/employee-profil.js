@@ -1,10 +1,18 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, uploadPhoto, roleLabel, fmtDateTime, confirmDialog, lamaBekerja, updateSidebarAvatar, avatarHTML } from "../core.js";
+import {
+  OPT_JENIS_KELAMIN, personalFieldsHtml, familySectionHtml, wireFamilyForm, fillBiodataForm,
+  setChildren, readBiodataForm, readChildren, loadChildren, saveChildren, displayProfileValue,
+} from "../biodata.js";
 
 // Field administratif/legal (payroll, BPJS, dokumen resmi) — TIDAK bisa
 // diedit langsung oleh siapa pun lewat halaman Profil Saya, cuma bisa
 // mengajukan lewat profile_change_requests, baru diterapkan setelah
 // disetujui admin (lihat admin-profil-approval.js).
+// Jenis kelamin, tempat lahir, dan tanggal lahir juga masuk daftar ini karena
+// datanya mengacu ke KTP. Field lain di biodata (pendidikan, agama, status
+// pernikahan, orang tua, pasangan, anak) bisa diubah langsung — lihat
+// form-quick di bawah.
 // Field penempatan (staffOnly: true) malah tidak boleh diajukan sama sekali
 // dari sini oleh siapa pun — apapun rolenya (termasuk Super Admin/Super
 // Admin HR/Admin HR yang login dan melihat profilnya sendiri) cuma bisa
@@ -15,6 +23,9 @@ const REQUESTABLE_FIELDS = [
   { key: "full_name", label: "Nama Lengkap" },
   { key: "nik_ktp", label: "NIK KTP" },
   { key: "npwp", label: "NPWP" },
+  { key: "jenis_kelamin", label: "Jenis Kelamin", type: "select", options: OPT_JENIS_KELAMIN },
+  { key: "tempat_lahir", label: "Tempat Lahir" },
+  { key: "tanggal_lahir", label: "Tanggal Lahir", type: "date" },
   { key: "unit_pt", label: "Unit / PT", staffOnly: true },
   { key: "lokasi_kerja", label: "Lokasi Kerja / Area", staffOnly: true },
   { key: "department", label: "Departemen", staffOnly: true },
@@ -24,11 +35,21 @@ const REQUESTABLE_FIELDS = [
 
 let currentUser = null;
 let currentProfile = null;
+// ID anak yang sudah tersimpan — dipakai saat simpan untuk tahu anak mana yang dihapus dari form.
+let originalChildIds = [];
 
 export async function render(container, user) {
   currentUser = user;
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
   currentProfile = profile || user;
+
+  let children = [];
+  try {
+    children = await loadChildren(supabase, user.id);
+  } catch (err) {
+    throw new Error("Gagal memuat data anak: " + err.message + " (pastikan supabase-schema.sql terbaru sudah dijalankan)");
+  }
+  originalChildIds = children.map(c => c.id);
 
   container.innerHTML = `
     <div class="page-header"><h1>Profil Saya</h1></div>
@@ -55,11 +76,13 @@ export async function render(container, user) {
     </div>
 
     <h2 class="section-title">Data yang Bisa Diubah Langsung</h2>
-    <form id="form-quick" class="card form-card">
+    <form id="form-quick" class="card form-card form-card-wide">
       <div class="form-row two-col">
         <label>No. HP <input name="phone" value="${escapeAttr(currentProfile.phone || "")}"></label>
-        <label>Alamat <input name="alamat" value="${escapeAttr(currentProfile.alamat || "")}"></label>
+        <label>Alamat Domisili <input name="alamat" value="${escapeAttr(currentProfile.alamat || "")}"></label>
       </div>
+      ${personalFieldsHtml({ includeIdentity: false })}
+      ${familySectionHtml()}
       <button type="submit" class="btn-primary">Simpan Perubahan</button>
     </form>
 
@@ -75,7 +98,7 @@ export async function render(container, user) {
           ${REQUESTABLE_FIELDS.map(f => `
             <tr>
               <td data-label="Field">${f.label}</td>
-              <td data-label="Nilai Saat Ini">${escapeHtml(currentProfile[f.key] || "-")}</td>
+              <td data-label="Nilai Saat Ini">${escapeHtml(displayProfileValue(f.key, currentProfile[f.key]))}</td>
               <td data-label="Aksi">${!f.staffOnly
                 ? `<button type="button" class="btn-link btn-ajukan" data-key="${f.key}" data-label="${escapeAttr(f.label)}">Ajukan Perubahan</button>`
                 : `<span class="muted small">Hubungi Admin/HR</span>`}</td>
@@ -100,7 +123,7 @@ export async function render(container, user) {
           <input type="hidden" name="field_key">
           <input type="hidden" name="field_label">
           <label>Nilai Saat Ini <input id="ajukan-old" disabled></label>
-          <label>Nilai Baru yang Benar <input name="new_value" required></label>
+          <div id="ajukan-new-slot"></div>
           <label>Alasan / Keterangan <textarea name="reason" rows="3" required placeholder="Contoh: NIK KTP salah ketik waktu input awal"></textarea></label>
           <div class="modal-actions">
             <button type="button" id="btn-cancel-ajukan" class="btn-secondary">Batal</button>
@@ -111,7 +134,10 @@ export async function render(container, user) {
     </div>
   `;
 
-  document.getElementById("form-quick").addEventListener("submit", saveQuickFields);
+  const formQuick = document.getElementById("form-quick");
+  formQuick.addEventListener("submit", saveQuickFields);
+  wireFamilyForm(formQuick);
+  fillBiodataForm(formQuick, currentProfile, children);
   document.getElementById("input-photo").addEventListener("change", uploadNewPhoto);
   document.querySelectorAll(".btn-ajukan").forEach(btn => {
     btn.addEventListener("click", () => openAjukanModal(btn.dataset.key, btn.dataset.label));
@@ -123,21 +149,43 @@ export async function render(container, user) {
 }
 
 // =====================================================================
-// EDIT LANGSUNG — no HP & alamat (policy "profiles_update_self" di
-// Supabase sudah mengizinkan user mengubah kolom miliknya sendiri).
+// EDIT LANGSUNG — no HP, alamat domisili, pendidikan, agama, status
+// pernikahan & biodata keluarga (policy "profiles_update_self" di Supabase
+// sudah mengizinkan user mengubah kolom miliknya sendiri; data anak lewat
+// policy employee_children_write_self).
 // =====================================================================
 async function saveQuickFields(e) {
   e.preventDefault();
   const form = e.target;
   const btn = form.querySelector("button[type=submit]");
+  const payload = {
+    phone: form.phone.value.trim(),
+    alamat: form.alamat.value.trim(),
+    ...readBiodataForm(form),
+  };
+  const children = readChildren(form);
   btn.disabled = true;
-  const { error } = await supabase
-    .from("profiles")
-    .update({ phone: form.phone.value.trim(), alamat: form.alamat.value.trim() })
-    .eq("id", currentUser.id);
-  btn.disabled = false;
-  if (error) { toast("Gagal menyimpan: " + error.message, "error"); return; }
-  toast("Data berhasil disimpan", "success");
+  try {
+    const { error } = await supabase.from("profiles").update(payload).eq("id", currentUser.id);
+    if (error) throw error;
+    Object.assign(currentProfile, payload);
+
+    try {
+      await saveChildren(supabase, currentUser.id, children, originalChildIds);
+    } catch (childErr) {
+      throw new Error("Data pribadi sudah tersimpan, tapi data anak gagal disimpan: " + childErr.message);
+    }
+    // Muat ulang daftar anak supaya baris baru punya ID (kalau tidak, simpan
+    // kedua kalinya akan menambah anak yang sama lagi).
+    const fresh = await loadChildren(supabase, currentUser.id);
+    originalChildIds = fresh.map(c => c.id);
+    setChildren(form, fresh);
+    toast("Data berhasil disimpan", "success");
+  } catch (err) {
+    toast("Gagal menyimpan: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function uploadNewPhoto(e) {
@@ -166,13 +214,29 @@ async function uploadNewPhoto(e) {
 function openAjukanModal(key, label) {
   const modal = document.getElementById("modal-ajukan");
   const form = document.getElementById("form-ajukan");
+  const field = REQUESTABLE_FIELDS.find(f => f.key === key);
   form.field_key.value = key;
   form.field_label.value = label;
-  form.new_value.value = "";
+  // Kontrol input menyesuaikan jenis field: teks biasa, tanggal, atau pilihan.
+  // Nilai yang dikirim tetap nilai internal (mis. "laki_laki", "1990-08-17")
+  // karena persis itu yang nanti ditulis ke tabel profiles saat disetujui.
+  document.getElementById("ajukan-new-slot").innerHTML = `<label>Nilai Baru yang Benar ${newValueControlHtml(field)}</label>`;
   form.reason.value = "";
-  document.getElementById("ajukan-old").value = currentProfile[key] || "-";
+  document.getElementById("ajukan-old").value = displayProfileValue(key, currentProfile[key]);
   document.getElementById("ajukan-title").textContent = `Ajukan Perubahan — ${label}`;
   modal.classList.remove("hidden");
+}
+function newValueControlHtml(field) {
+  if (field?.type === "select") {
+    return `<select name="new_value" required>
+      <option value="">— Pilih —</option>
+      ${field.options.map(o => `<option value="${escapeAttr(o.value)}">${escapeHtml(o.label)}</option>`).join("")}
+    </select>`;
+  }
+  if (field?.type === "date") {
+    return `<input type="date" name="new_value" max="${new Date().toISOString().slice(0, 10)}" required>`;
+  }
+  return `<input name="new_value" required>`;
 }
 function closeAjukanModal() {
   document.getElementById("modal-ajukan").classList.add("hidden");
@@ -218,8 +282,8 @@ async function loadRequests() {
         ${data.map(r => `
           <tr>
             <td data-label="Field">${escapeHtml(r.field_label)}</td>
-            <td data-label="Dari" class="muted">${escapeHtml(r.old_value || "-")}</td>
-            <td data-label="Menjadi">${escapeHtml(r.new_value)}</td>
+            <td data-label="Dari" class="muted">${escapeHtml(displayProfileValue(r.field_key, r.old_value))}</td>
+            <td data-label="Menjadi">${escapeHtml(displayProfileValue(r.field_key, r.new_value))}</td>
             <td data-label="Status"><span class="badge badge-${statusTone(r.status)}">${statusLabel(r.status)}</span></td>
             <td data-label="Diajukan" class="muted small">${fmtDateTime(r.created_at)}</td>
             <td data-label="Aksi">${r.status === "pending" ? `<button type="button" class="btn-link btn-batal" data-id="${r.id}">Batalkan</button>` : "—"}</td>

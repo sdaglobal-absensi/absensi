@@ -1,5 +1,6 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, fmtDateTime, confirmDialog } from "../core.js";
+import { displayProfileValue } from "../biodata.js";
 
 export async function render(container, user) {
   container.innerHTML = `
@@ -40,8 +41,8 @@ async function load(user) {
           <tr>
             <td>${escapeHtml(r.profiles?.full_name || "-")}<br><span class="muted small">${escapeHtml(r.profiles?.employee_code || "-")}</span></td>
             <td>${escapeHtml(r.field_label)}</td>
-            <td class="muted">${escapeHtml(r.old_value || "-")}</td>
-            <td>${escapeHtml(r.new_value)}</td>
+            <td class="muted">${escapeHtml(displayProfileValue(r.field_key, r.old_value))}</td>
+            <td>${escapeHtml(displayProfileValue(r.field_key, r.new_value))}</td>
             <td>${escapeHtml(r.reason)}</td>
             <td>
               <span class="badge badge-${r.status === "approved" ? "ok" : r.status === "rejected" ? "danger" : "warn"}">${statusLabel(r.status)}</span>
@@ -68,8 +69,8 @@ async function confirmDecide(id, status, user, allData) {
   const detail = [
     `Karyawan: ${row.profiles?.full_name || "-"}`,
     `Field: ${row.field_label}`,
-    `Dari: ${row.old_value || "-"}`,
-    `Menjadi: ${row.new_value}`,
+    `Dari: ${displayProfileValue(row.field_key, row.old_value)}`,
+    `Menjadi: ${displayProfileValue(row.field_key, row.new_value)}`,
     `Alasan: ${row.reason}`,
     status === "approved" ? "\nData di profil karyawan ini akan langsung diperbarui." : "",
   ].join("\n");

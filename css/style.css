@@ -356,6 +356,14 @@ button { font-family: 'Inter'; cursor: pointer; }
   .sidebar, .mobile-topbar { display: none !important; }
 }
 .form-card { max-width: 520px; margin-bottom: 28px; }
+.form-card-wide { max-width: 720px; }
+
+/* Biodata keluarga (Data Karyawan & Profil Saya) */
+.form-subhead { font-size: 0.85rem; font-weight: 600; margin: 4px 0 10px; }
+.form-subhead-row { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 10px; }
+.child-row { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); padding: 14px 14px 0; margin-bottom: 12px; }
+.child-row-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.child-title { font-size: 0.85rem; }
 
 .action-area { margin: 24px 0 36px; }
 

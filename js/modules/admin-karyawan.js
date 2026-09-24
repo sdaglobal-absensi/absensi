@@ -1,5 +1,9 @@
 import { supabase, supabaseAdminCreate } from "../supabaseClient.js";
 import { toast, roleLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper, STAFF_ROLES, avatarHTML } from "../core.js";
+import {
+  personalFieldsHtml, familySectionHtml, wireFamilyForm, fillBiodataForm,
+  readBiodataForm, readChildren, loadChildren, saveChildren,
+} from "../biodata.js";
 
 let masterDepartments = [];
 let masterLevels = [];
@@ -9,6 +13,9 @@ let ssDepartemen, ssBagian, ssJabatan, ssGrade, ssLokasi;
 // pilihan Role untuk baris yang sedang diedit.
 let currentIsFullSuperAdmin = false;
 let currentCanAssignHrRoles = false;
+// ID anak yang sudah tersimpan untuk karyawan yang sedang dibuka di modal —
+// dipakai saat simpan untuk tahu anak mana yang dihapus dari form.
+let originalChildIds = [];
 
 export async function render(container, user) {
   // Siapa pun yang sampai ke halaman ini sudah lolos guard menu "karyawan"
@@ -53,8 +60,11 @@ export async function render(container, user) {
             <label>NPWP <input name="npwp"></label>
           </div>
           <div class="form-row">
-            <label>Alamat <input name="alamat"></label>
+            <label>Alamat Domisili <input name="alamat" placeholder="Alamat tempat tinggal saat ini"></label>
           </div>
+          ${personalFieldsHtml({ includeIdentity: true })}
+
+          ${familySectionHtml()}
 
           <div class="form-section-label">Data Akun</div>
           <div class="form-row two-col">
@@ -119,6 +129,7 @@ export async function render(container, user) {
     document.getElementById("btn-new").addEventListener("click", () => openModal());
     document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
     document.getElementById("form-karyawan").addEventListener("submit", e => onSubmit(e, user, isFullSuperAdmin));
+    wireFamilyForm(document.getElementById("form-karyawan"));
     document.getElementById("join_date").addEventListener("input", e => {
       document.getElementById("lama_bekerja").value = lamaBekerja(e.target.value);
     });
@@ -258,9 +269,23 @@ function renderRoleOptions(existing) {
   }
 }
 
-function openModal(existing = null) {
+async function openModal(existing = null) {
   const modal = document.getElementById("modal-karyawan");
   const form = document.getElementById("form-karyawan");
+
+  // Data anak diambil dulu SEBELUM modal dibuka (bukan sesudahnya), supaya
+  // admin tidak sempat menekan Simpan selagi daftar anak belum termuat.
+  let children = [];
+  if (existing) {
+    try {
+      children = await loadChildren(supabase, existing.id);
+    } catch (err) {
+      toast("Gagal memuat data anak: " + err.message + " (pastikan supabase-schema.sql terbaru sudah dijalankan)", "error");
+      return;
+    }
+  }
+  originalChildIds = children.map(c => c.id);
+
   form.reset();
   ssDepartemen.clear(); ssBagian.setOptions([]); ssBagian.clear();
   ssJabatan.setOptions([]); ssJabatan.clear(); ssGrade.clear(); ssLokasi.clear();
@@ -310,6 +335,7 @@ function openModal(existing = null) {
     form.id.value = "";
     form.status_karyawan.value = "bulanan";
   }
+  fillBiodataForm(form, existing || {}, children);
   modal.classList.remove("hidden");
 }
 
@@ -337,14 +363,17 @@ async function onSubmit(e, currentUser, isFullSuperAdmin) {
     nik_ktp: fd.get("nik_ktp") || null,
     npwp: fd.get("npwp") || null,
     alamat: fd.get("alamat") || null,
+    ...readBiodataForm(e.target),
     role: fd.get("role"),
     is_active: fd.get("is_active") === "on",
   };
+  const children = readChildren(e.target);
 
   try {
     if (id) {
       const { error } = await supabase.from("profiles").update(payload).eq("id", id);
       if (error) throw error;
+      await saveChildrenLabeled(id, children);
       toast("Data karyawan diperbarui", "success");
     } else {
       const email = fd.get("email");
@@ -365,6 +394,7 @@ async function onSubmit(e, currentUser, isFullSuperAdmin) {
       if (newUserId) {
         const { error: updErr } = await supabase.from("profiles").update({ ...payload, email }).eq("id", newUserId);
         if (updErr) throw updErr;
+        await saveChildrenLabeled(newUserId, children);
       }
       await supabaseAdminCreate.auth.signOut();
       toast(`Akun dibuat. Beritahu karyawan: email ${email}, password ${password}`, "success");
@@ -373,5 +403,16 @@ async function onSubmit(e, currentUser, isFullSuperAdmin) {
     loadTable(true, isFullSuperAdmin);
   } catch (err) {
     toast("Gagal menyimpan: " + err.message, "error");
+  }
+}
+
+// Simpan data anak dengan pesan error yang jelas: data karyawan (profiles)
+// sudah tersimpan di titik ini, jadi kalau bagian anak yang gagal, admin
+// perlu tahu bahwa cuma bagian anak yang belum masuk.
+async function saveChildrenLabeled(userId, children) {
+  try {
+    await saveChildren(supabase, userId, children, originalChildIds);
+  } catch (err) {
+    throw new Error("Data karyawan sudah tersimpan, tapi data anak gagal disimpan: " + err.message);
   }
 }

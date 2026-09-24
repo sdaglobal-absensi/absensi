@@ -1264,6 +1264,8 @@ end $$;
 create table if not exists public.profile_change_requests (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null references public.profiles(id) on delete cascade,
+  -- Catatan: daftar field_key di bawah diperluas (jenis_kelamin, tempat_lahir,
+  -- tanggal_lahir) oleh bagian 13 di akhir file ini.
   field_key    text not null check (field_key in (
                  'full_name','nik_ktp','npwp','unit_pt','lokasi_kerja','department','bagian','position'
                )),
@@ -1321,3 +1323,119 @@ insert into public.role_permissions (role, menu_id, enabled) values
   ('karyawan', 'profil', true),
   ('karyawan', 'profil-approval', false)
 on conflict (role, menu_id) do nothing;
+
+-- =====================================================================
+-- 13. BIODATA LENGKAP KARYAWAN (data pribadi + keluarga)
+-- =====================================================================
+-- Melengkapi data karyawan dengan: jenis kelamin, agama, tempat & tanggal
+-- lahir, pendidikan terakhir, status pernikahan, nama ayah & ibu, data
+-- suami/istri, dan daftar anak. Aman dijalankan ulang (idempotent).
+--
+-- "Alamat domisili" memakai kolom `alamat` yang SUDAH ADA (tidak dibuat
+-- kolom baru supaya data lama tidak hilang/terpisah) -- di aplikasi
+-- labelnya sekarang "Alamat Domisili".
+comment on column public.profiles.alamat is 'Alamat domisili (tempat tinggal saat ini)';
+
+alter table public.profiles add column if not exists jenis_kelamin          text;
+alter table public.profiles add column if not exists agama                  text;
+alter table public.profiles add column if not exists tempat_lahir           text;
+alter table public.profiles add column if not exists tanggal_lahir          date;
+alter table public.profiles add column if not exists pendidikan_terakhir    text;
+alter table public.profiles add column if not exists status_pernikahan      text;
+alter table public.profiles add column if not exists nama_ayah              text;
+alter table public.profiles add column if not exists nama_ibu               text;
+alter table public.profiles add column if not exists pasangan_nama          text;
+alter table public.profiles add column if not exists pasangan_tempat_lahir  text;
+alter table public.profiles add column if not exists pasangan_tanggal_lahir date;
+alter table public.profiles add column if not exists pasangan_pekerjaan     text;
+
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'profiles_jenis_kelamin_check') then
+    alter table public.profiles add constraint profiles_jenis_kelamin_check
+      check (jenis_kelamin in ('laki_laki','perempuan'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'profiles_agama_check') then
+    alter table public.profiles add constraint profiles_agama_check
+      check (agama in ('islam','kristen','katolik','hindu','buddha','konghucu'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'profiles_pendidikan_terakhir_check') then
+    alter table public.profiles add constraint profiles_pendidikan_terakhir_check
+      check (pendidikan_terakhir in ('sd','smp','sma_smk','d1','d2','d3','d4','s1','s2','s3'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'profiles_status_pernikahan_check') then
+    alter table public.profiles add constraint profiles_status_pernikahan_check
+      check (status_pernikahan in ('belum_menikah','menikah','cerai_hidup','cerai_mati'));
+  end if;
+end $$;
+
+-- Anak (satu baris per anak). `urutan` menentukan anak pertama, kedua, dst.
+create table if not exists public.employee_children (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references public.profiles(id) on delete cascade,
+  urutan        smallint not null default 1,
+  nama          text not null,
+  tempat_lahir  text,
+  tanggal_lahir date,
+  pekerjaan     text,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+create index if not exists employee_children_user_idx on public.employee_children(user_id);
+
+drop trigger if exists trg_employee_children_updated_at on public.employee_children;
+create trigger trg_employee_children_updated_at
+  before update on public.employee_children
+  for each row execute function public.set_updated_at();
+
+alter table public.employee_children enable row level security;
+
+-- Baca: pemilik datanya sendiri, atau siapa pun yang punya akses menu
+-- "Data Karyawan" (super_admin selalu, lewat has_menu_access -> is_super).
+-- Sengaja BUKAN is_staff(): data keluarga sensitif, jadi Admin HR yang menu
+-- Data Karyawan-nya belum dinyalakan tidak ikut bisa membacanya.
+drop policy if exists "employee_children_select" on public.employee_children;
+create policy "employee_children_select" on public.employee_children
+  for select using ( user_id = auth.uid() or public.has_menu_access('karyawan') );
+
+-- Tulis oleh karyawan sendiri (lewat menu "Profil Saya").
+drop policy if exists "employee_children_write_self" on public.employee_children;
+create policy "employee_children_write_self" on public.employee_children
+  for all
+  using ( user_id = auth.uid() and public.has_menu_access('profil') )
+  with check ( user_id = auth.uid() and public.has_menu_access('profil') );
+
+-- Tulis oleh admin (lewat menu "Data Karyawan").
+drop policy if exists "employee_children_write_admin" on public.employee_children;
+create policy "employee_children_write_admin" on public.employee_children
+  for all
+  using ( public.has_menu_access('karyawan') )
+  with check ( public.has_menu_access('karyawan') );
+
+comment on table public.employee_children is
+  'Data anak karyawan (nama, tempat/tanggal lahir, pekerjaan). Urutan anak pertama, kedua, dst. lewat kolom urutan.';
+
+-- Pengajuan perubahan data (Profil Saya): tambah 3 field yang mirip data
+-- KTP -- jenis kelamin, tempat lahir, tanggal lahir -- supaya perubahannya
+-- ikut lewat approval admin seperti Nama/NIK/NPWP. Constraint lama dicari
+-- dan dibuang dulu berdasarkan isinya (bukan cuma namanya), lalu dipasang
+-- ulang dengan daftar field terbaru.
+do $$
+declare c record;
+begin
+  for c in
+    select conname from pg_constraint
+    where conrelid = 'public.profile_change_requests'::regclass
+      and contype = 'c'
+      and pg_get_constraintdef(oid) ilike '%field_key%'
+  loop
+    execute format('alter table public.profile_change_requests drop constraint %I', c.conname);
+  end loop;
+
+  alter table public.profile_change_requests
+    add constraint profile_change_requests_field_key_check
+    check (field_key in (
+      'full_name','nik_ktp','npwp','unit_pt','lokasi_kerja','department','bagian','position',
+      'jenis_kelamin','tempat_lahir','tanggal_lahir'
+    ));
+end $$;

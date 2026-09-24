@@ -23,17 +23,48 @@ role Karyawan.
 Semua role punya menu **Profil Saya** untuk melihat & memperbaiki data
 sendiri kalau ada yang salah:
 
-- **Bisa diubah langsung** (tanpa approval): No. HP, Alamat, dan Foto
-  Profil — tersimpan seketika, karena field ini rendah risiko.
-- **Butuh approval admin**: Nama Lengkap, NIK KTP, NPWP, Unit/PT, Lokasi
-  Kerja, Departemen, Bagian, dan Jabatan — field ini berkaitan dengan
-  payroll/BPJS/dokumen resmi, jadi karyawan cuma bisa **mengajukan**
+- **Bisa diubah langsung** (tanpa approval): No. HP, Alamat Domisili, Foto
+  Profil, Pendidikan Terakhir, Agama, Status Pernikahan, dan seluruh
+  biodata keluarga (nama ayah & ibu, suami/istri, data anak) — tersimpan
+  seketika. Lihat bagian **Biodata Karyawan** di bawah.
+- **Butuh approval admin**: Nama Lengkap, NIK KTP, NPWP, Jenis Kelamin,
+  Tempat Lahir, Tanggal Lahir, Unit/PT, Lokasi Kerja, Departemen, Bagian,
+  dan Jabatan — field ini berkaitan dengan payroll/BPJS/dokumen resmi
+  (jenis kelamin & tempat/tanggal lahir mengacu ke KTP), jadi karyawan cuma bisa **mengajukan**
   perubahan (lengkap dengan alasan), lalu menunggu disetujui lewat menu
   **Approval Perubahan Data** (Admin HR/Super Admin HR/Super Admin). Begitu
   disetujui, data di Data Karyawan langsung ikut berubah. Karyawan bisa
   membatalkan pengajuannya sendiri selama masih berstatus "Menunggu".
   Kode Karyawan, Role, dan Status Karyawan tidak bisa diubah lewat menu ini
   sama sekali (murni lewat menu Data Karyawan oleh admin).
+
+## Biodata Karyawan
+
+Selain data kepegawaian, tiap karyawan punya biodata pribadi & keluarga.
+Admin mengisinya lewat **Data Karyawan** (Tambah/Edit), karyawan bisa
+melengkapi sendiri lewat **Profil Saya**.
+
+| Kelompok | Field |
+|---|---|
+| Data pribadi | Alamat Domisili, Jenis Kelamin, Agama, Tempat Lahir, Tanggal Lahir, Pendidikan Terakhir |
+| Status | Status Pernikahan (Belum Menikah / Menikah / Cerai Hidup / Cerai Mati) |
+| Orang tua | Nama Ayah, Nama Ibu |
+| Suami / Istri | Nama, Tempat Lahir, Tanggal Lahir, Pekerjaan — hanya tampil kalau status **Menikah**; kalau status diganti ke selain Menikah, data pasangan ikut dikosongkan saat disimpan |
+| Anak | Daftar dinamis (tombol **+ Tambah Anak**): Nama, Tempat Lahir, Tanggal Lahir, Pekerjaan. Urutan Anak Pertama, Kedua, dst. mengikuti urutan di form |
+
+Catatan teknis:
+
+- **Alamat Domisili** memakai kolom `alamat` yang sudah ada, jadi data
+  alamat lama otomatis jadi alamat domisili — tidak ada yang perlu dimigrasi.
+- Data anak disimpan di tabel terpisah `employee_children` (satu baris per
+  anak). Membacanya hanya boleh pemiliknya sendiri atau role yang menu
+  **Data Karyawan**-nya menyala (Admin HR yang menu itu masih mati tidak
+  bisa membacanya, sama seperti data karyawan lain).
+- Semua ini ada di **bagian 13** `supabase-schema.sql`. Untuk project yang
+  sudah berjalan cukup jalankan ulang file itu di SQL Editor — data lama
+  tidak berubah.
+- Logika form (dipakai bersama oleh Data Karyawan & Profil Saya) ada di
+  `js/biodata.js`.
 
 Menu **Approval Perubahan Data** defaultnya menyala untuk Admin HR & Super
 Admin HR (sama seperti Approval Izin/Lembur), bisa diatur lewat
@@ -69,13 +100,14 @@ js/supabaseClient.js       Koneksi Supabase (isi URL & anon key di sini)
 js/auth.js                  Login, logout, proteksi halaman per role
 js/core.js                   Util bersama: sidebar (dinamis sesuai permission), role helper,
                               periode cut-off slip gaji, GPS, kamera, upload foto, format
+js/biodata.js               Form & logika biodata pribadi/keluarga (dipakai admin-karyawan.js & employee-profil.js)
 js/modules/
   employee-absensi.js       Check-in/out (GPS + kamera)
   employee-izin.js           Form & riwayat pengajuan izin
   employee-lembur.js         Form & riwayat pengajuan lembur
   employee-riwayat.js        Riwayat & rekap absensi pribadi
-  employee-profil.js         Profil Saya: edit langsung (HP/alamat/foto) + ajukan perubahan data sensitif
-  admin-karyawan.js          CRUD data karyawan (menu "karyawan")
+  employee-profil.js         Profil Saya: edit langsung (HP/alamat domisili/foto/biodata keluarga) + ajukan perubahan data sensitif
+  admin-karyawan.js          CRUD data karyawan termasuk biodata pribadi & keluarga (menu "karyawan")
   admin-absensi.js           Monitor absensi semua karyawan (menu "absensi-monitor")
   admin-izin.js              Approval izin (menu "izin-approval")
   admin-profil-approval.js   Approval pengajuan perubahan data profil (menu "profil-approval")
