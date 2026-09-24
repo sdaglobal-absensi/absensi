@@ -51,7 +51,7 @@ h1, h2, h3 { font-family: 'Sora', sans-serif; font-weight: 600; margin: 0; }
   flex-direction: column;
   justify-content: space-between;
 }
-.login-hero .brand { font-family: 'Sora', sans-serif; font-size: 1.3rem; font-weight: 700; letter-spacing: 0.01em; }
+.login-hero .brand { font-family: 'Sora', sans-serif; font-size: 1.3rem; font-weight: 700; letter-spacing: 0.01em; display: flex; align-items: center; gap: 10px; }
 .login-hero h1 { font-size: 2.6rem; line-height: 1.15; max-width: 9ch; color: #F3F1E8; }
 .login-hero p { max-width: 34ch; color: #D9E4DC; line-height: 1.6; }
 .hero-tags { display: flex; flex-direction: column; gap: 12px; }
@@ -164,7 +164,8 @@ button { font-family: 'Inter'; cursor: pointer; }
   background: var(--primary); color: #EDEBE0; padding: 20px 14px; display: flex; flex-direction: column;
   max-height: 100vh; position: sticky; top: 0;
 }
-.sidebar-brand { font-family: 'Sora'; font-weight: 700; font-size: 1.1rem; margin-bottom: 24px; padding: 0 8px; color: #fff; flex-shrink: 0; }
+.sidebar-brand { font-family: 'Sora'; font-weight: 700; font-size: 1.1rem; margin-bottom: 24px; padding: 0 8px; color: #fff; flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
+.brand-logo { width: 26px; height: 26px; object-fit: contain; flex-shrink: 0; }
 .sidebar-user {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 8px 18px; border-bottom: 1px solid rgba(255,255,255,0.15); margin-bottom: 14px; flex-shrink: 0;
@@ -220,7 +221,8 @@ button { font-family: 'Inter'; cursor: pointer; }
     background: var(--primary); color: #fff; padding: 14px 16px;
     position: sticky; top: 0; z-index: 45;
   }
-  .mobile-topbar .brand { font-family: 'Sora'; font-weight: 700; font-size: 1.05rem; }
+  .mobile-topbar .brand { font-family: 'Sora'; font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; }
+  .mobile-topbar .brand .brand-logo { width: 22px; height: 22px; }
   .btn-hamburger {
     background: none; border: none; color: #fff; padding: 4px; display: flex; align-items: center; justify-content: center;
   }
