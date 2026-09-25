@@ -55,7 +55,7 @@ export async function loadAttendanceState(user, tz) {
 
 export async function render(container, user) {
   const tz = await resolveUserTimezone(user);
-  const { latest, openShift, staleOpen, completedToday, activeRow, misdatedTail } = await loadAttendanceState(user, tz);
+  const { latest, openShift, completedToday, activeRow, misdatedTail } = await loadAttendanceState(user, tz);
 
   const scheduleInfo = await loadMySchedule(user);
 
@@ -69,7 +69,6 @@ export async function render(container, user) {
     </div>
 
     ${openShift ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">Sesi kerja dari ${fmtDate(activeRow.date)} masih berjalan (belum check-out).</p>` : ""}
-    ${staleOpen ? `<p class="small" style="margin-top:-14px; margin-bottom:18px; color:var(--warn);">⚠️ Ada check-in tanggal ${fmtDate(latest.date)} yang belum di-check-out (kemungkinan lupa). Kamu tetap bisa check-in baru hari ini — data lama itu akan tercatat tidak lengkap sampai diperbaiki admin.</p>` : ""}
     ${misdatedTail ? `<p class="small" style="margin-top:-14px; margin-bottom:18px; color:var(--muted);">ℹ️ Check-in ${fmtTime(latest.check_in)} – check-out ${fmtTime(latest.check_out)} tadi adalah sisa shift semalam. Kamu tetap bisa check-in untuk shift malam ini.</p>` : ""}
 
     ${scheduleCardHtml(scheduleInfo, tz)}
