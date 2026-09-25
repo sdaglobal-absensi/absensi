@@ -431,9 +431,22 @@ function retake() {
 
 // Tentukan status tepat-waktu/telat berdasarkan Master Jadwal Kerja milik
 // karyawan, DIHITUNG dalam zona waktu lokasi kerja karyawan tsb (tz -- lihat
-// resolveUserTimezone). Kalau karyawan belum dikaitkan ke jadwal manapun,
-// pakai jam 08:15 sebagai cadangan (perilaku lama) supaya tidak mengganggu
-// yang belum sempat diatur adminnya.
+// resolveUserTimezone). Kalau karyawan belum dikaitkan ke jadwal manapun SAMA
+// SEKALI, pakai jam 08:15 sebagai cadangan (perilaku lama) supaya tidak
+// mengganggu yang belum sempat diatur adminnya.
+//
+// PENTING: cadangan 08:15 ini HANYA untuk karyawan tanpa schedule_id sama
+// sekali. Kalau karyawan SUDAH punya jadwal tapi tanggal yang relevan
+// (shiftCtx.dateStr/dow, lihat resolveShiftDate) ternyata "Libur" atau tidak
+// ketemu baris jadwalnya, function ini mengembalikan null -- BUKAN ikut jatuh
+// ke cadangan 08:15. Sebelumnya bug ini menyebabkan check-in di hari libur
+// (mis. shift lintas hari yang salah terdeteksi sebagai hari terpisah, atau
+// karyawan absen di luar jadwal) selalu dicap "Tepat waktu" begitu saja
+// selama jamnya masih di bawah 08:15, padahal sebetulnya tidak ada shift yang
+// jadi acuan sama sekali untuk tanggal itu. Pemanggil (submitAttendance) yang
+// menerima null berarti tidak boleh memberi status telat/tepat_waktu --
+// simpan check_in_status = null (badge-nya otomatis tidak tampil, sama
+// seperti baris lama yang belum ada statusnya).
 async function getLateCutoff(user, now, tz, shiftCtx) {
   const { dateStr: todayStr, dow } = shiftCtx || await resolveShiftDate(user, now, tz); // tanggal & hari-jadwal yang relevan (lihat resolveShiftDate)
   if (user.schedule_id) {
@@ -446,6 +459,7 @@ async function getLateCutoff(user, now, tz, shiftCtx) {
       const toleranceMs = (sched?.late_tolerance_minutes || 0) * 60000;
       return new Date(zonedTimestamp(todayStr, h, m, 0, tz) + toleranceMs);
     }
+    return null; // karyawan punya jadwal, tapi tanggal ini Libur/tidak ada barisnya -> tidak ada acuan jam masuk
   }
   return new Date(zonedTimestamp(todayStr, 8, 15, 0, tz));
 }
@@ -465,7 +479,10 @@ async function submitAttendance(user, activeRow, tz) {
     if (pendingMode === "in") {
       const shiftCtx = await resolveShiftDate(user, now, tz);
       const cutoff = await getLateCutoff(user, now, tz, shiftCtx);
-      const status = now > cutoff ? "telat" : "tepat_waktu";
+      // cutoff null = tidak ada jadwal kerja yang jadi acuan untuk tanggal ini
+      // (Libur / baris jadwal tidak ketemu) -> jangan dicap telat ataupun
+      // tepat waktu, biarkan check_in_status kosong (lihat komentar getLateCutoff).
+      const status = cutoff ? (now > cutoff ? "telat" : "tepat_waktu") : null;
 
       const { error } = await supabase.from("attendance").insert({
         user_id: user.id,
