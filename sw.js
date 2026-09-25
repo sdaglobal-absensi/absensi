@@ -28,6 +28,8 @@ self.addEventListener("push", event => {
       badge: "assets/icon-96.png",
       data: { url: data.url },
       tag: "kerjora-checkout-reminder", // notifikasi baru menggantikan yang lama, tidak menumpuk
+      vibrate: [200, 100, 200], // getar tambahan (Android; diabaikan iOS Safari)
+      requireInteraction: true, // tetap tampil sampai disentuh, tidak hilang sendiri dalam beberapa detik
     })
   );
 });

@@ -66,3 +66,39 @@ create policy "checkin_reminders_sent_own_read" on public.checkin_reminders_sent
 
 comment on table public.checkin_reminders_sent is
   'Log anti-dobel untuk pengingat push "belum check-in" — satu baris per karyawan per tanggal. Ditulis oleh Edge Function checkout-reminder (service role, bypass RLS).';
+
+-- ---------------------------------------------------------------------
+-- 4. KOLOM: attendance.checkout_before_reminder_sent_at
+--    Anti-kirim-dobel untuk pengingat "sebentar lagi jam pulang" — dikirim
+--    SEBELUM jam pulang tiba (beda dari checkout_reminder_sent_at yang
+--    dikirim SESUDAH lewat jam pulang dan belum checkout).
+-- ---------------------------------------------------------------------
+alter table public.attendance
+  add column if not exists checkout_before_reminder_sent_at timestamptz;
+
+comment on column public.attendance.checkout_before_reminder_sent_at is
+  'Diisi otomatis oleh Edge Function checkout-reminder begitu pengingat "sebentar lagi jam pulang" terkirim untuk sesi ini. NULL berarti belum pernah dikirimi.';
+
+-- ---------------------------------------------------------------------
+-- 5. TABEL: checkin_before_reminder_sent
+--    Anti-kirim-dobel untuk pengingat "sebentar lagi jam masuk" — dikirim
+--    SEBELUM jam masuk tiba. Perlu tabel log terpisah dengan alasan yang
+--    sama seperti checkin_reminders_sent (belum ada baris attendance sama
+--    sekali saat pengingat ini relevan).
+-- ---------------------------------------------------------------------
+create table if not exists public.checkin_before_reminder_sent (
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  date       date not null,
+  sent_at    timestamptz not null default now(),
+  primary key (user_id, date)
+);
+
+alter table public.checkin_before_reminder_sent enable row level security;
+
+drop policy if exists "checkin_before_reminder_sent_own_read" on public.checkin_before_reminder_sent;
+create policy "checkin_before_reminder_sent_own_read" on public.checkin_before_reminder_sent
+  for select
+  using (auth.uid() = user_id);
+
+comment on table public.checkin_before_reminder_sent is
+  'Log anti-dobel untuk pengingat push "sebentar lagi jam masuk" — satu baris per karyawan per tanggal. Ditulis oleh Edge Function checkout-reminder (service role, bypass RLS).';

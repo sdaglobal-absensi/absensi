@@ -1,31 +1,41 @@
 // Edge Function: checkout-reminder
 // -----------------------------------------------------------------------
 // Jalan terjadwal (lihat README-PUSH-NOTIFIKASI.md untuk cara memasang
-// cron-nya). Setiap kali jalan, function ini melakukan DUA pengecekan:
+// cron-nya). Setiap kali jalan, function ini melakukan EMPAT pengecekan:
 //
-//   A. PENGINGAT CHECK-OUT — sesi attendance yang masih terbuka
-//      (check_out null) lewat jam pulang seharusnya.
-//   B. PENGINGAT CHECK-IN — karyawan yang jadwalnya hari ini adalah hari
-//      kerja, jam masuknya sudah lewat, tapi belum ada baris attendance
-//      sama sekali (belum check-in).
+//   A. PENGINGAT TELAT CHECK-OUT — sesi attendance yang masih terbuka
+//      (check_out null) sudah lewat jam pulang seharusnya.
+//   B. PENGINGAT TELAT CHECK-IN — karyawan yang jadwalnya hari ini adalah
+//      hari kerja, jam masuknya sudah lewat, tapi belum ada baris
+//      attendance sama sekali (belum check-in).
+//   C. PENGINGAT SEBELUM CHECK-OUT — sesi attendance yang masih terbuka,
+//      jam pulangnya SEBENTAR LAGI (dalam BEFORE_REMINDER_MINUTES ke
+//      depan), supaya karyawan diingatkan sebelum lupa.
+//   D. PENGINGAT SEBELUM CHECK-IN — karyawan berjadwal hari kerja yang jam
+//      masuknya SEBENTAR LAGI (dalam BEFORE_REMINDER_MINUTES ke depan) dan
+//      belum ada baris attendance hari ini.
 //
-// Untuk keduanya, jam kerja diambil dari Master Jadwal Kerja karyawan
+// Untuk semuanya, jam kerja diambil dari Master Jadwal Kerja karyawan
 // (work_schedules / work_schedule_days) dan dihitung dengan offset zona
 // waktu TETAP per lokasi (TANPA DST) — SENGAJA dibuat sama persis dengan
 // zonedTimestamp() di js/core.js supaya konsisten dengan jam yang dipakai
 // menentukan status telat di aplikasi.
 //
 // Anti-kirim-dobel:
-//   - Check-out: kolom attendance.checkout_reminder_sent_at
-//   - Check-in : tabel checkin_reminders_sent (belum ada baris attendance
-//     untuk ditempeli flag, jadi pakai tabel log terpisah)
+//   - Telat check-out   : kolom attendance.checkout_reminder_sent_at
+//   - Telat check-in    : tabel checkin_reminders_sent (belum ada baris
+//     attendance untuk ditempeli flag, jadi pakai tabel log terpisah)
+//   - Sebelum check-out : kolom attendance.checkout_before_reminder_sent_at
+//   - Sebelum check-in  : tabel checkin_before_reminder_sent (alasan sama
+//     seperti telat check-in — baris attendance belum ada)
 //
-// Catatan: untuk kesederhanaan, pengingat check-in memakai tanggal
-// kalender HARI INI (menurut tz karyawan) sebagai "tanggal shift" — tidak
-// mereplikasi logika penuh resolveShiftDate() di employee-absensi.js untuk
-// shift lintas tengah malam yang telat check-in. Ini cukup untuk kasus
-// mayoritas (shift reguler); shift lintas hari yang sangat telat check-in
-// tetap akan ketahuan lewat panel admin, hanya saja tidak dapat push.
+// Catatan: untuk kesederhanaan, pengingat check-in (telat maupun sebelum)
+// memakai tanggal kalender HARI INI (menurut tz karyawan) sebagai "tanggal
+// shift" — tidak mereplikasi logika penuh resolveShiftDate() di
+// employee-absensi.js untuk shift lintas tengah malam yang telat check-in.
+// Ini cukup untuk kasus mayoritas (shift reguler); shift lintas hari yang
+// sangat telat check-in tetap akan ketahuan lewat panel admin, hanya saja
+// tidak dapat push.
 //
 // Deploy: supabase functions deploy checkout-reminder
 // Secrets yang wajib di-set (lihat README-PUSH-NOTIFIKASI.md):
@@ -36,8 +46,15 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 
-const REMINDER_DELAY_MINUTES = 15;   // kirim mulai 15 menit setelah jam masuk/pulang lewat
+const REMINDER_DELAY_MINUTES = 15;   // kirim "telat" mulai 15 menit setelah jam masuk/pulang lewat
 const REMINDER_WINDOW_MINUTES = 120; // tapi jangan kirim kalau sudah > 2 jam (basi, biar admin yg tindak lanjuti)
+
+// Pengingat "sebentar lagi" dikirim begitu sisa waktu ke jam masuk/pulang
+// masuk ke jendela [0, BEFORE_REMINDER_MINUTES] menit. Nilai default sengaja
+// disamakan dengan interval cron yang disarankan (tiap 15 menit) di
+// README-PUSH-NOTIFIKASI.md — kalau cron-nya diubah jadi jarang, naikkan
+// juga angka ini supaya jendelanya tidak "kelewatan" di antara dua run.
+const BEFORE_REMINDER_MINUTES = 15;
 
 // Sama persis dengan TIMEZONE_OPTIONS di js/core.js — offset tetap
 // (Indonesia tidak pakai DST), jadi aman dihardcode di sini juga.
@@ -154,14 +171,17 @@ Deno.serve(async _req => {
     }
 
     // -----------------------------------------------------------------
-    // A. PENGINGAT CHECK-OUT
+    // A. PENGINGAT CHECK-OUT (telat + sebelum)
     // -----------------------------------------------------------------
     let checkoutSent = 0;
+    let checkoutBeforeSent = 0;
     const { data: openRows, error: openErr } = await supabase
       .from("attendance")
-      .select("id, user_id, date, profiles!inner(id, is_active, schedule_id, lokasi_kerja)")
+      .select(
+        "id, user_id, date, checkout_reminder_sent_at, checkout_before_reminder_sent_at, profiles!inner(id, is_active, schedule_id, lokasi_kerja)"
+      )
       .is("check_out", null)
-      .is("checkout_reminder_sent_at", null);
+      .or("checkout_reminder_sent_at.is.null,checkout_before_reminder_sent_at.is.null");
     if (openErr) throw openErr;
 
     for (const row of openRows || []) {
@@ -176,30 +196,55 @@ Deno.serve(async _req => {
       const endDateStr = day.crosses_midnight ? addDaysToDateStr(row.date, 1) : row.date;
       const [eh, em] = day.end_time.split(":").map(Number);
       const shiftEndMs = zonedTimestampMs(endDateStr, eh, em, offset);
+      const minutesSince = (now - shiftEndMs) / 60000; // positif = sudah lewat, negatif = belum sampai
 
-      const minutesSince = (now - shiftEndMs) / 60000;
-      if (minutesSince < REMINDER_DELAY_MINUTES || minutesSince > REMINDER_WINDOW_MINUTES) continue;
+      // C. Sebelum check-out: jam pulang sebentar lagi tiba, belum pernah diingatkan.
+      if (
+        row.checkout_before_reminder_sent_at == null &&
+        -minutesSince <= BEFORE_REMINDER_MINUTES &&
+        -minutesSince > 0
+      ) {
+        const payload = JSON.stringify({
+          title: "Sebentar lagi jam pulang",
+          body: `Jam pulangmu ${day.end_time.slice(0, 5)}, sebentar lagi. Jangan lupa check-out ya.`,
+          url: "./app.html#absensi",
+        });
+        if (await sendToUser(row.user_id, payload)) {
+          checkoutBeforeSent++;
+          await supabase
+            .from("attendance")
+            .update({ checkout_before_reminder_sent_at: new Date().toISOString() })
+            .eq("id", row.id);
+        }
+      }
 
-      const payload = JSON.stringify({
-        title: "Lupa check-out?",
-        body: `Jam pulangmu sudah lewat (${day.end_time.slice(0, 5)}) tapi belum ada check-out. Yuk absen pulang.`,
-        url: "./app.html#absensi",
-      });
-
-      if (await sendToUser(row.user_id, payload)) {
-        checkoutSent++;
-        await supabase.from("attendance").update({ checkout_reminder_sent_at: new Date().toISOString() }).eq("id", row.id);
+      // A. Telat check-out: jam pulang sudah lewat 15–120 menit, belum checkout.
+      if (
+        row.checkout_reminder_sent_at == null &&
+        minutesSince >= REMINDER_DELAY_MINUTES &&
+        minutesSince <= REMINDER_WINDOW_MINUTES
+      ) {
+        const payload = JSON.stringify({
+          title: "Lupa check-out?",
+          body: `Jam pulangmu sudah lewat (${day.end_time.slice(0, 5)}) tapi belum ada check-out. Yuk absen pulang.`,
+          url: "./app.html#absensi",
+        });
+        if (await sendToUser(row.user_id, payload)) {
+          checkoutSent++;
+          await supabase.from("attendance").update({ checkout_reminder_sent_at: new Date().toISOString() }).eq("id", row.id);
+        }
       }
     }
 
     // -----------------------------------------------------------------
-    // B. PENGINGAT CHECK-IN — karyawan aktif berjadwal, hari kerja, jam
-    //    masuk sudah lewat, tapi belum ada baris attendance hari ini sama
+    // B & D. PENGINGAT CHECK-IN (telat + sebelum) — karyawan aktif
+    //    berjadwal, hari kerja, belum ada baris attendance hari ini sama
     //    sekali. Iterasi semua karyawan aktif berjadwal (bukan cuma yang
     //    sudah attendance), karena justru yang BELUM check-in ini yang
     //    perlu diingatkan.
     // -----------------------------------------------------------------
     let checkinSent = 0;
+    let checkinBeforeSent = 0;
     const { data: profiles, error: profErr } = await supabase
       .from("profiles")
       .select("id, is_active, schedule_id, lokasi_kerja")
@@ -216,8 +261,11 @@ Deno.serve(async _req => {
 
       const [sh, sm] = day.start_time.split(":").map(Number);
       const shiftStartMs = zonedTimestampMs(todayStr, sh, sm, offset);
-      const minutesSince = (now - shiftStartMs) / 60000;
-      if (minutesSince < REMINDER_DELAY_MINUTES || minutesSince > REMINDER_WINDOW_MINUTES) continue;
+      const minutesSince = (now - shiftStartMs) / 60000; // positif = sudah lewat, negatif = belum sampai
+
+      const isBeforeWindow = -minutesSince <= BEFORE_REMINDER_MINUTES && -minutesSince > 0;
+      const isLateWindow = minutesSince >= REMINDER_DELAY_MINUTES && minutesSince <= REMINDER_WINDOW_MINUTES;
+      if (!isBeforeWindow && !isLateWindow) continue;
 
       // Sudah check-in hari ini? (baris attendance untuk tanggal ini sudah ada)
       const { data: existing } = await supabase
@@ -228,32 +276,63 @@ Deno.serve(async _req => {
         .maybeSingle();
       if (existing) continue;
 
-      // Sudah pernah diingatkan hari ini?
-      const { data: already } = await supabase
-        .from("checkin_reminders_sent")
-        .select("user_id")
-        .eq("user_id", profile.id)
-        .eq("date", todayStr)
-        .maybeSingle();
-      if (already) continue;
+      // D. Sebelum check-in: jam masuk sebentar lagi tiba, belum pernah diingatkan hari ini.
+      if (isBeforeWindow) {
+        const { data: alreadyBefore } = await supabase
+          .from("checkin_before_reminder_sent")
+          .select("user_id")
+          .eq("user_id", profile.id)
+          .eq("date", todayStr)
+          .maybeSingle();
+        if (!alreadyBefore) {
+          const payload = JSON.stringify({
+            title: "Sebentar lagi jam masuk",
+            body: `Jadwalmu hari ini mulai jam ${day.start_time.slice(0, 5)}, sebentar lagi. Jangan lupa check-in ya.`,
+            url: "./app.html#absensi",
+          });
+          if (await sendToUser(profile.id, payload)) {
+            checkinBeforeSent++;
+            // Insert dulu (bukan upsert) supaya kalau ada 2 invocation nyaris
+            // bersamaan, yang kedua akan gagal insert (primary key bentrok)
+            // dan otomatis tidak mengirim dobel.
+            await supabase
+              .from("checkin_before_reminder_sent")
+              .insert({ user_id: profile.id, date: todayStr })
+              .select()
+              .maybeSingle();
+          }
+        }
+      }
 
-      const payload = JSON.stringify({
-        title: "Belum check-in?",
-        body: `Jadwalmu hari ini mulai jam ${day.start_time.slice(0, 5)} dan belum ada check-in. Yuk segera absen masuk.`,
-        url: "./app.html#absensi",
-      });
-
-      if (await sendToUser(profile.id, payload)) {
-        checkinSent++;
-        // Insert dulu (bukan upsert) supaya kalau ada 2 invocation nyaris
-        // bersamaan, yang kedua akan gagal insert (primary key bentrok)
-        // dan otomatis tidak mengirim dobel.
-        await supabase.from("checkin_reminders_sent").insert({ user_id: profile.id, date: todayStr }).select().maybeSingle();
+      // B. Telat check-in: jam masuk sudah lewat 15–120 menit, belum check-in.
+      if (isLateWindow) {
+        const { data: already } = await supabase
+          .from("checkin_reminders_sent")
+          .select("user_id")
+          .eq("user_id", profile.id)
+          .eq("date", todayStr)
+          .maybeSingle();
+        if (!already) {
+          const payload = JSON.stringify({
+            title: "Belum check-in?",
+            body: `Jadwalmu hari ini mulai jam ${day.start_time.slice(0, 5)} dan belum ada check-in. Yuk segera absen masuk.`,
+            url: "./app.html#absensi",
+          });
+          if (await sendToUser(profile.id, payload)) {
+            checkinSent++;
+            await supabase.from("checkin_reminders_sent").insert({ user_id: profile.id, date: todayStr }).select().maybeSingle();
+          }
+        }
       }
     }
 
     return new Response(
-      JSON.stringify({ checkout_sent: checkoutSent, checkin_sent: checkinSent }),
+      JSON.stringify({
+        checkout_sent: checkoutSent,
+        checkin_sent: checkinSent,
+        checkout_before_sent: checkoutBeforeSent,
+        checkin_before_sent: checkinBeforeSent,
+      }),
       { headers: { "Content-Type": "application/json" } }
     );
   } catch (err) {

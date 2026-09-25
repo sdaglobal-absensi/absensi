@@ -6,10 +6,15 @@ Fitur ini terdiri dari 2 bagian:
   Check-out" di halaman *Monitor Absensi* admin + kartu ringkasan di
   Dashboard admin. Tinggal upload ulang file yang sudah diubah.
 - **Bagian B (perlu di-deploy manual, langkah di bawah ini):** notifikasi
-  push otomatis ke HP karyawan, untuk DUA kondisi:
+  push otomatis ke HP karyawan, untuk EMPAT kondisi:
+  - **Sebentar lagi jam masuk** — 15 menit sebelum jam masuk, kalau belum ada absen masuk sama sekali hari ini.
   - **Belum check-in** — jam masuk sudah lewat (+15 menit) tapi belum ada absen masuk sama sekali.
+  - **Sebentar lagi jam pulang** — 15 menit sebelum jam pulang, kalau sesi absennya masih terbuka (belum check-out).
   - **Belum check-out** — jam pulang sudah lewat (+15 menit) tapi belum absen pulang.
-  Keduanya berhenti mengingatkan otomatis kalau sudah lewat 2 jam dari jamnya (dianggap kasus untuk ditindaklanjuti admin, bukan lagi pengingat).
+  Pengingat "sebentar lagi" masing-masing cuma dikirim sekali. Pengingat
+  "belum check-in/out" berhenti mengingatkan otomatis kalau sudah lewat 2
+  jam dari jamnya (dianggap kasus untuk ditindaklanjuti admin, bukan lagi
+  pengingat).
 
 Bagian B tidak bisa saya jalankan dari sini karena butuh kredensial project
 Supabase Anda (project ref, service role key) dan akses ke Supabase
@@ -20,14 +25,15 @@ CLI/Dashboard Anda. Ikuti langkah berikut di komputer Anda:
 Buka **Supabase Dashboard → SQL Editor**, jalankan isi file
 `supabase-push-notifikasi.sql`. Ini menambahkan:
 - tabel `push_subscriptions` (menyimpan "alamat" notifikasi tiap device karyawan)
-- kolom `attendance.checkout_reminder_sent_at` (anti-kirim-dobel pengingat check-out)
-- tabel `checkin_reminders_sent` (anti-kirim-dobel pengingat check-in — perlu tabel terpisah karena belum ada baris attendance sama sekali saat pengingat ini relevan)
+- kolom `attendance.checkout_reminder_sent_at` (anti-kirim-dobel pengingat *belum* check-out)
+- tabel `checkin_reminders_sent` (anti-kirim-dobel pengingat *belum* check-in — perlu tabel terpisah karena belum ada baris attendance sama sekali saat pengingat ini relevan)
+- kolom `attendance.checkout_before_reminder_sent_at` (anti-kirim-dobel pengingat *sebelum* jam pulang)
+- tabel `checkin_before_reminder_sent` (anti-kirim-dobel pengingat *sebelum* jam masuk)
 
-> Kalau Anda **sudah pernah** menjalankan versi lama file ini (yang hanya
-> punya `push_subscriptions` + `checkout_reminder_sent_at`), tinggal
+> Kalau Anda **sudah pernah** menjalankan versi lama file ini, tinggal
 > jalankan ulang file yang sekarang — semua statement-nya `if not exists`,
-> jadi aman dijalankan ulang dan cuma akan menambahkan tabel
-> `checkin_reminders_sent` yang belum ada.
+> jadi aman dijalankan ulang dan cuma akan menambahkan yang belum ada
+> (dua kondisi "sebelum" di atas).
 
 ## 2. VAPID keys (kunci untuk mengirim push)
 
@@ -116,15 +122,23 @@ notifikasi sekali, selesai.
 
 1. Karyawan klik "Aktifkan Pengingat" → browser generate *push subscription*
    → disimpan ke tabel `push_subscriptions`.
-2. Tiap 15 menit, Edge Function `checkout-reminder` melakukan dua pengecekan:
-   - **Check-out:** sesi absen yang masih terbuka, dibandingkan dengan jam
-     pulang dari Master Jadwal Kerja karyawan itu.
-   - **Check-in:** karyawan aktif berjadwal yang hari ini hari kerja, jam
-     masuknya sudah lewat, tapi belum ada baris absen sama sekali.
-3. Kalau sudah lewat 15–120 menit dari jam terkait dan kondisinya masih
-   belum diselesaikan → kirim push notification ke semua device karyawan
-   itu, lalu dicatat (kolom `checkout_reminder_sent_at` atau tabel
-   `checkin_reminders_sent`) supaya tidak dikirim berkali-kali untuk
+2. Tiap 15 menit, Edge Function `checkout-reminder` melakukan empat pengecekan
+   (dua untuk check-in, dua untuk check-out), berdasarkan jam masuk/pulang
+   dari Master Jadwal Kerja karyawan itu:
+   - **Sebelum jam masuk:** karyawan aktif berjadwal, hari ini hari kerja,
+     sisa waktu ke jam masuk ≤ 15 menit, dan belum ada baris absen sama
+     sekali hari ini → kirim "Sebentar lagi jam masuk", sekali saja per hari.
+   - **Belum check-in:** sama seperti di atas tapi jam masuknya justru
+     sudah *lewat* 15–120 menit dan tetap belum ada baris absen.
+   - **Sebelum jam pulang:** sesi absen yang masih terbuka (belum
+     check-out), sisa waktu ke jam pulang ≤ 15 menit → kirim "Sebentar lagi
+     jam pulang", sekali saja per sesi.
+   - **Belum check-out:** sesi absen yang masih terbuka, jam pulangnya
+     sudah lewat 15–120 menit.
+3. Tiap kondisi yang sudah dikirim langsung dicatat (kolom
+   `checkout_reminder_sent_at` / `checkout_before_reminder_sent_at` di
+   tabel `attendance`, atau baris di `checkin_reminders_sent` /
+   `checkin_before_reminder_sent`) supaya tidak dikirim berkali-kali untuk
    kejadian yang sama.
 4. Klik notifikasinya akan membuka langsung ke halaman Absensi.
 
