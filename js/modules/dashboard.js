@@ -118,6 +118,7 @@ async function loadPersonalStats(user, tz) {
       ${att?.check_in_status ? `<span class="badge badge-${att.check_in_status === "telat" ? "warn" : "ok"}">${att.check_in_status === "telat" ? "Telat" : "Tepat waktu"}</span>` : ""}
       ${otherDay}
       ${state.staleOpen ? `<span class="small" style="color:var(--warn);">⚠️ Check-in ${fmtDate(state.latest.date)} belum di-check-out.</span>` : ""}
+      ${state.misdatedTail ? `<span class="small muted">ℹ️ ${fmtTime(state.latest.check_in)}–${fmtTime(state.latest.check_out)} tadi = sisa shift semalam.</span>` : ""}
       ${canCheckIn ? `<button type="button" class="btn-primary btn-card-action" data-mode="in">Check-in Sekarang</button>` : ""}
     </div>
     <div class="status-card ${att?.check_out ? "done" : ""}">

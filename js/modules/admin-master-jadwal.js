@@ -28,7 +28,44 @@ export async function render(container, user) {
           </div>
 
           <div class="form-section-label">Jam Kerja per Hari</div>
-          <p class="small muted field-hint">Kalau Jam Pulang lebih kecil dari Jam Masuk, otomatis dianggap shift lintas hari (misal masuk 22:00, pulang 06:00 besok).</p>
+          <p class="small muted field-hint">Kalau Jam Pulang lebih kecil dari Jam Masuk, otomatis dianggap shift lintas hari (misal masuk 22:00, pulang 06:00 besok). Untuk Split Shift atau Jam Fleksibel/Long Shift yang polanya tidak sama tiap hari, isi jam per hari secara manual di tabel bawah.</p>
+
+          <div class="shift-toolbar">
+            <div class="shift-toolbar-group">
+              <span class="small muted shift-toolbar-label">Hari kerja:</span>
+              <button type="button" class="btn-secondary btn-sm btn-days" data-days="1,2,3,4,5">5 Hari (Sen–Jum)</button>
+              <button type="button" class="btn-secondary btn-sm btn-days" data-days="1,2,3,4,5,6">6 Hari (Sen–Sab)</button>
+              <button type="button" class="btn-secondary btn-sm btn-days" data-days="0,1,2,3,4,5,6">7 Hari (Semua)</button>
+            </div>
+            <div class="shift-toolbar-group">
+              <select id="preset-select">
+                <option value="">Pola shift umum di Indonesia…</option>
+                <optgroup label="Shift Pagi (Shift 1)">
+                  <option value="08:00|16:00">08:00 – 16:00</option>
+                  <option value="07:00|15:00">07:00 – 15:00</option>
+                </optgroup>
+                <optgroup label="Shift Siang/Sore (Shift 2)">
+                  <option value="16:00|00:00">16:00 – 00:00</option>
+                  <option value="15:00|23:00">15:00 – 23:00</option>
+                </optgroup>
+                <optgroup label="Shift Malam (Shift 3)">
+                  <option value="00:00|08:00">00:00 – 08:00</option>
+                  <option value="23:00|07:00">23:00 – 07:00</option>
+                </optgroup>
+                <optgroup label="2 Shift (12 Jam)">
+                  <option value="07:00|19:00">07:00 – 19:00</option>
+                  <option value="19:00|07:00">19:00 – 07:00</option>
+                </optgroup>
+                <optgroup label="Reguler (Non-shift)">
+                  <option value="08:00|17:00">08:00 – 17:00</option>
+                  <option value="09:00|18:00">09:00 – 18:00</option>
+                </optgroup>
+              </select>
+              <button type="button" id="btn-apply-preset" class="btn-secondary btn-sm">Terapkan ke hari dicentang</button>
+            </div>
+          </div>
+          <p class="small muted field-hint" style="margin-top:6px;">Pilih dulu hari kerjanya, baru terapkan pola jam — semua hari yang dicentang akan diisi jam yang sama persis, supaya tidak ada hari yang jamnya beda sendiri (penyebab paling sering shift malam gagal absen).</p>
+
           <div class="table-wrap">
             <table class="table" id="day-grid">
               <thead><tr><th>Hari</th><th>Hari Kerja</th><th>Jam Masuk</th><th>Jam Pulang</th></tr></thead>
@@ -44,6 +81,9 @@ export async function render(container, user) {
               </tbody>
             </table>
           </div>
+
+          <div id="hukum-note" class="hukum-note"></div>
+          <p class="small muted" style="margin-top:4px;">Perkiraan berdasarkan UU Ketenagakerjaan &amp; UU Cipta Kerja, bukan nasihat hukum — sektor dengan operasional 24 jam (RS, hotel, ritel, pabrik) kadang punya aturan shift tersendiri. Kelebihan jam kerja karyawan tetap bisa dicatat lewat menu Pengajuan Lembur.</p>
 
           <div class="form-row" style="margin-top:16px;">
             <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Aktif dipakai</label>
@@ -68,9 +108,39 @@ export async function render(container, user) {
     document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
     document.getElementById("form-schedule").addEventListener("submit", onSubmit);
     document.querySelectorAll(".day-active").forEach((cb, i) => {
-      cb.addEventListener("change", () => toggleDayInputs(i, cb.checked));
+      cb.addEventListener("change", () => { toggleDayInputs(i, cb.checked); updateHukumNote(); });
     });
     document.getElementById("employee-filter").addEventListener("input", e => filterEmployeeChecklist(e.target.value));
+
+    document.querySelectorAll(".btn-days").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const wanted = new Set(btn.dataset.days.split(",").map(Number));
+        DAY_NAMES.forEach((_, i) => {
+          const form = document.getElementById("form-schedule");
+          form[`active_${i}`].checked = wanted.has(i);
+          toggleDayInputs(i, wanted.has(i));
+        });
+        updateHukumNote();
+      });
+    });
+    document.getElementById("btn-apply-preset").addEventListener("click", () => {
+      const val = document.getElementById("preset-select").value;
+      if (!val) { toast("Pilih dulu pola shift-nya", "error"); return; }
+      const [start, end] = val.split("|");
+      const form = document.getElementById("form-schedule");
+      let applied = 0;
+      DAY_NAMES.forEach((_, i) => {
+        if (!form[`active_${i}`].checked) return;
+        form[`start_${i}`].value = start;
+        form[`end_${i}`].value = end;
+        applied++;
+      });
+      if (!applied) { toast("Centang dulu hari kerjanya di tabel bawah", "error"); return; }
+      updateHukumNote();
+    });
+    document.querySelectorAll('#day-grid input[type="time"]').forEach(inp => {
+      inp.addEventListener("input", updateHukumNote);
+    });
   }
 
   loadList(canEdit);
@@ -192,7 +262,54 @@ function openModal(existing = null, existingDays = []) {
     form.id.value = "";
   }
   loadEmployeeChecklist(existing ? existing.id : null);
+  updateHukumNote();
   modal.classList.remove("hidden");
+}
+
+function hmToMin(hm) {
+  const [h, m] = (hm || "0:0").split(":").map(Number);
+  return h * 60 + m;
+}
+
+// Perkiraan sesuai UU Ketenagakerjaan/UU Cipta Kerja: maks 8 jam/hari untuk
+// 5 hari kerja/minggu, atau 7 jam/hari untuk 6 hari kerja/minggu, dan maks
+// 40 jam/minggu total. Ini cuma pengingat di form (bukan validasi keras),
+// karena beberapa sektor operasional 24 jam punya aturan shift sendiri.
+function updateHukumNote() {
+  const el = document.getElementById("hukum-note");
+  if (!el) return;
+  const form = document.getElementById("form-schedule");
+
+  const activeDays = DAY_NAMES.map((name, i) => ({ i, name, on: form[`active_${i}`].checked }))
+    .filter(d => d.on);
+  if (!activeDays.length) { el.innerHTML = ""; return; }
+
+  const perDay = activeDays.map(d => {
+    const start = form[`start_${d.i}`].value;
+    const end = form[`end_${d.i}`].value;
+    if (!start || !end) return { ...d, hours: null };
+    let mins = hmToMin(end) - hmToMin(start);
+    if (mins <= 0) mins += 24 * 60; // lintas hari
+    return { ...d, hours: mins / 60 };
+  });
+
+  const filled = perDay.filter(d => d.hours !== null);
+  const totalHours = filled.reduce((sum, d) => sum + d.hours, 0);
+  const maxPerDay = activeDays.length <= 5 ? 8 : 7;
+  const overDays = filled.filter(d => d.hours > maxPerDay);
+  const overWeekly = totalHours > 40;
+
+  const fmtH = n => (Math.round(n * 10) / 10).toString().replace(".", ",");
+  let html = `<span>${activeDays.length} hari kerja/minggu${filled.length ? ` · ±${fmtH(totalHours)} jam/minggu` : ""}</span>`;
+
+  if (overDays.length || overWeekly) {
+    html += `<div class="hukum-warn">⚠️ Melebihi perkiraan batas UU Ketenagakerjaan (maks ${maxPerDay} jam/hari untuk ${activeDays.length} hari kerja/minggu, total maks 40 jam/minggu).`;
+    if (overDays.length) html += ` Hari yang melebihi: ${overDays.map(d => d.name).join(", ")}.`;
+    html += ` Kelebihan jam bisa dicatat sebagai lembur, atau kurangi jam/hari kerjanya.</div>`;
+  } else if (filled.length === activeDays.length) {
+    html += `<div class="hukum-ok">✓ Sesuai perkiraan batas UU Ketenagakerjaan (maks ${maxPerDay} jam/hari, 40 jam/minggu).</div>`;
+  }
+  el.innerHTML = html;
 }
 
 function closeModal() {

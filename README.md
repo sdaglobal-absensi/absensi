@@ -387,3 +387,41 @@ penolakan di bagian atas. Karyawan memperbaiki yang salah (alasan, tanggal, atau
   (setuju/tolak per tahap + catatan). Baris pengajuan ulang di halaman approval juga punya tautan
   "Lihat riwayat" (baca-saja).
 - Database yang sudah berjalan: jalankan `supabase-revisi-pengajuan.sql` sekali di SQL Editor.
+
+## Absensi shift lintas hari (mis. Shift Malam 22:00–06:00)
+
+Karyawan yang check-in setelah tengah malam (mis. jam 00:30) untuk shift yang sudah berjalan sejak
+malam sebelumnya dianggap TETAP bagian dari shift kemarin (bukan shift baru hari ini), supaya:
+- Status telat/tepat-waktunya dihitung dari jam mulai shift KEMARIN, bukan seolah-olah shift baru.
+- Slot absensi hari ini tetap kosong dan bisa dipakai untuk shift malam yang sungguhan baru mulai
+  malam ini.
+
+Ini bergantung pada **Master Jadwal Kerja**: hari KEMARIN (bukan cuma hari ini) juga harus ditandai
+"Lintas Hari" dengan jam yang sama, kalau shift malam itu berlaku tiap hari. Kalau hari kemarin di
+jadwal TIDAK ditandai lintas hari (atau ditandai libur), check-in dini hari tadi akan tersimpan dengan
+tanggal HARI INI, bukan kemarin.
+
+Sebagai jaring pengaman, aplikasi tetap mendeteksi kasus ini secara terpisah: kalau ada absensi
+HARI INI yang sudah check-in & check-out, tapi jam check-in-nya lebih pagi dari jam mulai shift hari
+ini (mis. check-in jam 01:03 padahal shift baru mulai 22:00), itu dianggap sisa shift semalam yang
+salah tersimpan tanggalnya — karyawan tetap diizinkan check-in baru untuk shift malam ini, dengan
+catatan info di halaman Absensi & Dashboard. Ini hanya jaring pengaman; penyebab aslinya (Master
+Jadwal Kerja hari sebelumnya belum ditandai lintas hari) sebaiknya tetap diperbaiki di Master Jadwal
+Kerja supaya status telat/tepat-waktu terhitung akurat sejak awal.
+
+## Pola shift cepat & perkiraan batas UU Ketenagakerjaan (Master Jadwal Kerja)
+
+Waktu menambah/edit jadwal di **Master Jadwal Kerja**, sekarang ada:
+
+- **Tombol hari kerja cepat** — 5 Hari (Sen–Jum), 6 Hari (Sen–Sab), atau 7 Hari (Semua) — untuk mencentang
+  hari kerja sekaligus.
+- **Pola shift umum di Indonesia** (dropdown + tombol "Terapkan ke hari dicentang"): Shift Pagi (08:00–16:00
+  / 07:00–15:00), Shift Siang/Sore (16:00–00:00 / 15:00–23:00), Shift Malam (00:00–08:00 / 23:00–07:00),
+  2 Shift 12 jam, dan Reguler. Memilih pola ini mengisi jam yang **sama persis** ke semua hari yang
+  dicentang — ini penting untuk shift lintas hari (malam), karena penyebab paling sering shift malam
+  gagal ter-absen adalah ada satu hari yang jamnya/"Lintas Hari"-nya beda sendiri dari hari-hari lain.
+  Split Shift dan Jam Fleksibel/Long Shift tidak punya pola jam tetap, jadi tetap diisi manual per hari.
+- **Catatan perkiraan UU Ketenagakerjaan**: menghitung otomatis total jam kerja per minggu dan menandai
+  kalau melebihi batas (maks 8 jam/hari untuk 5 hari kerja, atau 7 jam/hari untuk 6 hari kerja, dengan
+  total maks 40 jam/minggu). Ini hanya pengingat di form (bukan validasi keras dan bukan nasihat hukum),
+  karena sektor operasional 24 jam (RS, hotel, ritel, pabrik) kadang punya aturan shift sendiri.

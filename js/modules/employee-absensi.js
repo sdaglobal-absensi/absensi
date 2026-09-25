@@ -41,15 +41,20 @@ export async function loadAttendanceState(user, tz) {
     }
   }
 
-  const completedToday = !!(latest && latest.check_out && latest.date === today);
+  let completedToday = !!(latest && latest.check_out && latest.date === today);
+  let misdatedTail = false;
+  if (completedToday) {
+    misdatedTail = await isMorningTailMisdated(user, latest, tz);
+    if (misdatedTail) completedToday = false; // izinkan check-in baru utk shift malam ini
+  }
   const activeRow = openShift || completedToday ? latest : null;
 
-  return { latest, openShift, staleOpen, completedToday, activeRow };
+  return { latest, openShift, staleOpen, completedToday, activeRow, misdatedTail };
 }
 
 export async function render(container, user) {
   const tz = await resolveUserTimezone(user);
-  const { latest, openShift, staleOpen, completedToday, activeRow } = await loadAttendanceState(user, tz);
+  const { latest, openShift, staleOpen, completedToday, activeRow, misdatedTail } = await loadAttendanceState(user, tz);
 
   const scheduleInfo = await loadMySchedule(user);
 
@@ -64,6 +69,7 @@ export async function render(container, user) {
 
     ${openShift ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">Sesi kerja dari ${fmtDate(activeRow.date)} masih berjalan (belum check-out).</p>` : ""}
     ${staleOpen ? `<p class="small" style="margin-top:-14px; margin-bottom:18px; color:var(--warn);">⚠️ Ada check-in tanggal ${fmtDate(latest.date)} yang belum di-check-out (kemungkinan lupa). Kamu tetap bisa check-in baru hari ini — data lama itu akan tercatat tidak lengkap sampai diperbaiki admin.</p>` : ""}
+    ${misdatedTail ? `<p class="small" style="margin-top:-14px; margin-bottom:18px; color:var(--muted);">ℹ️ Check-in ${fmtTime(latest.check_in)} – check-out ${fmtTime(latest.check_out)} tadi adalah sisa shift semalam. Kamu tetap bisa check-in untuk shift malam ini.</p>` : ""}
 
     ${scheduleCardHtml(scheduleInfo, tz)}
 
@@ -218,6 +224,29 @@ async function isOvernightContinuation(user, row, tz) {
     .eq("day_of_week", dow)
     .maybeSingle();
   return !!day?.crosses_midnight;
+}
+
+// Kebalikan dari isOvernightContinuation: mendeteksi sesi yang SUDAH check-out,
+// tanggalnya kebetulan HARI INI, tapi jam check-in-nya jauh lebih pagi dari jam
+// mulai shift hari ini (mis. check-in 01:03 padahal shift malam hari ini baru
+// mulai 22:00). Ini kelanjutan shift SEMALAM yang salah tersimpan dengan
+// tanggal hari ini -- bisa terjadi kalau shift kemarin di Master Jadwal Kerja
+// belum ditandai "Lintas Hari", atau kemarin bukan hari kerja. Baris begini
+// TIDAK BOLEH dianggap "absensi hari ini sudah lengkap" -- karyawan harus
+// tetap bisa check-in untuk shift malam ini yang sungguhan baru mau mulai.
+async function isMorningTailMisdated(user, row, tz) {
+  if (!user.schedule_id) return false;
+  const dow = zonedDayOfWeek(new Date(row.check_in), tz);
+  const { data: day } = await supabase
+    .from("work_schedule_days")
+    .select("is_working_day, start_time, crosses_midnight")
+    .eq("schedule_id", user.schedule_id)
+    .eq("day_of_week", dow)
+    .maybeSingle();
+  if (!day?.is_working_day || !day.crosses_midnight || !day.start_time) return false;
+  const startMinutes = hmToMinutes(day.start_time.slice(0, 5));
+  const checkinMinutes = zonedMinutesOfDay(row.check_in, tz);
+  return checkinMinutes < startMinutes;
 }
 
 // Tentukan TANGGAL & HARI-JADWAL yang relevan untuk sebuah check-in BARU
