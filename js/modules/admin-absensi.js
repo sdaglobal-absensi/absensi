@@ -1,6 +1,13 @@
 import { supabase } from "../supabaseClient.js";
-import { fmtDate, fmtTime, todayISO, exportXLSX, toast } from "../core.js";
+import { fmtDate, fmtTime, todayISO, dayOfWeekFromDateStr, exportXLSX, toast } from "../core.js";
+import { esc } from "../approvalHelper.js";
+import { fetchSpecialLeaveRules, leaveTypeLabel } from "../leaveRules.js";
 
+// Catatan: panel "Belum Absen" di bawah membaca tabel leave_requests untuk
+// menampilkan keterangan Izin/Cuti/Sakit. Kalau admin yang buka halaman ini
+// TIDAK punya akses menu "Approval Izin" juga, jalankan dulu migrasi
+// supabase-absensi-monitor-leave-select.sql supaya RLS leave_requests
+// mengizinkan menu "Monitor Absensi" ikut membaca datanya.
 export async function render(container) {
   const today = todayISO();
   const firstOfMonth = today.slice(0, 8) + "01";
@@ -13,6 +20,8 @@ export async function render(container) {
         <input type="text" id="filter-search" placeholder="Cari nama karyawan…">
       </div>
     </div>
+
+    <div id="belum-absen-panel"></div>
 
     <div id="belum-checkout-panel"></div>
 
@@ -29,11 +38,148 @@ export async function render(container) {
     </div>
   `;
 
-  document.getElementById("filter-date").addEventListener("change", load);
-  document.getElementById("filter-search").addEventListener("input", load);
+  document.getElementById("filter-date").addEventListener("change", onDateOrSearchChange);
+  document.getElementById("filter-search").addEventListener("input", onSearchOnlyChange);
   document.getElementById("btn-export").addEventListener("click", doExport);
+
   load();
+  loadBelumAbsen(document.getElementById("filter-date").value);
   loadBelumCheckout();
+}
+
+function onDateOrSearchChange() {
+  load();
+  loadBelumAbsen(document.getElementById("filter-date").value);
+}
+
+function onSearchOnlyChange() {
+  load();
+  renderBelumAbsen(document.getElementById("filter-search").value);
+}
+
+// =====================================================================
+// PANEL "BELUM ABSEN [TANGGAL]" — daftar karyawan aktif yang seharusnya
+// masuk pada tanggal yang lagi difilter tapi belum punya baris attendance
+// sama sekali. Karyawan yang harinya memang libur menurut Master Jadwal
+// Kerja-nya (is_working_day = false) TIDAK dimasukkan, begitu juga semua
+// orang kalau tanggalnya hari libur nasional (Master Hari Libur). Kalau
+// karyawan yang belum absen itu ternyata sedang ada pengajuan Izin/Cuti/
+// Sakit yang mencakup tanggal ini (pending atau approved), keterangannya
+// ditampilkan supaya admin langsung tahu alasannya, tidak perlu menduga-duga.
+// Hasil query di-cache per tanggal (belumAbsenState) supaya mengetik di
+// kotak pencarian tidak query ulang ke server tiap huruf.
+// =====================================================================
+let belumAbsenState = { date: null, holiday: null, rows: [], specialRules: [] };
+
+async function loadBelumAbsen(date) {
+  const el = document.getElementById("belum-absen-panel");
+  if (!el) return;
+  el.innerHTML = `<p class="muted small">Memeriksa siapa yang belum absen…</p>`;
+
+  const today = todayISO();
+  if (date > today) {
+    belumAbsenState = { date, holiday: null, rows: [], specialRules: [] };
+    el.innerHTML = "";
+    return;
+  }
+
+  const { data: holiday } = await supabase
+    .from("holidays").select("name").eq("date", date).eq("is_active", true).maybeSingle();
+
+  if (holiday) {
+    belumAbsenState = { date, holiday, rows: [], specialRules: [] };
+    el.innerHTML = `
+      <div class="card" style="margin-bottom:20px;">
+        <p class="small muted" style="margin:0;">📅 ${fmtDate(date)} adalah hari libur (<strong>${esc(holiday.name)}</strong>), jadi tidak ditandai sebagai "belum absen".</p>
+      </div>
+    `;
+    return;
+  }
+
+  const dow = dayOfWeekFromDateStr(date);
+
+  const [{ data: employees }, { data: attendanceRows }, { data: scheduleDays }, { data: leaves }, specialRules] = await Promise.all([
+    supabase.from("profiles").select("id, full_name, department, employee_code, schedule_id").eq("is_active", true).order("full_name"),
+    supabase.from("attendance").select("user_id").eq("date", date),
+    supabase.from("work_schedule_days").select("schedule_id, is_working_day").eq("day_of_week", dow),
+    supabase.from("leave_requests")
+      .select("user_id, type, leave_category, special_leave_code, status")
+      .in("status", ["pending", "approved"])
+      .lte("start_date", date)
+      .gte("end_date", date),
+    fetchSpecialLeaveRules(),
+  ]);
+
+  const attendedIds = new Set((attendanceRows || []).map(r => r.user_id));
+  const workingDayBySchedule = {};
+  (scheduleDays || []).forEach(d => { workingDayBySchedule[d.schedule_id] = d.is_working_day; });
+
+  // Approved menang atas pending kalau (jarang terjadi) ada dua pengajuan
+  // yang sama-sama mencakup tanggal ini.
+  const leaveByUser = {};
+  (leaves || []).forEach(l => {
+    const existing = leaveByUser[l.user_id];
+    if (!existing || (existing.status !== "approved" && l.status === "approved")) leaveByUser[l.user_id] = l;
+  });
+
+  const rows = (employees || [])
+    .filter(emp => {
+      if (attendedIds.has(emp.id)) return false; // sudah absen
+      if (emp.schedule_id && workingDayBySchedule[emp.schedule_id] === false) return false; // libur sesuai jadwalnya sendiri
+      return true;
+    })
+    .map(emp => ({ emp, leave: leaveByUser[emp.id] || null }));
+
+  belumAbsenState = { date, holiday: null, rows, specialRules: specialRules || [] };
+  renderBelumAbsen(document.getElementById("filter-search")?.value || "");
+}
+
+function renderBelumAbsen(search) {
+  const el = document.getElementById("belum-absen-panel");
+  if (!el) return;
+  if (belumAbsenState.holiday) return; // sudah dirender di loadBelumAbsen, tidak perlu diulang
+  if (!belumAbsenState.rows.length) { el.innerHTML = ""; return; }
+
+  const q = (search || "").toLowerCase();
+  const filtered = q
+    ? belumAbsenState.rows.filter(r => r.emp.full_name.toLowerCase().includes(q))
+    : belumAbsenState.rows;
+
+  if (!filtered.length) { el.innerHTML = ""; return; }
+
+  const tanpaKeterangan = filtered.filter(r => !r.leave).length;
+
+  el.innerHTML = `
+    <div class="card" style="border-left:4px solid ${tanpaKeterangan ? "var(--danger)" : "var(--warn)"}; margin-bottom:20px;">
+      <p class="small" style="margin:0 0 10px 0; color:${tanpaKeterangan ? "var(--danger)" : "var(--warn)"}; font-weight:600;">
+        ⚠️ ${filtered.length} karyawan belum absen di ${fmtDate(belumAbsenState.date)}${tanpaKeterangan ? ` — ${tanpaKeterangan} di antaranya tanpa keterangan` : ""}
+      </p>
+      <table class="table">
+        <thead><tr><th>Karyawan</th><th>Departemen</th><th>Kode Karyawan</th><th>Keterangan</th></tr></thead>
+        <tbody>
+          ${filtered.map(r => `
+            <tr>
+              <td>${esc(r.emp.full_name)}</td>
+              <td>${esc(r.emp.department || "-")}</td>
+              <td>${esc(r.emp.employee_code || "-")}</td>
+              <td>${keteranganCell(r.leave)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+      <p class="muted small" style="margin:10px 0 0 0;">
+        Keterangan diambil dari pengajuan Izin/Cuti/Sakit yang mencakup tanggal ini. Baris tanpa keterangan berarti belum ada pengajuan apa pun untuk karyawan itu di tanggal ini.
+      </p>
+    </div>
+  `;
+}
+
+function keteranganCell(leave) {
+  if (!leave) return `<span class="badge badge-danger">Belum ada keterangan</span>`;
+  const rules = belumAbsenState.specialRules || [];
+  const label = leaveTypeLabel(leave, rules);
+  const pendingSuffix = leave.status === "pending" ? " (pending)" : "";
+  return `<span class="badge badge-${leave.status === "approved" ? "ok" : "warn"}">${esc(label)}${pendingSuffix}</span>`;
 }
 
 // =====================================================================
@@ -87,7 +233,7 @@ async function loadBelumCheckout() {
   el.querySelectorAll(".btn-lihat-tanggal").forEach(btn => {
     btn.addEventListener("click", () => {
       document.getElementById("filter-date").value = btn.dataset.date;
-      load();
+      onDateOrSearchChange();
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
   });
