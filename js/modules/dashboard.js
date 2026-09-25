@@ -172,6 +172,17 @@ async function loadOrgStats(user) {
       const telat = (attToday || []).filter(a => a.check_in_status === "telat").length;
       cards.push({ label: "Hadir Hari Ini", value: hadir, tone: "ok" });
       cards.push({ label: "Telat Hari Ini", value: telat, tone: telat > 0 ? "warn" : "ok" });
+
+      // Sesi lama (bukan hari ini) yang sudah check-in tapi belum check-out —
+      // biasanya karyawan lupa absen pulang. Dihitung terpisah dari "Hadir
+      // Hari Ini" supaya admin langsung sadar tanpa harus buka Monitor
+      // Absensi dan gonta-ganti tanggal satu-satu.
+      const { count: lupaCheckout } = await supabase
+        .from("attendance")
+        .select("id", { count: "exact", head: true })
+        .is("check_out", null)
+        .lt("date", today);
+      cards.push({ label: "Lupa Check-out (Sesi Lama)", value: lupaCheckout || 0, tone: lupaCheckout ? "warn" : "ok", target: "absensi-monitor" });
     }
     if (canIzin) {
       const izinPending = await countPendingForMe("leave", user);

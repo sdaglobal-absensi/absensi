@@ -1,5 +1,6 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, reverseGeocode, fmtTime, fmtDate, todayISO, dateOnlyISO, zonedDayOfWeek, zonedMinutesOfDay, zonedTimestamp, hmToMinutes, resolveUserTimezone, tzLabel } from "../core.js";
+import { pushSupported, getPushStatus, subscribeToPush } from "../push.js";
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -94,6 +95,8 @@ export async function render(container, user) {
       }
     </div>
 
+    <div id="push-opt-in"></div>
+
     ${cameraModalHtml()}
   `;
 
@@ -101,6 +104,30 @@ export async function render(container, user) {
   if (btnOpen) btnOpen.addEventListener("click", () => openCamera(btnOpen.dataset.mode, user, activeRow, tz));
 
   startLiveClock(tz);
+  renderPushOptIn(user);
+}
+
+// Tawaran "aktifkan pengingat" — hanya muncul kalau browser mendukung push
+// DAN karyawan belum berlangganan di device ini. Sengaja tidak memunculkan
+// prompt izin notifikasi secara otomatis (browser akan memblokir/mengabaikan
+// permintaan izin yang tidak dipicu klik user, dan itu pengalaman yang buruk),
+// jadi karyawan yang menekan tombolnya sendiri.
+async function renderPushOptIn(user) {
+  const el = document.getElementById("push-opt-in");
+  if (!el || !pushSupported()) return;
+  const status = await getPushStatus();
+  if (status !== "not-subscribed") return; // sudah aktif, ditolak, atau tidak didukung
+
+  el.innerHTML = `
+    <div class="card" style="margin-top:16px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <p class="muted small" style="margin:0;">🔔 Mau diingatkan otomatis kalau lupa check-out saat jam pulang lewat?</p>
+      <button id="btn-aktifkan-pengingat" class="btn-secondary">Aktifkan Pengingat</button>
+    </div>
+  `;
+  document.getElementById("btn-aktifkan-pengingat").addEventListener("click", async () => {
+    const ok = await subscribeToPush(user);
+    if (ok) el.innerHTML = "";
+  });
 }
 
 // Modal kamera absen. Dipisah supaya bisa disisipkan juga di Dashboard.
