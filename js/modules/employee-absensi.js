@@ -42,6 +42,16 @@ export async function loadAttendanceState(user, tz) {
     }
   }
 
+  // Kalau karyawan SUDAH mengajukan Koreksi Absen (pulang) untuk sesi stale
+  // ini dan pengajuannya belum ditolak, jangan tampilkan banner "belum
+  // check-out" lagi — sudah ditindaklanjuti, tinggal menunggu approval.
+  // Banner baru muncul lagi kalau pengajuan itu DITOLAK (dan belum diajukan
+  // ulang), supaya karyawan sadar harus bertindak lagi.
+  if (staleOpen) {
+    const alreadyRequested = await hasActiveCheckoutCorrection(user, latest.date);
+    if (alreadyRequested) staleOpen = false;
+  }
+
   let completedToday = !!(latest && latest.check_out && latest.date === today);
   let misdatedTail = false;
   if (completedToday) {
@@ -51,6 +61,25 @@ export async function loadAttendanceState(user, tz) {
   const activeRow = openShift || completedToday ? latest : null;
 
   return { latest, openShift, staleOpen, completedToday, activeRow, misdatedTail };
+}
+
+// Cek apakah karyawan sudah punya pengajuan Koreksi Absen (jenis "pulang")
+// untuk tanggal sesi stale tersebut, yang statusnya masih pending atau sudah
+// disetujui. Kalau yang terakhir/terbaru untuk tanggal itu statusnya
+// "rejected" (dan belum diajukan ulang), dianggap BELUM ditindaklanjuti —
+// balik true dari sisi caller = false, supaya banner tetap muncul.
+async function hasActiveCheckoutCorrection(user, attendanceDate) {
+  const { data } = await supabase
+    .from("attendance_correction_requests")
+    .select("status, created_at")
+    .eq("user_id", user.id)
+    .eq("attendance_date", attendanceDate)
+    .eq("correction_type", "pulang")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return !!data && data.status !== "rejected";
 }
 
 export async function render(container, user) {
@@ -110,12 +139,15 @@ export async function render(container, user) {
 }
 
 // =====================================================================
-// PENGINGAT "LUPA CHECK-OUT" YANG TERUS MUNCUL — beda dari notifikasi push
-// (yang cuma dikirim beberapa kali lalu berhenti supaya tidak spam, lihat
-// README-PUSH-NOTIFIKASI.md), banner ini sengaja ditampilkan LAGI setiap
-// kali karyawan buka halaman Absensi atau Dashboard selama sesi lamanya
-// (staleOpen) belum diselesaikan lewat Koreksi Absen — supaya tidak
-// tergantung pada notifikasi yang gampang di-dismiss/diabaikan/lupa.
+// PENGINGAT "LUPA CHECK-OUT" — beda dari notifikasi push (yang cuma dikirim
+// beberapa kali lalu berhenti supaya tidak spam, lihat README-PUSH-NOTIFIKASI.md),
+// banner ini ditampilkan LAGI setiap kali karyawan buka halaman Absensi atau
+// Dashboard selama sesi lamanya (staleOpen) belum ditindaklanjuti sama
+// sekali — supaya tidak tergantung pada notifikasi yang gampang
+// di-dismiss/diabaikan/lupa. Begitu karyawan MENGAJUKAN Koreksi Absen untuk
+// sesi itu (lihat hasActiveCheckoutCorrection() di loadAttendanceState),
+// banner ini berhenti muncul — tidak perlu menunggu sampai disetujui admin.
+// Kalau pengajuannya ditolak dan belum diajukan ulang, banner muncul lagi.
 // Lihat juga loadPersonalStats() di dashboard.js untuk banner yang sama
 // di halaman Dashboard.
 export function reminderBannerHTML(latestOpenRow) {
