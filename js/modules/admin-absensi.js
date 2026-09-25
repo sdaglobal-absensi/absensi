@@ -1,7 +1,11 @@
 import { supabase } from "../supabaseClient.js";
-import { fmtDate, fmtTime, todayISO, dayOfWeekFromDateStr, exportXLSX, toast } from "../core.js";
+import { fmtDate, fmtTime, todayISO, dayOfWeekFromDateStr, exportXLSX, toast, avatarHTML, ICONS } from "../core.js";
 import { esc } from "../approvalHelper.js";
+import { ICON_SEARCH } from "../approvalUI.js";
 import { fetchSpecialLeaveRules, leaveTypeLabel } from "../leaveRules.js";
+
+const ICON_WARN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+const ICON_CALENDAR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
 
 // Catatan: panel "Belum Absen" di bawah membaca tabel leave_requests untuk
 // menampilkan keterangan Izin/Cuti/Sakit. Kalau admin yang buka halaman ini
@@ -13,24 +17,43 @@ export async function render(container) {
   const firstOfMonth = today.slice(0, 8) + "01";
 
   container.innerHTML = `
-    <div class="page-header">
-      <h1>Monitor Absensi</h1>
-      <div class="filter-row">
+    <div class="page-header mon-header">
+      <div>
+        <h1>Monitor Absensi</h1>
+        <p class="mon-subtitle">Pantau kehadiran karyawan per tanggal, tindak lanjuti yang belum absen atau lupa check-out, lalu export rekapnya ke Excel.</p>
+      </div>
+    </div>
+
+    <div class="mon-toolbar">
+      <label class="mon-date-field">
         <input type="date" id="filter-date" value="${today}">
+      </label>
+      <div class="mon-search">
+        ${ICON_SEARCH}
         <input type="text" id="filter-search" placeholder="Cari nama karyawan…">
       </div>
     </div>
+
+    <div id="mon-stats" class="mon-stats"></div>
 
     <div id="belum-absen-panel"></div>
 
     <div id="belum-checkout-panel"></div>
 
-    <div id="absensi-table" class="table-wrap"><p class="muted">Memuat…</p></div>
+    <div id="absensi-table" class="table-wrap mon-table-wrap"><p class="muted" style="padding:18px 20px;">Memuat…</p></div>
 
     <h2 class="section-title">Export Excel</h2>
-    <div class="card" style="max-width:560px;">
-      <p class="muted small" style="margin-top:0;">Export data absensi untuk rentang tanggal tertentu (bisa lebih dari satu hari).</p>
-      <div class="form-row two-col">
+    <div class="card mon-export-card">
+      <div class="mon-export-head">
+        <div class="mon-export-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS.file}"/></svg>
+        </div>
+        <div>
+          <div class="mon-export-title">Export data absensi</div>
+          <p class="muted small" style="margin:2px 0 0;">Untuk rentang tanggal tertentu (bisa lebih dari satu hari).</p>
+        </div>
+      </div>
+      <div class="form-row two-col" style="margin-top:18px;">
         <label>Dari Tanggal <input type="date" id="export-start" value="${firstOfMonth}"></label>
         <label>Sampai Tanggal <input type="date" id="export-end" value="${today}"></label>
       </div>
@@ -57,6 +80,67 @@ function onSearchOnlyChange() {
   renderBelumAbsen(document.getElementById("filter-search").value);
 }
 
+// Sel "Karyawan" (avatar + nama) dipakai di semua tabel di halaman ini,
+// supaya konsisten dengan pola ap-emp di halaman Approval.
+function empCell(person) {
+  const name = person?.full_name || "-";
+  return `
+    <div class="mon-emp">
+      <span class="mon-avatar">${avatarHTML(person, name)}</span>
+      <span class="mon-emp-name">${esc(name)}</span>
+    </div>
+  `;
+}
+
+// =====================================================================
+// KARTU RINGKASAN HARIAN — dihitung dari data absensi tanggal yang lagi
+// difilter (tidak ikut terpotong oleh kotak pencarian) plus jumlah "belum
+// absen" dari panel di bawahnya. attendance = null berarti belum selesai
+// dimuat; belumAbsen = null berarti panel belum-absen belum selesai
+// dimuat. Kartu baru dirender begitu attendance sudah ada.
+// =====================================================================
+let statsState = { attendance: null, belumAbsen: null };
+
+function computeAttendanceStats(rows, isPastDate) {
+  const total = rows.length;
+  const telat = rows.filter(r => r.check_in_status === "telat").length;
+  const tepatWaktu = rows.filter(r => r.check_in_status === "tepat_waktu").length;
+  const belumCheckout = isPastDate ? rows.filter(r => !r.check_out).length : 0;
+  return { total, telat, tepatWaktu, belumCheckout };
+}
+
+function renderStats() {
+  const el = document.getElementById("mon-stats");
+  if (!el) return;
+  if (!statsState.attendance) { el.innerHTML = ""; return; }
+
+  const { total, telat, tepatWaktu, belumCheckout } = statsState.attendance;
+  const belumAbsen = statsState.belumAbsen ?? 0;
+
+  el.innerHTML = `
+    <div class="mon-stat mon-stat-hadir">
+      <span class="mon-stat-label">Hadir</span>
+      <span class="mon-stat-value">${total}</span>
+    </div>
+    <div class="mon-stat mon-stat-tepat">
+      <span class="mon-stat-label">Tepat Waktu</span>
+      <span class="mon-stat-value">${tepatWaktu}</span>
+    </div>
+    <div class="mon-stat mon-stat-telat">
+      <span class="mon-stat-label">Telat</span>
+      <span class="mon-stat-value">${telat}</span>
+    </div>
+    <div class="mon-stat mon-stat-belum">
+      <span class="mon-stat-label">Belum Absen</span>
+      <span class="mon-stat-value">${belumAbsen}</span>
+    </div>
+    <div class="mon-stat mon-stat-checkout">
+      <span class="mon-stat-label">Lupa Check-out</span>
+      <span class="mon-stat-value">${belumCheckout}</span>
+    </div>
+  `;
+}
+
 // =====================================================================
 // PANEL "BELUM ABSEN [TANGGAL]" — daftar karyawan aktif yang seharusnya
 // masuk pada tanggal yang lagi difilter tapi belum punya baris attendance
@@ -79,6 +163,8 @@ async function loadBelumAbsen(date) {
   const today = todayISO();
   if (date > today) {
     belumAbsenState = { date, holiday: null, rows: [], specialRules: [] };
+    statsState.belumAbsen = 0;
+    renderStats();
     el.innerHTML = "";
     return;
   }
@@ -88,9 +174,14 @@ async function loadBelumAbsen(date) {
 
   if (holiday) {
     belumAbsenState = { date, holiday, rows: [], specialRules: [] };
+    statsState.belumAbsen = 0;
+    renderStats();
     el.innerHTML = `
-      <div class="card" style="margin-bottom:20px;">
-        <p class="small muted" style="margin:0;">📅 ${fmtDate(date)} adalah hari libur (<strong>${esc(holiday.name)}</strong>), jadi tidak ditandai sebagai "belum absen".</p>
+      <div class="mon-alert mon-alert-info">
+        <div class="mon-alert-head">
+          <span class="mon-alert-icon">${ICON_CALENDAR}</span>
+          <p class="mon-alert-title">${fmtDate(date)} adalah hari libur (${esc(holiday.name)}), jadi tidak ditandai sebagai "belum absen".</p>
+        </div>
       </div>
     `;
     return;
@@ -99,7 +190,7 @@ async function loadBelumAbsen(date) {
   const dow = dayOfWeekFromDateStr(date);
 
   const [{ data: employees }, { data: attendanceRows }, { data: scheduleDays }, { data: leaves }, specialRules] = await Promise.all([
-    supabase.from("profiles").select("id, full_name, department, employee_code, schedule_id").eq("is_active", true).order("full_name"),
+    supabase.from("profiles").select("id, full_name, department, employee_code, photo_url, schedule_id").eq("is_active", true).order("full_name"),
     supabase.from("attendance").select("user_id").eq("date", date),
     supabase.from("work_schedule_days").select("schedule_id, is_working_day").eq("day_of_week", dow),
     supabase.from("leave_requests")
@@ -131,6 +222,8 @@ async function loadBelumAbsen(date) {
     .map(emp => ({ emp, leave: leaveByUser[emp.id] || null }));
 
   belumAbsenState = { date, holiday: null, rows, specialRules: specialRules || [] };
+  statsState.belumAbsen = rows.length;
+  renderStats();
   renderBelumAbsen(document.getElementById("filter-search")?.value || "");
 }
 
@@ -150,26 +243,27 @@ function renderBelumAbsen(search) {
   const tanpaKeterangan = filtered.filter(r => !r.leave).length;
 
   el.innerHTML = `
-    <div class="card" style="border-left:4px solid ${tanpaKeterangan ? "var(--danger)" : "var(--warn)"}; margin-bottom:20px;">
-      <p class="small" style="margin:0 0 10px 0; color:${tanpaKeterangan ? "var(--danger)" : "var(--warn)"}; font-weight:600;">
-        ⚠️ ${filtered.length} karyawan belum absen di ${fmtDate(belumAbsenState.date)}${tanpaKeterangan ? ` — ${tanpaKeterangan} di antaranya tanpa keterangan` : ""}
-      </p>
-      <table class="table">
-        <thead><tr><th>Karyawan</th><th>Departemen</th><th>Kode Karyawan</th><th>Keterangan</th></tr></thead>
-        <tbody>
-          ${filtered.map(r => `
-            <tr>
-              <td>${esc(r.emp.full_name)}</td>
-              <td>${esc(r.emp.department || "-")}</td>
-              <td>${esc(r.emp.employee_code || "-")}</td>
-              <td>${keteranganCell(r.leave)}</td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-      <p class="muted small" style="margin:10px 0 0 0;">
-        Keterangan diambil dari pengajuan Izin/Cuti/Sakit yang mencakup tanggal ini. Baris tanpa keterangan berarti belum ada pengajuan apa pun untuk karyawan itu di tanggal ini.
-      </p>
+    <div class="mon-alert ${tanpaKeterangan ? "mon-alert-danger" : ""}">
+      <div class="mon-alert-head">
+        <span class="mon-alert-icon">${ICON_WARN}</span>
+        <p class="mon-alert-title">${filtered.length} karyawan belum absen di ${fmtDate(belumAbsenState.date)}${tanpaKeterangan ? ` — ${tanpaKeterangan} di antaranya tanpa keterangan` : ""}</p>
+      </div>
+      <div class="mon-alert-body mon-scroll">
+        <table class="table">
+          <thead><tr><th>Karyawan</th><th>Departemen</th><th>Kode Karyawan</th><th>Keterangan</th></tr></thead>
+          <tbody>
+            ${filtered.map(r => `
+              <tr>
+                <td>${empCell(r.emp)}</td>
+                <td>${esc(r.emp.department || "-")}</td>
+                <td>${esc(r.emp.employee_code || "-")}</td>
+                <td>${keteranganCell(r.leave)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+      <p class="mon-alert-note">Keterangan diambil dari pengajuan Izin/Cuti/Sakit yang mencakup tanggal ini. Baris tanpa keterangan berarti belum ada pengajuan apa pun untuk karyawan itu di tanggal ini.</p>
     </div>
   `;
 }
@@ -198,7 +292,7 @@ async function loadBelumCheckout() {
 
   const { data, error } = await supabase
     .from("attendance")
-    .select("id, date, check_in, user_id, profiles(full_name, department, employee_code)")
+    .select("id, date, check_in, user_id, profiles(full_name, department, employee_code, photo_url)")
     .is("check_out", null)
     .lt("date", today)
     .order("date", { ascending: true });
@@ -206,27 +300,28 @@ async function loadBelumCheckout() {
   if (error || !data || !data.length) { el.innerHTML = ""; return; }
 
   el.innerHTML = `
-    <div class="card" style="border-left:4px solid var(--warn); margin-bottom:20px;">
-      <p class="small" style="margin:0 0 10px 0; color:var(--warn); font-weight:600;">
-        ⚠️ ${data.length} sesi lupa check-out (perlu ditindaklanjuti)
-      </p>
-      <table class="table">
-        <thead><tr><th>Karyawan</th><th>Departemen</th><th>Tanggal</th><th>Check-in</th><th></th></tr></thead>
-        <tbody>
-          ${data.map(r => `
-            <tr>
-              <td>${r.profiles?.full_name || "-"}</td>
-              <td>${r.profiles?.department || "-"}</td>
-              <td>${fmtDate(r.date)}</td>
-              <td>${fmtTime(r.check_in)}</td>
-              <td><button type="button" class="btn-link btn-lihat-tanggal" data-date="${r.date}">Lihat tanggal ini</button></td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-      <p class="muted small" style="margin:10px 0 0 0;">
-        Minta karyawan mengajukan lewat menu <strong>Koreksi Absen</strong> supaya jam pulangnya bisa diperbaiki dan disetujui.
-      </p>
+    <div class="mon-alert">
+      <div class="mon-alert-head">
+        <span class="mon-alert-icon">${ICON_WARN}</span>
+        <p class="mon-alert-title">${data.length} sesi lupa check-out (perlu ditindaklanjuti)</p>
+      </div>
+      <div class="mon-alert-body mon-scroll">
+        <table class="table">
+          <thead><tr><th>Karyawan</th><th>Departemen</th><th>Tanggal</th><th>Check-in</th><th></th></tr></thead>
+          <tbody>
+            ${data.map(r => `
+              <tr>
+                <td>${empCell(r.profiles)}</td>
+                <td>${r.profiles?.department || "-"}</td>
+                <td>${fmtDate(r.date)}</td>
+                <td>${fmtTime(r.check_in)}</td>
+                <td><button type="button" class="btn-link btn-lihat-tanggal" data-date="${r.date}">Lihat tanggal ini</button></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+      <p class="mon-alert-note">Minta karyawan mengajukan lewat menu <strong>Koreksi Absen</strong> supaya jam pulangnya bisa diperbaiki dan disetujui.</p>
     </div>
   `;
 
@@ -246,33 +341,36 @@ async function load() {
 
   const { data, error } = await supabase
     .from("attendance")
-    .select("*, profiles(full_name, department, employee_code)")
+    .select("*, profiles(full_name, department, employee_code, photo_url)")
     .eq("date", date)
     .order("check_in", { ascending: true });
 
   const el = document.getElementById("absensi-table");
-  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
+  if (error) { el.innerHTML = `<p class="muted" style="padding:18px 20px;">Gagal memuat data: ${error.message}</p>`; return; }
+
+  statsState.attendance = computeAttendanceStats(data || [], isPastDate);
+  renderStats();
 
   const filtered = search
     ? data.filter(r => r.profiles?.full_name?.toLowerCase().includes(search))
     : data;
 
-  if (!filtered.length) { el.innerHTML = `<p class="muted">Belum ada data absensi untuk tanggal ini.</p>`; return; }
+  if (!filtered.length) { el.innerHTML = `<p class="muted" style="padding:18px 20px;">Belum ada data absensi untuk tanggal ini.</p>`; return; }
 
   el.innerHTML = `
-    <table class="table">
+    <table class="table mon-table">
       <thead><tr><th>Karyawan</th><th>Departemen</th><th>Check-in</th><th>Status</th><th>Lokasi</th><th>Foto Check-in</th><th>Check-out</th><th>Foto Check-out</th></tr></thead>
       <tbody>
         ${filtered.map(r => `
-          <tr ${!r.check_out && isPastDate ? `style="background:color-mix(in srgb, var(--warn) 10%, transparent);"` : ""}>
-            <td>${r.profiles?.full_name || "-"}</td>
-            <td>${r.profiles?.department || "-"}</td>
-            <td>${fmtTime(r.check_in)}</td>
-            <td>${r.check_in_status ? `<span class="badge badge-${r.check_in_status === "telat" ? "warn" : "ok"}">${r.check_in_status === "telat" ? "Telat" : "Tepat waktu"}</span>` : "-"}</td>
-            <td>${locationCell(r)}</td>
-            <td>${photoCell(r.check_in_photo_url)}</td>
-            <td>${r.check_out ? fmtTime(r.check_out) : (isPastDate ? `<span style="color:var(--warn);">⚠️ Belum</span>` : `<span class="muted">Belum</span>`)}</td>
-            <td>${photoCell(r.check_out_photo_url)}</td>
+          <tr ${!r.check_out && isPastDate ? `style="background:color-mix(in srgb, var(--warn) 8%, transparent);"` : ""}>
+            <td class="mon-td-emp">${empCell(r.profiles)}</td>
+            <td data-label="Departemen">${r.profiles?.department || "-"}</td>
+            <td data-label="Check-in">${fmtTime(r.check_in)}</td>
+            <td data-label="Status">${r.check_in_status ? `<span class="badge badge-${r.check_in_status === "telat" ? "warn" : "ok"}">${r.check_in_status === "telat" ? "Telat" : "Tepat waktu"}</span>` : "-"}</td>
+            <td data-label="Lokasi">${locationCell(r)}</td>
+            <td data-label="Foto Check-in">${photoCell(r.check_in_photo_url)}</td>
+            <td data-label="Check-out">${r.check_out ? fmtTime(r.check_out) : (isPastDate ? `<span class="mon-checkout-warn badge badge-danger">${ICON_WARN} Belum</span>` : `<span class="muted">Belum</span>`)}</td>
+            <td data-label="Foto Check-out">${photoCell(r.check_out_photo_url)}</td>
           </tr>
         `).join("")}
       </tbody>

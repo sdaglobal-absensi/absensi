@@ -771,6 +771,85 @@ button { font-family: 'Inter'; cursor: pointer; }
 .hist-reason { margin-top: 2px; color: var(--muted); word-break: break-word; }
 .hist-item .step-list { min-width: 0; }
 
+/* =====================================================================
+   MONITOR ABSENSI (redesign) — header+toolbar, kartu ringkasan harian,
+   panel peringatan (belum absen / lupa check-out) dan tabel kehadiran,
+   dibuat konsisten dengan pola ap-* (avatar, badge, status, stacking
+   tabel di HP) yang sudah dipakai di halaman Approval.
+   ===================================================================== */
+.mon-subtitle { margin: 6px 0 0; color: var(--muted); font-size: 0.9rem; max-width: 62ch; line-height: 1.55; }
+
+.mon-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 18px 0 22px; }
+.mon-date-field input[type="date"] { padding: 9px 12px; font-size: 0.88rem; min-width: 168px; }
+.mon-search { position: relative; }
+.mon-search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--muted); pointer-events: none; }
+.mon-search input { padding: 9px 12px 9px 34px; min-width: 240px; font-size: 0.88rem; }
+
+.mon-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 22px; }
+.mon-stat {
+  background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--border);
+  border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+}
+.mon-stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+.mon-stat-value { font-family: 'Sora'; font-size: 1.45rem; font-weight: 700; color: var(--ink); }
+.mon-stat-hadir { border-left-color: var(--primary); }
+.mon-stat-tepat { border-left-color: var(--ok); }
+.mon-stat-tepat .mon-stat-value { color: var(--ok); }
+.mon-stat-telat, .mon-stat-checkout { border-left-color: var(--warn); }
+.mon-stat-telat .mon-stat-value, .mon-stat-checkout .mon-stat-value { color: var(--warn); }
+.mon-stat-belum { border-left-color: var(--danger); }
+.mon-stat-belum .mon-stat-value { color: var(--danger); }
+
+/* Panel peringatan (belum absen / lupa check-out) */
+.mon-alert { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--warn); border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(27,31,29,0.04); }
+.mon-alert-danger { border-left-color: var(--danger); }
+.mon-alert-info { border-left-color: var(--border); }
+.mon-alert-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
+.mon-alert-icon { width: 19px; height: 19px; flex-shrink: 0; margin-top: 1px; color: var(--warn); }
+.mon-alert-danger .mon-alert-icon { color: var(--danger); }
+.mon-alert-info .mon-alert-icon { color: var(--muted); }
+.mon-alert-title { font-weight: 600; font-size: 0.92rem; margin: 0; line-height: 1.4; }
+.mon-alert-body { margin-top: 12px; }
+.mon-alert-note { margin: 12px 0 0; font-size: 0.8rem; color: var(--muted); line-height: 1.5; }
+.mon-scroll { overflow-x: auto; }
+
+/* Sel karyawan (avatar + nama) dipakai di semua tabel halaman ini */
+.mon-emp { display: flex; align-items: center; gap: 10px; min-width: 170px; }
+.mon-avatar {
+  width: 32px; height: 32px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+  background: var(--primary); display: flex; align-items: center; justify-content: center;
+}
+.mon-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mon-avatar .avatar-placeholder-icon { color: rgba(255,255,255,0.9); }
+.mon-emp-name { font-weight: 600; }
+
+.mon-table-wrap { margin-top: 4px; }
+.mon-checkout-warn { display: inline-flex; align-items: center; gap: 5px; }
+.mon-checkout-warn svg { width: 13px; height: 13px; }
+
+@media (max-width: 820px) {
+  .mon-table thead { display: none; }
+  .mon-table, .mon-table tbody, .mon-table tr, .mon-table td { display: block; width: 100%; }
+  .mon-table tr { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .mon-table tbody tr:last-child { border-bottom: none; }
+  .mon-table td { display: flex; gap: 14px; align-items: center; padding: 6px 0; border: none; }
+  .mon-table td[data-label]::before {
+    content: attr(data-label); flex: 0 0 96px; font-size: 0.7rem; font-weight: 600;
+    letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted);
+  }
+  .mon-table td.mon-td-emp { padding-bottom: 10px; }
+  .mon-table td.mon-td-emp::before { display: none; }
+}
+
+.mon-export-card { max-width: 600px; }
+.mon-export-head { display: flex; align-items: center; gap: 12px; }
+.mon-export-icon {
+  width: 38px; height: 38px; border-radius: 10px; background: var(--ok-bg); color: var(--primary);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.mon-export-icon svg { width: 18px; height: 18px; }
+.mon-export-title { font-weight: 600; font-size: 0.95rem; }
+
 /* ---- Master Jadwal Kerja: pola shift cepat & catatan UU Ketenagakerjaan ---- */
 .shift-toolbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin: 10px 0 4px; padding: 12px; background: var(--bg); border-radius: 8px; }
 .shift-toolbar-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
