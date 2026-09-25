@@ -153,13 +153,33 @@ export async function render(container, user) {
     </form>
     <p class="muted small" id="cutoff-preview" style="margin-top:10px;"></p>
     <button type="submit" form="form-cutoff" class="btn-primary" style="margin-top:14px;">Simpan</button>
+
+    <h3 style="margin-bottom:10px; margin-top:32px;">Notifikasi Push Absensi</h3>
+    <p class="muted small" style="margin-top:-6px; margin-bottom:14px;">
+      Saklar global untuk SEMUA pengingat push absensi (sebelum/sesudah jam masuk & pulang).
+      Kalau dimatikan, tidak ada notifikasi yang dikirim ke siapapun sampai dinyalakan lagi.
+      <br><br>
+      <strong>Catatan penting:</strong> saklar ini cuma mengatur pengiriman dari server —
+      bukan pengganti izin notifikasi di HP masing-masing karyawan. Setiap karyawan tetap
+      harus klik "Aktifkan Pengingat" satu kali di halaman Absensi miliknya sendiri supaya
+      browser/HP-nya mengizinkan notifikasi masuk. Ini aturan keamanan browser yang berlaku di
+      semua website — tidak ada cara bagi Super Admin untuk mengaktifkan izin itu dari sini
+      atas nama karyawan lain.
+    </p>
+    <label style="display:flex; align-items:center; gap:10px; max-width:420px;">
+      <input type="checkbox" id="push-reminders-toggle" style="width:18px; height:18px;">
+      <span id="push-reminders-label">Memuat…</span>
+    </label>
   `;
 
   document.getElementById("cutoff-start").addEventListener("input", updateCutoffPreview);
   document.getElementById("form-cutoff").addEventListener("submit", e => onSubmitCutoff(e, user));
 
+  document.getElementById("push-reminders-toggle").addEventListener("change", e => onTogglePushReminders(e, user));
+
   await loadPermissions(user);
   await loadCutoff();
+  await loadPushReminders();
 }
 
 // -----------------------------------------------------------------------
@@ -361,4 +381,40 @@ async function onSubmitCutoff(e, user) {
 
   invalidatePayrollSettingsCache();
   toast("Periode cut-off slip gaji tersimpan", "success");
+}
+
+// -----------------------------------------------------------------------
+// Saklar global notifikasi push absensi (tabel push_settings, satu baris).
+// Dicek langsung oleh Edge Function checkout-reminder tiap kali jalan --
+// lihat komentar di supabase/functions/checkout-reminder/index.ts.
+// -----------------------------------------------------------------------
+function setPushReminderLabel(enabled) {
+  document.getElementById("push-reminders-label").textContent =
+    enabled ? "Aktif — pengingat push dikirim seperti biasa" : "Nonaktif — tidak ada pengingat push yang dikirim ke siapapun";
+}
+
+async function loadPushReminders() {
+  const { data, error } = await supabase.from("push_settings").select("reminders_enabled").eq("id", 1).maybeSingle();
+  const enabled = !error && data ? data.reminders_enabled !== false : true;
+  document.getElementById("push-reminders-toggle").checked = enabled;
+  setPushReminderLabel(enabled);
+}
+
+async function onTogglePushReminders(e, user) {
+  const enabled = e.target.checked;
+  setPushReminderLabel(enabled); // update label dulu biar responsif, dikoreksi lagi kalau gagal simpan
+
+  const { error } = await supabase
+    .from("push_settings")
+    .update({ reminders_enabled: enabled, updated_by: user.id, updated_at: new Date().toISOString() })
+    .eq("id", 1);
+
+  if (error) {
+    e.target.checked = !enabled; // rollback tampilan
+    setPushReminderLabel(!enabled);
+    toast("Gagal menyimpan: " + error.message, "error");
+    return;
+  }
+
+  toast(enabled ? "Notifikasi push absensi diaktifkan untuk semua karyawan" : "Notifikasi push absensi dimatikan untuk semua karyawan", "success");
 }

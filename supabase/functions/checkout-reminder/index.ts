@@ -104,6 +104,26 @@ Deno.serve(async _req => {
     );
 
     const now = Date.now();
+
+    // Saklar global dari Pengaturan Sistem (Super Admin). Kalau dimatikan,
+    // tidak ada notifikasi jenis apapun yang dikirim ke siapapun sama
+    // sekali -- tapi ini TIDAK mencabut izin notifikasi browser yang sudah
+    // diberikan karyawan (itu tetap tersimpan di push_subscriptions, cuma
+    // tidak dipakai selama saklar ini mati). Default true kalau baris
+    // belum ada / gagal dibaca, supaya perilaku tetap seperti sebelum ada
+    // saklar ini.
+    const { data: settings } = await supabase
+      .from("push_settings")
+      .select("reminders_enabled")
+      .eq("id", 1)
+      .maybeSingle();
+    if (settings && settings.reminders_enabled === false) {
+      return new Response(
+        JSON.stringify({ skipped: true, reason: "reminders_disabled_by_admin" }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     const scheduleDayCache = new Map<string, any>();
     const officeTzCache = new Map<string, string>();
 

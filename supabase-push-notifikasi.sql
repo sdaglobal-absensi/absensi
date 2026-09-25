@@ -102,3 +102,52 @@ create policy "checkin_before_reminder_sent_own_read" on public.checkin_before_r
 
 comment on table public.checkin_before_reminder_sent is
   'Log anti-dobel untuk pengingat push "sebentar lagi jam masuk" — satu baris per karyawan per tanggal. Ditulis oleh Edge Function checkout-reminder (service role, bypass RLS).';
+
+-- ---------------------------------------------------------------------
+-- 6. TABEL: push_settings (satu baris global)
+--    Saklar utama dari halaman "Pengaturan Sistem" (Super Admin): kalau
+--    reminders_enabled = false, Edge Function checkout-reminder TIDAK
+--    mengirim notifikasi apapun ke SIAPAPUN sama sekali (skip total),
+--    walau karyawan yang bersangkutan sudah pernah klik "Aktifkan
+--    Pengingat" di device-nya.
+--
+--    PENTING (batasan browser, bukan batasan tabel ini): saklar ini HANYA
+--    mengendalikan pengiriman dari server. Setiap karyawan tetap WAJIB
+--    klik "Aktifkan Pengingat" satu kali di device masing-masing supaya
+--    browser-nya mengeluarkan izin notifikasi (Notification permission) --
+--    ini aturan keamanan browser yang berlaku untuk SEMUA website, tidak
+--    ada API yang mengizinkan pihak lain (termasuk Super Admin dari akun
+--    lain) memberi izin notifikasi atas nama orang lain di device mereka.
+--    Saklar ini tidak bisa "memaksa aktif" untuk karyawan yang belum
+--    pernah klik tombol itu sama sekali.
+-- ---------------------------------------------------------------------
+create table if not exists public.push_settings (
+  id                 integer primary key default 1,
+  reminders_enabled  boolean not null default true,
+  updated_by         uuid references public.profiles(id),
+  updated_at         timestamptz not null default now(),
+  constraint push_settings_single_row check (id = 1)
+);
+
+insert into public.push_settings (id, reminders_enabled) values (1, true) on conflict (id) do nothing;
+
+alter table public.push_settings enable row level security;
+
+-- SELECT dibuka untuk SEMUA user yang login (bukan cuma staff) -- halaman
+-- Absensi tiap karyawan perlu baca ini untuk tahu apakah kartu "Aktifkan
+-- Pengingat" boleh ditampilkan atau tidak (lihat renderPushOptIn() di
+-- employee-absensi.js). Ini bukan data sensitif, cuma satu boolean.
+-- UPDATE tetap dibatasi lewat push_settings_write di bawah.
+drop policy if exists "push_settings_rw" on public.push_settings;
+drop policy if exists "push_settings_select" on public.push_settings;
+create policy "push_settings_select" on public.push_settings
+  for select using ( auth.uid() is not null );
+
+drop policy if exists "push_settings_write" on public.push_settings;
+create policy "push_settings_write" on public.push_settings
+  for all
+  using ( public.is_super() or public.has_menu_access('pengaturan-sistem') )
+  with check ( public.is_super() or public.has_menu_access('pengaturan-sistem') );
+
+comment on table public.push_settings is
+  'Saklar global on/off pengiriman semua notifikasi push absensi, dikontrol dari halaman Pengaturan Sistem. TIDAK menggantikan izin notifikasi browser tiap karyawan -- itu tetap harus diaktifkan sendiri oleh masing-masing karyawan sekali di device-nya (batasan keamanan browser).';

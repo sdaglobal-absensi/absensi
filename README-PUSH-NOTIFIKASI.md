@@ -103,7 +103,7 @@ Ganti `<PROJECT_REF_ANDA>` dan `<SERVICE_ROLE_KEY_ANDA>` sesuai project Anda
 Upload semua file yang berubah/baru ke hosting Anda (GitHub Pages):
 `app.html`, `manifest.webmanifest`, `sw.js`, `js/push.js`,
 `js/modules/employee-absensi.js`, `js/modules/admin-absensi.js`,
-`js/modules/dashboard.js`.
+`js/modules/dashboard.js`, `js/modules/super-pengaturan.js`.
 
 **Catatan penting:** Web Push HANYA jalan di **HTTPS** (GitHub Pages sudah
 HTTPS, aman) dan browser TIDAK bisa mengirim notifikasi kalau tab/app-nya
@@ -117,6 +117,42 @@ Tidak otomatis nge-prompt (supaya tidak dianggap spam oleh browser). Di
 halaman **Absensi**, karyawan yang belum berlangganan akan melihat kartu
 kecil "🔔 Aktifkan Pengingat" — tinggal klik, browser akan minta izin
 notifikasi sekali, selesai.
+
+## 7. Saklar on/off dari Super Admin (opsional)
+
+Ada satu saklar global di halaman **Pengaturan Sistem** (menu Super Admin)
+untuk menyalakan/mematikan SEMUA notifikasi push sekaligus, tanpa perlu
+utak-atik database manual. Ini jalan lewat tabel `push_settings` (satu
+baris) yang dicek di DUA tempat:
+
+- **Server (Edge Function `checkout-reminder`):** kalau saklar mati,
+  function langsung berhenti tanpa mengirim apapun ke siapapun — jaminan
+  utama, tidak bisa dilewati.
+- **Client (halaman Absensi karyawan):** kartu "🔔 Aktifkan Pengingat"
+  hanya ditampilkan kalau saklar ini menyala. Kalau Super Admin
+  mematikannya, kartunya hilang total dari halaman karyawan — jadi
+  karyawan yang belum pernah mengaktifkan tidak akan melihat tombolnya
+  sama sekali, dan tidak ada yang perlu diklik.
+
+Jadi alurnya sekarang:
+- Saklar Super Admin **ON** → kartu "Aktifkan Pengingat" muncul di halaman
+  Absensi tiap karyawan yang belum berlangganan; masing-masing **bebas
+  memilih sendiri** mau klik aktifkan atau tidak (browser tetap akan minta
+  izin notifikasi ke device mereka saat diklik).
+- Saklar Super Admin **OFF** → kartu itu hilang untuk semua karyawan, dan
+  yang sudah pernah aktif sebelumnya pun tidak akan menerima notifikasi
+  apapun (dihentikan di server).
+
+**Batasan yang tetap berlaku** (aturan keamanan browser, bukan keterbatasan
+aplikasi ini): begitu saklar dinyalakan, Super Admin **tidak bisa**
+langsung membuat semua karyawan otomatis menerima notifikasi — karyawan
+yang belum pernah klik "Aktifkan Pengingat" tetap harus klik sendiri satu
+kali di device masing-masing, karena izin notifikasi cuma bisa diberikan
+lewat aksi klik langsung pemilik device itu, tidak bisa diberikan dari
+jarak jauh oleh siapapun (termasuk Super Admin). Yang bisa dikendalikan
+Super Admin adalah **apakah kesempatan untuk klik itu ditawarkan atau
+tidak**, dan **apakah pengiriman ke yang sudah aktif tetap jalan atau
+tidak** — dua-duanya sudah dicakup saklar ini.
 
 ## Cara kerja singkat
 

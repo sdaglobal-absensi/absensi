@@ -106,14 +106,25 @@ export async function render(container, user) {
   renderPushOptIn(user);
 }
 
-// Tawaran "aktifkan pengingat" — hanya muncul kalau browser mendukung push
-// DAN karyawan belum berlangganan di device ini. Sengaja tidak memunculkan
-// prompt izin notifikasi secara otomatis (browser akan memblokir/mengabaikan
-// permintaan izin yang tidak dipicu klik user, dan itu pengalaman yang buruk),
-// jadi karyawan yang menekan tombolnya sendiri.
+// Tawaran "aktifkan pengingat" — hanya muncul kalau browser mendukung push,
+// karyawan belum berlangganan di device ini, DAN Super Admin sedang
+// menyalakan notifikasi push absensi (tabel push_settings, diatur dari
+// halaman Pengaturan Sistem). Kalau Super Admin mematikannya, kartu ini
+// disembunyikan total (tidak ada yang bisa diklik) -- tapi karyawan yang
+// SUDAH pernah aktif sebelumnya tetap tidak menerima notifikasi apapun
+// selama saklar itu mati, karena Edge Function checkout-reminder juga
+// mengecek saklar yang sama di sisi server.
+// Sengaja tidak memunculkan prompt izin notifikasi secara otomatis (browser
+// akan memblokir/mengabaikan permintaan izin yang tidak dipicu klik user,
+// dan itu pengalaman yang buruk), jadi karyawan yang menekan tombolnya
+// sendiri.
 async function renderPushOptIn(user) {
   const el = document.getElementById("push-opt-in");
   if (!el || !pushSupported()) return;
+
+  const { data: settings } = await supabase.from("push_settings").select("reminders_enabled").eq("id", 1).maybeSingle();
+  if (settings && settings.reminders_enabled === false) return; // Super Admin mematikan notifikasi -> kartu tidak ditampilkan
+
   const status = await getPushStatus();
   if (status !== "not-subscribed") return; // sudah aktif, ditolak, atau tidak didukung
 
