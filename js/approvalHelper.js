@@ -35,7 +35,10 @@ export function rejectionReason(req, steps) {
 //   values         : { namaField: nilaiAwal } untuk mengisi form
 //   onSubmit(fd)   : async; kembalikan true kalau sukses (popup ditutup),
 //                    false kalau gagal/tidak valid (popup tetap terbuka)
-export function openRevisionModal({ title, subtitle, reason, fieldsHTML, values, onSubmit }) {
+//   onMount(form)  : opsional, dipanggil setelah form disisipkan ke DOM &
+//                    nilai awal diisi -- dipakai untuk memasang logic form
+//                    dinamis (mis. tampil/sembunyi field kategori cuti).
+export function openRevisionModal({ title, subtitle, reason, fieldsHTML, values, onSubmit, onMount }) {
   const modal = document.createElement("div");
   modal.className = "modal";
   modal.setAttribute("role", "dialog");
@@ -61,6 +64,7 @@ export function openRevisionModal({ title, subtitle, reason, fieldsHTML, values,
 
   const form = modal.querySelector("#revisi-form");
   for (const [k, v] of Object.entries(values || {})) if (form.elements[k]) form.elements[k].value = v ?? "";
+  if (onMount) onMount(form);
 
   const onKey = e => { if (e.key === "Escape") close(); };
   const close = () => { document.removeEventListener("keydown", onKey); modal.remove(); };

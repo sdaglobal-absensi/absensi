@@ -128,6 +128,7 @@ const MENUS = {
     { id: "master-jadwal", label: "Master Jadwal Kerja", icon: "clock", section: "Master Data" },
     { id: "master-libur", label: "Master Hari Libur", icon: "file", section: "Master Data" },
     { id: "master-lokasi", label: "Master Lokasi Kantor", icon: "grid", section: "Master Data" },
+    { id: "kuota-cuti", label: "Kuota Cuti Tahunan", icon: "chart", section: "Master Data" },
     { id: "pengaturan-sistem", label: "Pengaturan Sistem", icon: "gear", section: "Super Admin" },
   ],
 };

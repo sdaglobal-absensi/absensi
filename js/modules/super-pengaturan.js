@@ -53,6 +53,7 @@ const MENU_LABELS = {
   "master-jadwal": "Master Jadwal Kerja",
   "master-libur": "Master Hari Libur",
   "master-lokasi": "Master Lokasi Kantor",
+  "kuota-cuti": "Kuota Cuti Tahunan (Kuota per Karyawan & Master Cuti Khusus)",
   "pengaturan-sistem": "Pengaturan Sistem (Kelola Akses & Cut-Off Gaji)",
 };
 

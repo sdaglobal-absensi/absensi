@@ -28,7 +28,7 @@ const ICON_INBOX = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 const ICON_NO_RESULT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8.5 8.5l5 5M13.5 8.5l-5 5"/></svg>`;
 
 export function statusLabel(s) {
-  return { pending: "Menunggu", approved: "Disetujui", rejected: "Ditolak" }[s] || s;
+  return { pending: "Menunggu", approved: "Disetujui", rejected: "Ditolak", dibatalkan: "Dibatalkan" }[s] || s;
 }
 
 // Kerangka halaman: judul, tab status, kolom cari, urutan, dan wadah tabel.
