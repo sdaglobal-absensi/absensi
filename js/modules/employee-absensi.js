@@ -120,7 +120,7 @@ async function renderPushOptIn(user) {
 
   el.innerHTML = `
     <div class="card" style="margin-top:16px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-      <p class="muted small" style="margin:0;">🔔 Mau diingatkan otomatis kalau lupa check-out saat jam pulang lewat?</p>
+      <p class="muted small" style="margin:0;">🔔 Mau diingatkan otomatis kalau lupa absen masuk atau lupa check-out?</p>
       <button id="btn-aktifkan-pengingat" class="btn-secondary">Aktifkan Pengingat</button>
     </div>
   `;

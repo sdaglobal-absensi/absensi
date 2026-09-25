@@ -1,20 +1,31 @@
 // Edge Function: checkout-reminder
 // -----------------------------------------------------------------------
 // Jalan terjadwal (lihat README-PUSH-NOTIFIKASI.md untuk cara memasang
-// cron-nya). Setiap kali jalan, function ini:
-//   1. Ambil semua baris attendance yang masih terbuka (check_out null)
-//      dan belum pernah dikirimi pengingat (checkout_reminder_sent_at null).
-//   2. Untuk tiap baris, hitung jam pulang seharusnya dari Master Jadwal
-//      Kerja karyawan itu (work_schedules / work_schedule_days) — logika
-//      timezone-nya SENGAJA dibuat sama persis dengan zonedTimestamp() di
-//      js/core.js (offset tetap per lokasi, TANPA DST), supaya jam
-//      "telat check-out" yang dipakai di sini konsisten dengan jam
-//      "telat check-in" yang dilihat karyawan di aplikasi.
-//   3. Kalau sekarang sudah REMINDER_DELAY_MINUTES lewat dari jam pulang
-//      (dan belum lewat REMINDER_WINDOW_MINUTES supaya tidak mengirim
-//      pengingat basi untuk sesi yang sudah lama sekali telat), kirim push
-//      notification ke semua device karyawan itu, lalu tandai
-//      checkout_reminder_sent_at supaya tidak dikirim ulang.
+// cron-nya). Setiap kali jalan, function ini melakukan DUA pengecekan:
+//
+//   A. PENGINGAT CHECK-OUT — sesi attendance yang masih terbuka
+//      (check_out null) lewat jam pulang seharusnya.
+//   B. PENGINGAT CHECK-IN — karyawan yang jadwalnya hari ini adalah hari
+//      kerja, jam masuknya sudah lewat, tapi belum ada baris attendance
+//      sama sekali (belum check-in).
+//
+// Untuk keduanya, jam kerja diambil dari Master Jadwal Kerja karyawan
+// (work_schedules / work_schedule_days) dan dihitung dengan offset zona
+// waktu TETAP per lokasi (TANPA DST) — SENGAJA dibuat sama persis dengan
+// zonedTimestamp() di js/core.js supaya konsisten dengan jam yang dipakai
+// menentukan status telat di aplikasi.
+//
+// Anti-kirim-dobel:
+//   - Check-out: kolom attendance.checkout_reminder_sent_at
+//   - Check-in : tabel checkin_reminders_sent (belum ada baris attendance
+//     untuk ditempeli flag, jadi pakai tabel log terpisah)
+//
+// Catatan: untuk kesederhanaan, pengingat check-in memakai tanggal
+// kalender HARI INI (menurut tz karyawan) sebagai "tanggal shift" — tidak
+// mereplikasi logika penuh resolveShiftDate() di employee-absensi.js untuk
+// shift lintas tengah malam yang telat check-in. Ini cukup untuk kasus
+// mayoritas (shift reguler); shift lintas hari yang sangat telat check-in
+// tetap akan ketahuan lewat panel admin, hanya saja tidak dapat push.
 //
 // Deploy: supabase functions deploy checkout-reminder
 // Secrets yang wajib di-set (lihat README-PUSH-NOTIFIKASI.md):
@@ -25,7 +36,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 
-const REMINDER_DELAY_MINUTES = 15;   // kirim mulai 15 menit setelah jam pulang
+const REMINDER_DELAY_MINUTES = 15;   // kirim mulai 15 menit setelah jam masuk/pulang lewat
 const REMINDER_WINDOW_MINUTES = 120; // tapi jangan kirim kalau sudah > 2 jam (basi, biar admin yg tindak lanjuti)
 
 // Sama persis dengan TIMEZONE_OPTIONS di js/core.js — offset tetap
@@ -56,7 +67,13 @@ function zonedTimestampMs(dateStr: string, hh: number, mm: number, offsetHours: 
   return Date.UTC(y, m - 1, d, hh - offsetHours, mm, 0);
 }
 
-Deno.serve(async req => {
+// "Tanggal hari ini" menurut offset zona tertentu (bukan zona server Deno).
+function todayInOffset(offsetHours: number): string {
+  const shifted = new Date(Date.now() + offsetHours * 3600000);
+  return shifted.toISOString().slice(0, 10);
+}
+
+Deno.serve(async _req => {
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -69,80 +86,54 @@ Deno.serve(async req => {
       Deno.env.get("VAPID_PRIVATE_KEY")!
     );
 
-    // 1. Ambil semua sesi terbuka yang belum pernah dikirimi pengingat.
-    const { data: openRows, error: openErr } = await supabase
-      .from("attendance")
-      .select("id, user_id, date, check_in, profiles!inner(id, is_active, schedule_id, lokasi_kerja)")
-      .is("check_out", null)
-      .is("checkout_reminder_sent_at", null);
-
-    if (openErr) throw openErr;
-    if (!openRows || !openRows.length) {
-      return new Response(JSON.stringify({ checked: 0, sent: 0 }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    // Cache jadwal & timezone kantor supaya tidak query berulang untuk
-    // karyawan-karyawan yang berbagi schedule_id / lokasi_kerja yang sama.
+    const now = Date.now();
     const scheduleDayCache = new Map<string, any>();
     const officeTzCache = new Map<string, string>();
-    const now = Date.now();
-    let sent = 0;
 
-    for (const row of openRows) {
-      const profile = (row as any).profiles;
-      if (!profile?.is_active || !profile.schedule_id) continue;
-
-      const dow = dayOfWeekFromDateStr(row.date);
-      const cacheKey = `${profile.schedule_id}:${dow}`;
-      let day = scheduleDayCache.get(cacheKey);
-      if (day === undefined) {
-        const { data } = await supabase
-          .from("work_schedule_days")
-          .select("is_working_day, start_time, end_time, crosses_midnight")
-          .eq("schedule_id", profile.schedule_id)
-          .eq("day_of_week", dow)
-          .maybeSingle();
-        day = data || null;
-        scheduleDayCache.set(cacheKey, day);
-      }
-      if (!day?.is_working_day || !day.end_time) continue;
-
-      let tzName = officeTzCache.get(profile.lokasi_kerja || "");
+    async function resolveTzOffset(lokasiKerja: string | null): Promise<number> {
+      const key = lokasiKerja || "";
+      let tzName = officeTzCache.get(key);
       if (tzName === undefined) {
-        if (profile.lokasi_kerja) {
+        if (lokasiKerja) {
           const { data: office } = await supabase
             .from("office_locations")
             .select("timezone")
-            .eq("name", profile.lokasi_kerja)
+            .eq("name", lokasiKerja)
             .maybeSingle();
           tzName = office?.timezone || "Asia/Jakarta";
         } else {
           tzName = "Asia/Jakarta";
         }
-        officeTzCache.set(profile.lokasi_kerja || "", tzName);
+        officeTzCache.set(key, tzName);
       }
-      const offset = TZ_OFFSET[tzName] ?? DEFAULT_TZ_OFFSET;
+      return TZ_OFFSET[tzName] ?? DEFAULT_TZ_OFFSET;
+    }
 
-      const endDateStr = day.crosses_midnight ? addDaysToDateStr(row.date, 1) : row.date;
-      const [eh, em] = day.end_time.split(":").map(Number);
-      const shiftEndMs = zonedTimestampMs(endDateStr, eh, em, offset);
+    async function resolveScheduleDay(scheduleId: string, dow: number) {
+      const cacheKey = `${scheduleId}:${dow}`;
+      let day = scheduleDayCache.get(cacheKey);
+      if (day === undefined) {
+        const { data } = await supabase
+          .from("work_schedule_days")
+          .select("is_working_day, start_time, end_time, crosses_midnight")
+          .eq("schedule_id", scheduleId)
+          .eq("day_of_week", dow)
+          .maybeSingle();
+        day = data || null;
+        scheduleDayCache.set(cacheKey, day);
+      }
+      return day;
+    }
 
-      const minutesSinceEnd = (now - shiftEndMs) / 60000;
-      if (minutesSinceEnd < REMINDER_DELAY_MINUTES || minutesSinceEnd > REMINDER_WINDOW_MINUTES) continue;
-
-      // 2. Ambil semua device (subscription) milik karyawan ini dan kirim push.
+    // Helper dipakai oleh kedua jenis pengingat: kirim ke semua device
+    // karyawan ini, bersihkan endpoint yang sudah kedaluwarsa, kembalikan
+    // true kalau minimal satu device berhasil dikirimi.
+    async function sendToUser(userId: string, payload: string): Promise<boolean> {
       const { data: subs } = await supabase
         .from("push_subscriptions")
         .select("id, endpoint, p256dh, auth")
-        .eq("user_id", row.user_id);
-
-      if (!subs || !subs.length) continue;
-
-      const payload = JSON.stringify({
-        title: "Lupa check-out?",
-        body: `Jam pulangmu sudah lewat (${day.end_time}) tapi belum ada check-out. Yuk absen pulang.`,
-        url: "./app.html#absensi",
-      });
+        .eq("user_id", userId);
+      if (!subs || !subs.length) return false;
 
       let anySent = false;
       for (const sub of subs) {
@@ -159,14 +150,112 @@ Deno.serve(async req => {
           }
         }
       }
+      return anySent;
+    }
 
-      if (anySent) {
-        sent++;
+    // -----------------------------------------------------------------
+    // A. PENGINGAT CHECK-OUT
+    // -----------------------------------------------------------------
+    let checkoutSent = 0;
+    const { data: openRows, error: openErr } = await supabase
+      .from("attendance")
+      .select("id, user_id, date, profiles!inner(id, is_active, schedule_id, lokasi_kerja)")
+      .is("check_out", null)
+      .is("checkout_reminder_sent_at", null);
+    if (openErr) throw openErr;
+
+    for (const row of openRows || []) {
+      const profile = (row as any).profiles;
+      if (!profile?.is_active || !profile.schedule_id) continue;
+
+      const dow = dayOfWeekFromDateStr(row.date);
+      const day = await resolveScheduleDay(profile.schedule_id, dow);
+      if (!day?.is_working_day || !day.end_time) continue;
+
+      const offset = await resolveTzOffset(profile.lokasi_kerja);
+      const endDateStr = day.crosses_midnight ? addDaysToDateStr(row.date, 1) : row.date;
+      const [eh, em] = day.end_time.split(":").map(Number);
+      const shiftEndMs = zonedTimestampMs(endDateStr, eh, em, offset);
+
+      const minutesSince = (now - shiftEndMs) / 60000;
+      if (minutesSince < REMINDER_DELAY_MINUTES || minutesSince > REMINDER_WINDOW_MINUTES) continue;
+
+      const payload = JSON.stringify({
+        title: "Lupa check-out?",
+        body: `Jam pulangmu sudah lewat (${day.end_time.slice(0, 5)}) tapi belum ada check-out. Yuk absen pulang.`,
+        url: "./app.html#absensi",
+      });
+
+      if (await sendToUser(row.user_id, payload)) {
+        checkoutSent++;
         await supabase.from("attendance").update({ checkout_reminder_sent_at: new Date().toISOString() }).eq("id", row.id);
       }
     }
 
-    return new Response(JSON.stringify({ checked: openRows.length, sent }), { headers: { "Content-Type": "application/json" } });
+    // -----------------------------------------------------------------
+    // B. PENGINGAT CHECK-IN — karyawan aktif berjadwal, hari kerja, jam
+    //    masuk sudah lewat, tapi belum ada baris attendance hari ini sama
+    //    sekali. Iterasi semua karyawan aktif berjadwal (bukan cuma yang
+    //    sudah attendance), karena justru yang BELUM check-in ini yang
+    //    perlu diingatkan.
+    // -----------------------------------------------------------------
+    let checkinSent = 0;
+    const { data: profiles, error: profErr } = await supabase
+      .from("profiles")
+      .select("id, is_active, schedule_id, lokasi_kerja")
+      .eq("is_active", true)
+      .not("schedule_id", "is", null);
+    if (profErr) throw profErr;
+
+    for (const profile of profiles || []) {
+      const offset = await resolveTzOffset(profile.lokasi_kerja);
+      const todayStr = todayInOffset(offset);
+      const dow = dayOfWeekFromDateStr(todayStr);
+      const day = await resolveScheduleDay(profile.schedule_id, dow);
+      if (!day?.is_working_day || !day.start_time) continue;
+
+      const [sh, sm] = day.start_time.split(":").map(Number);
+      const shiftStartMs = zonedTimestampMs(todayStr, sh, sm, offset);
+      const minutesSince = (now - shiftStartMs) / 60000;
+      if (minutesSince < REMINDER_DELAY_MINUTES || minutesSince > REMINDER_WINDOW_MINUTES) continue;
+
+      // Sudah check-in hari ini? (baris attendance untuk tanggal ini sudah ada)
+      const { data: existing } = await supabase
+        .from("attendance")
+        .select("id")
+        .eq("user_id", profile.id)
+        .eq("date", todayStr)
+        .maybeSingle();
+      if (existing) continue;
+
+      // Sudah pernah diingatkan hari ini?
+      const { data: already } = await supabase
+        .from("checkin_reminders_sent")
+        .select("user_id")
+        .eq("user_id", profile.id)
+        .eq("date", todayStr)
+        .maybeSingle();
+      if (already) continue;
+
+      const payload = JSON.stringify({
+        title: "Belum check-in?",
+        body: `Jadwalmu hari ini mulai jam ${day.start_time.slice(0, 5)} dan belum ada check-in. Yuk segera absen masuk.`,
+        url: "./app.html#absensi",
+      });
+
+      if (await sendToUser(profile.id, payload)) {
+        checkinSent++;
+        // Insert dulu (bukan upsert) supaya kalau ada 2 invocation nyaris
+        // bersamaan, yang kedua akan gagal insert (primary key bentrok)
+        // dan otomatis tidak mengirim dobel.
+        await supabase.from("checkin_reminders_sent").insert({ user_id: profile.id, date: todayStr }).select().maybeSingle();
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ checkout_sent: checkoutSent, checkin_sent: checkinSent }),
+      { headers: { "Content-Type": "application/json" } }
+    );
   } catch (err) {
     console.error(err);
     return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { "Content-Type": "application/json" } });

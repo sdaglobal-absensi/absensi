@@ -1,4 +1,4 @@
-# Push Notifikasi "Lupa Check-out" — Panduan Deploy
+# Push Notifikasi "Lupa Absen" — Panduan Deploy
 
 Fitur ini terdiri dari 2 bagian:
 
@@ -6,8 +6,10 @@ Fitur ini terdiri dari 2 bagian:
   Check-out" di halaman *Monitor Absensi* admin + kartu ringkasan di
   Dashboard admin. Tinggal upload ulang file yang sudah diubah.
 - **Bagian B (perlu di-deploy manual, langkah di bawah ini):** notifikasi
-  push otomatis ke HP karyawan begitu jam pulangnya lewat tapi belum
-  check-out.
+  push otomatis ke HP karyawan, untuk DUA kondisi:
+  - **Belum check-in** — jam masuk sudah lewat (+15 menit) tapi belum ada absen masuk sama sekali.
+  - **Belum check-out** — jam pulang sudah lewat (+15 menit) tapi belum absen pulang.
+  Keduanya berhenti mengingatkan otomatis kalau sudah lewat 2 jam dari jamnya (dianggap kasus untuk ditindaklanjuti admin, bukan lagi pengingat).
 
 Bagian B tidak bisa saya jalankan dari sini karena butuh kredensial project
 Supabase Anda (project ref, service role key) dan akses ke Supabase
@@ -18,7 +20,14 @@ CLI/Dashboard Anda. Ikuti langkah berikut di komputer Anda:
 Buka **Supabase Dashboard → SQL Editor**, jalankan isi file
 `supabase-push-notifikasi.sql`. Ini menambahkan:
 - tabel `push_subscriptions` (menyimpan "alamat" notifikasi tiap device karyawan)
-- kolom `attendance.checkout_reminder_sent_at` (anti-kirim-dobel)
+- kolom `attendance.checkout_reminder_sent_at` (anti-kirim-dobel pengingat check-out)
+- tabel `checkin_reminders_sent` (anti-kirim-dobel pengingat check-in — perlu tabel terpisah karena belum ada baris attendance sama sekali saat pengingat ini relevan)
+
+> Kalau Anda **sudah pernah** menjalankan versi lama file ini (yang hanya
+> punya `push_subscriptions` + `checkout_reminder_sent_at`), tinggal
+> jalankan ulang file yang sekarang — semua statement-nya `if not exists`,
+> jadi aman dijalankan ulang dan cuma akan menambahkan tabel
+> `checkin_reminders_sent` yang belum ada.
 
 ## 2. VAPID keys (kunci untuk mengirim push)
 
@@ -107,10 +116,20 @@ notifikasi sekali, selesai.
 
 1. Karyawan klik "Aktifkan Pengingat" → browser generate *push subscription*
    → disimpan ke tabel `push_subscriptions`.
-2. Tiap 15 menit, Edge Function `checkout-reminder` mengecek semua sesi
-   absen yang masih terbuka, membandingkan jam sekarang dengan jam pulang
-   dari Master Jadwal Kerja karyawan itu.
-3. Kalau sudah lewat 15–120 menit dari jam pulang dan belum check-out →
-   kirim push notification ke semua device karyawan itu, lalu tandai
-   `checkout_reminder_sent_at` supaya tidak dikirim berkali-kali.
+2. Tiap 15 menit, Edge Function `checkout-reminder` melakukan dua pengecekan:
+   - **Check-out:** sesi absen yang masih terbuka, dibandingkan dengan jam
+     pulang dari Master Jadwal Kerja karyawan itu.
+   - **Check-in:** karyawan aktif berjadwal yang hari ini hari kerja, jam
+     masuknya sudah lewat, tapi belum ada baris absen sama sekali.
+3. Kalau sudah lewat 15–120 menit dari jam terkait dan kondisinya masih
+   belum diselesaikan → kirim push notification ke semua device karyawan
+   itu, lalu dicatat (kolom `checkout_reminder_sent_at` atau tabel
+   `checkin_reminders_sent`) supaya tidak dikirim berkali-kali untuk
+   kejadian yang sama.
 4. Klik notifikasinya akan membuka langsung ke halaman Absensi.
+
+> Catatan: pengingat check-in memakai tanggal kalender hari ini (menurut
+> zona kerja karyawan) sebagai acuan, bukan logika penuh "shift lintas
+> tengah malam" yang dipakai halaman Absensi. Untuk shift reguler ini sudah
+> tepat; untuk kasus sangat telat check-in di shift lintas hari, panel admin
+> "Monitor Absensi" tetap jadi jaring pengamannya.
