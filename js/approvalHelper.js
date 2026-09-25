@@ -12,7 +12,7 @@ import { isSuper } from "./core.js";
 //   kind: "leave" (leave_requests) | "overtime" (overtime_requests)
 // =======================================================================
 
-const TABLE = { leave: "leave_requests", overtime: "overtime_requests" };
+const TABLE = { leave: "leave_requests", overtime: "overtime_requests", koreksi: "attendance_correction_requests" };
 
 export function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

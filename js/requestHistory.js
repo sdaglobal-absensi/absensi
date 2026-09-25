@@ -14,7 +14,7 @@ import { statusPill } from "./approvalUI.js";
 //                supaya keputusan diambil dengan tahu sejarahnya.
 // =======================================================================
 
-const TABLE = { leave: "leave_requests", overtime: "overtime_requests" };
+const TABLE = { leave: "leave_requests", overtime: "overtime_requests", koreksi: "attendance_correction_requests" };
 
 // Pengajuan-pengajuan SEBELUMNYA dari `req` (urut lama -> baru, tanpa req),
 // dicari di daftar yang sudah dimuat (dipakai riwayat karyawan).

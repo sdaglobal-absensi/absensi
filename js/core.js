@@ -90,6 +90,7 @@ const EMPLOYEE_SELF_MENUS = [
   { id: "absensi", label: "Absensi", icon: "clock" },
   { id: "izin", label: "Pengajuan Izin", icon: "file" },
   { id: "lembur", label: "Pengajuan Lembur", icon: "file" },
+  { id: "koreksi", label: "Koreksi Absen", icon: "clock" },
   { id: "riwayat", label: "Riwayat Saya", icon: "history" },
   { id: "slip-gaji-saya", label: "Slip Gaji Saya", icon: "file" },
 ];
@@ -115,6 +116,7 @@ const MENUS = {
     { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock", section: "Approval & Monitoring" },
     { id: "izin-approval", label: "Approval Izin", icon: "check", section: "Approval & Monitoring" },
     { id: "lembur-approval", label: "Approval Lembur", icon: "check", section: "Approval & Monitoring" },
+    { id: "koreksi-approval", label: "Approval Koreksi Absen", icon: "check", section: "Approval & Monitoring" },
     { id: "profil-approval", label: "Approval Perubahan Data", icon: "check", section: "Approval & Monitoring" },
     { id: "kenaikan-upah", label: "Kenaikan Upah & Gaji", icon: "chart", section: "Payroll & Laporan" },
     { id: "slip-gaji", label: "Slip Gaji", icon: "file", section: "Payroll & Laporan" },

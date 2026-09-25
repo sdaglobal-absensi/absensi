@@ -154,8 +154,9 @@ async function loadOrgStats(user) {
   const canAbsensi = allowed.has("absensi-monitor");
   const canIzin = allowed.has("izin-approval");
   const canLembur = allowed.has("lembur-approval");
+  const canKoreksi = allowed.has("koreksi-approval");
 
-  if (!canKaryawan && !canAbsensi && !canIzin && !canLembur) return; // pure karyawan — tidak ada bagian ini
+  if (!canKaryawan && !canAbsensi && !canIzin && !canLembur && !canKoreksi) return; // pure karyawan — tidak ada bagian ini
 
   const today = todayISO();
   const cards = [];
@@ -179,6 +180,10 @@ async function loadOrgStats(user) {
     if (canLembur) {
       const lemburPending = await countPendingForMe("overtime", user);
       cards.push({ label: "Lembur Menunggu Approvalmu", value: lemburPending ?? 0, tone: lemburPending ? "warn" : "ok", target: "lembur-approval" });
+    }
+    if (canKoreksi) {
+      const koreksiPending = await countPendingForMe("koreksi", user);
+      cards.push({ label: "Koreksi Absen Menunggu Approvalmu", value: koreksiPending ?? 0, tone: koreksiPending ? "warn" : "ok", target: "koreksi-approval" });
     }
   } catch (e) {
     // RLS/permission edge-case — diam saja, jangan sampai dashboard error total.

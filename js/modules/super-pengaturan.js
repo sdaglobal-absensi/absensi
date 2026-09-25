@@ -41,6 +41,7 @@ const MENU_LABELS = {
   "absensi-monitor": "Monitor Absensi",
   "izin-approval": "Approval Izin",
   "lembur-approval": "Approval Lembur",
+  "koreksi-approval": "Approval Koreksi Absen",
   "profil-approval": "Approval Perubahan Data",
   "kenaikan-upah": "Kenaikan Upah & Gaji",
   "slip-gaji": "Slip Gaji",
@@ -66,6 +67,7 @@ const PERSONAL_MENU_LABELS = {
   "absensi": "Absensi (Check-in/Check-out Pribadi)",
   "izin": "Pengajuan Izin Pribadi",
   "lembur": "Pengajuan Lembur Pribadi",
+  "koreksi": "Pengajuan Koreksi Absen Pribadi",
   "riwayat": "Riwayat Absensi Pribadi",
   "slip-gaji-saya": "Slip Gaji Saya (Lihat & Cetak Punya Sendiri)",
 };

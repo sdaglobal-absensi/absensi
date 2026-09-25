@@ -175,8 +175,9 @@ Instalasi baru cukup menjalankan `supabase-schema.sql` (sudah termasuk).
 - **Karyawan**: check-in/check-out dengan foto + validasi lokasi GPS terhadap
   radius kantor (bisa dari menu **Absensi** maupun langsung dari kartu
   Check-in/Check-out di **Dashboard** — tombolnya hanya muncul kalau menu
-  Absensi diizinkan untuk role itu), ajukan izin/sakit/cuti/lembur, lihat riwayat & rekap kehadiran sendiri.
-- **Admin**: menyetujui/menolak izin & lembur karyawan di unitnya (dan unit di bawahnya bila
+  Absensi diizinkan untuk role itu), ajukan izin/sakit/cuti/lembur, ajukan koreksi absen kalau
+  lupa absen masuk/pulang, lihat riwayat & rekap kehadiran sendiri.
+- **Admin**: menyetujui/menolak izin, lembur & koreksi absen karyawan di unitnya (dan unit di bawahnya bila
   admin di unit itu tidak ada), plus menu pribadi. Tidak ada akses lain kecuali dinyalakan.
 - **Admin HR**: monitor absensi semua karyawan, approve/reject izin & lembur,
   lihat laporan — plus menu tambahan (Data Karyawan, Slip Gaji, dst.) kalau
@@ -203,6 +204,7 @@ js/modules/
   employee-absensi.js       Check-in/out (GPS + kamera); alurnya juga dipakai kartu absen di dashboard.js
   employee-izin.js           Form & riwayat pengajuan izin
   employee-lembur.js         Form & riwayat pengajuan lembur
+  employee-koreksi-absen.js  Form & riwayat pengajuan koreksi absen (lupa absen masuk/pulang)
   employee-riwayat.js        Riwayat & rekap absensi pribadi
   employee-profil.js         Profil Saya: edit langsung (HP/alamat domisili/foto/biodata keluarga) + ajukan perubahan data sensitif
   admin-karyawan.js          CRUD data karyawan termasuk biodata pribadi & keluarga (menu "karyawan")
@@ -210,6 +212,7 @@ js/modules/
   admin-izin.js              Approval izin bertingkat (menu "izin-approval")
   admin-profil-approval.js   Approval pengajuan perubahan data profil (menu "profil-approval")
   admin-lembur.js            Approval lembur bertingkat (menu "lembur-approval")
+  admin-koreksi-absen.js     Approval koreksi absen bertingkat; disetujui -> jam otomatis diterapkan ke data absensi (menu "koreksi-approval")
   admin-struktur-organisasi.js  Pohon unit + anggota + tingkat approval; editor untuk yang punya hak "struktur-kelola"
   admin-kenaikan-upah.js     Riwayat & input kenaikan upah/gaji (menu "kenaikan-upah")
   admin-slip-gaji.js         Hitung & cetak slip gaji, ikut periode cut-off, bisa difinalisasi/dikunci (menu "slip-gaji")
@@ -220,6 +223,7 @@ supabase-schema.sql         Semua tabel, RLS policy, trigger, storage bucket
 supabase-org-approval.sql   Migrasi struktur organisasi + approval bertingkat (sudah termasuk di supabase-schema.sql)
 supabase-revisi-pengajuan.sql  Migrasi pengajuan ulang (revisi) izin & lembur yang ditolak — WAJIB dijalankan sekali sebelum fitur "Ajukan Ulang" dipakai
 supabase-role-admin-approval.sql  Migrasi role Admin untuk database yang SUDAH berjalan (instalasi baru tidak perlu; sudah termasuk di dua file di atas)
+supabase-koreksi-absen.sql  Migrasi Pengajuan Koreksi Absen (lupa absen masuk/pulang) — WAJIB dijalankan sekali (baik project baru maupun yang sudah berjalan) sebelum menu "Koreksi Absen"/"Approval Koreksi Absen" dipakai
 ```
 
 ## Setup
@@ -247,6 +251,10 @@ cut-off = tanggal 1, alias kalender biasa).
 > dijalankan ulang — kolom `role` otomatis ditambahkan, baris lama dilabeli
 > `admin_hr`, lalu baris default baru untuk menu pribadi (Admin HR) dan untuk
 > role Karyawan ditambahkan tanpa menimpa pengaturan yang sudah ada.
+
+Lalu paste & jalankan juga `supabase-revisi-pengajuan.sql` dan `supabase-koreksi-absen.sql`
+(keduanya belum termasuk di `supabase-schema.sql`, dan diperlukan untuk fitur "Ajukan Ulang"
+dan "Koreksi Absen"). Aman dijalankan ulang.
 
 ### 3. Sambungkan aplikasi ke Supabase
 Buka **Project Settings → API**, salin **Project URL** dan **anon public key**,
@@ -387,6 +395,23 @@ penolakan di bagian atas. Karyawan memperbaiki yang salah (alasan, tanggal, atau
   (setuju/tolak per tahap + catatan). Baris pengajuan ulang di halaman approval juga punya tautan
   "Lihat riwayat" (baca-saja).
 - Database yang sudah berjalan: jalankan `supabase-revisi-pengajuan.sql` sekali di SQL Editor.
+
+## Koreksi Absen (lupa absen masuk/pulang)
+
+Karyawan yang lupa check-in atau check-out bisa mengajukan koreksi lewat menu **Koreksi Absen**
+(isi tanggal, jenis — Lupa Absen Masuk/Lupa Absen Pulang —, jam yang seharusnya, dan alasan).
+Pengajuan ini lewat alur approval bertingkat yang sama dengan Izin/Lembur (mengikuti Struktur
+Organisasi & jumlah tingkat approval di **Pengaturan Sistem**), termasuk fitur "Ajukan Ulang"
+untuk pengajuan yang ditolak.
+
+Begitu pengajuan disetujui **sampai tahap terakhir**, jam yang diajukan otomatis diterapkan ke
+tabel absensi (dibuatkan baris absensi baru kalau memang belum ada sama sekali untuk tanggal itu)
+— admin tidak perlu mengedit data absensi secara manual. Menu approval-nya adalah **Approval
+Koreksi Absen**, bisa diatur nyala/mati per role di Pengaturan Sistem sama seperti Approval Izin/Lembur.
+
+Wajib jalankan `supabase-koreksi-absen.sql` sekali di SQL Editor sebelum fitur ini dipakai
+(instalasi baru maupun yang sudah berjalan) — butuh `supabase-schema.sql` (bagian Struktur
+Organisasi/approval bertingkat) sudah pernah dijalankan lebih dulu. Aman dijalankan ulang.
 
 ## Absensi shift lintas hari (mis. Shift Malam 22:00–06:00)
 
