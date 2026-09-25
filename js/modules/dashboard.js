@@ -1,6 +1,6 @@
 import { supabase } from "../supabaseClient.js";
 import { fmtTime, fmtDate, todayISO, roleLabel, resolveMenu, ICONS, resolveUserTimezone, tzLabel } from "../core.js";
-import { loadAttendanceState, cameraModalHtml, openCamera } from "./employee-absensi.js";
+import { loadAttendanceState, cameraModalHtml, openCamera, reminderBannerHTML, goToKoreksiCheckout } from "./employee-absensi.js";
 import { countPendingForMe } from "../approvalHelper.js";
 
 // Menu personal yang sudah punya kartu ringkasannya sendiri di dashboard —
@@ -25,6 +25,8 @@ export async function render(container, user) {
         <div class="live-clock" id="dash-live-clock">--:--:--</div>
       </div>
     </div>
+
+    <div id="dash-reminder-banner"></div>
 
     <div class="status-grid" id="dash-personal-stats">
       ${skeletonCards(3)}
@@ -100,6 +102,16 @@ async function loadPersonalStats(user, tz) {
 
   const el = document.getElementById("dash-personal-stats");
   if (!el) return;
+
+  // Banner "lupa check-out" — muncul lagi setiap Dashboard dibuka (halaman
+  // yang pertama dilihat karyawan tiap login) selama belum ditindaklanjuti,
+  // supaya tidak cuma mengandalkan notifikasi push yang bisa diabaikan.
+  // Lihat reminderBannerHTML() di employee-absensi.js untuk detailnya.
+  const bannerEl = document.getElementById("dash-reminder-banner");
+  if (bannerEl) {
+    bannerEl.innerHTML = state.staleOpen ? reminderBannerHTML(state.latest) : "";
+    bannerEl.querySelector("#btn-koreksi-checkout")?.addEventListener("click", () => goToKoreksiCheckout(state.latest));
+  }
 
   const att = state.activeRow;
   // Tombol absen hanya untuk yang menu "Absensi"-nya diizinkan (di server,

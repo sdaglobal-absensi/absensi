@@ -89,7 +89,26 @@ export async function render(container, user) {
     if (await submitRequest(new FormData(form), user, null)) form.reset();
   });
 
+  applyPrefill();
   loadList(user);
+}
+
+// Kalau datang dari banner "lupa check-out" (Dashboard/Absensi), tanggal &
+// jenisnya sudah dipilihkan otomatis lewat sessionStorage — tinggal isi jam
+// & alasannya. Dihapus segera setelah dipakai supaya tidak ikut ke
+// pengajuan berikutnya kalau karyawan balik lagi ke menu ini nanti.
+function applyPrefill() {
+  const raw = sessionStorage.getItem("koreksi_prefill");
+  if (!raw) return;
+  sessionStorage.removeItem("koreksi_prefill");
+  let prefill;
+  try { prefill = JSON.parse(raw); } catch { return; }
+
+  const form = document.getElementById("form-koreksi");
+  if (!form || !prefill) return;
+  if (prefill.attendance_date) form.attendance_date.value = prefill.attendance_date;
+  if (prefill.correction_type) form.correction_type.value = prefill.correction_type;
+  form.corrected_time?.focus();
 }
 
 function startRevision(id, user) {

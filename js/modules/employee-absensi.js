@@ -55,7 +55,7 @@ export async function loadAttendanceState(user, tz) {
 
 export async function render(container, user) {
   const tz = await resolveUserTimezone(user);
-  const { latest, openShift, completedToday, activeRow, misdatedTail } = await loadAttendanceState(user, tz);
+  const { latest, openShift, staleOpen, completedToday, activeRow, misdatedTail } = await loadAttendanceState(user, tz);
 
   const scheduleInfo = await loadMySchedule(user);
 
@@ -68,6 +68,7 @@ export async function render(container, user) {
       </div>
     </div>
 
+    ${staleOpen ? reminderBannerHTML(latest) : ""}
     ${openShift ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">Sesi kerja dari ${fmtDate(activeRow.date)} masih berjalan (belum check-out).</p>` : ""}
     ${misdatedTail ? `<p class="small" style="margin-top:-14px; margin-bottom:18px; color:var(--muted);">ℹ️ Check-in ${fmtTime(latest.check_in)} – check-out ${fmtTime(latest.check_out)} tadi adalah sisa shift semalam. Kamu tetap bisa check-in untuk shift malam ini.</p>` : ""}
 
@@ -102,8 +103,47 @@ export async function render(container, user) {
   const btnOpen = document.getElementById("btn-open-camera");
   if (btnOpen) btnOpen.addEventListener("click", () => openCamera(btnOpen.dataset.mode, user, activeRow, tz));
 
+  document.getElementById("btn-koreksi-checkout")?.addEventListener("click", () => goToKoreksiCheckout(latest));
+
   startLiveClock(tz);
   renderPushOptIn(user);
+}
+
+// =====================================================================
+// PENGINGAT "LUPA CHECK-OUT" YANG TERUS MUNCUL — beda dari notifikasi push
+// (yang cuma dikirim beberapa kali lalu berhenti supaya tidak spam, lihat
+// README-PUSH-NOTIFIKASI.md), banner ini sengaja ditampilkan LAGI setiap
+// kali karyawan buka halaman Absensi atau Dashboard selama sesi lamanya
+// (staleOpen) belum diselesaikan lewat Koreksi Absen — supaya tidak
+// tergantung pada notifikasi yang gampang di-dismiss/diabaikan/lupa.
+// Lihat juga loadPersonalStats() di dashboard.js untuk banner yang sama
+// di halaman Dashboard.
+export function reminderBannerHTML(latestOpenRow) {
+  return `
+    <div class="reminder-banner">
+      <div class="reminder-banner-row">
+        <span class="reminder-banner-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+        <div class="reminder-banner-body">
+          <p class="reminder-banner-title">Kamu belum check-out dari sesi ${fmtDate(latestOpenRow.date)}</p>
+          <p class="reminder-banner-desc">Check-in tercatat jam ${fmtTime(latestOpenRow.check_in)}, tapi jam pulangnya belum tersimpan. Ajukan Koreksi Absen sekarang supaya datanya lengkap dan tidak perlu diingatkan terus.</p>
+          <div class="reminder-banner-actions">
+            <button type="button" id="btn-koreksi-checkout" class="btn-primary btn-sm">Ajukan Koreksi Absen Sekarang</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Membawa karyawan ke menu Koreksi Absen dengan tanggal & jenis "pulang"
+// sudah terisi otomatis, supaya proses menuntaskannya secepat mungkin
+// (makin sedikit langkah, makin kecil kemungkinan ditunda lagi).
+export function goToKoreksiCheckout(latestOpenRow) {
+  sessionStorage.setItem("koreksi_prefill", JSON.stringify({
+    attendance_date: latestOpenRow.date,
+    correction_type: "pulang",
+  }));
+  document.querySelector('.nav-item[data-target="koreksi"]')?.click();
 }
 
 // Tawaran "aktifkan pengingat" — hanya muncul kalau browser mendukung push,
