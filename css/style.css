@@ -257,11 +257,13 @@ button { font-family: 'Inter'; cursor: pointer; }
 .mobile-topbar .btn-notif:hover { background: rgba(255,255,255,0.12); }
 
 .btn-notif-desktop {
-  position: fixed; top: 22px; right: 40px; z-index: 46;
   color: var(--ink); background: var(--surface); border: 1px solid var(--border);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 .btn-notif-desktop:hover { border-color: var(--primary-light); }
+
+.page-topbar { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+@media (max-width: 760px) { .page-topbar { display: none; } /* sudah ada lonceng di mobile-topbar */ }
 
 .notif-badge {
   position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px;
@@ -274,7 +276,7 @@ button { font-family: 'Inter'; cursor: pointer; }
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: 0 8px 28px rgba(0,0,0,0.16); z-index: 200; overflow: hidden; display: flex; flex-direction: column;
 }
-@media (min-width: 761px) { .notif-panel { top: 64px; right: 40px; } }
+@media (min-width: 761px) { .notif-panel { top: 78px; right: 40px; } }
 
 .notif-panel-head {
   display: flex; align-items: center; justify-content: space-between; padding: 12px 14px;
