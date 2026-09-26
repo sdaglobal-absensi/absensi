@@ -247,9 +247,63 @@ button { font-family: 'Inter'; cursor: pointer; }
 
 .main { padding: 32px 40px; max-width: 1320px; min-width: 0; }
 
+/* ---------------- Lonceng notifikasi ---------------- */
+.btn-notif {
+  position: relative; background: none; border: none; color: inherit; cursor: pointer;
+  padding: 6px; display: flex; align-items: center; justify-content: center; border-radius: 7px;
+}
+.btn-notif svg { width: 22px; height: 22px; }
+.mobile-topbar .btn-notif { color: #fff; }
+.mobile-topbar .btn-notif:hover { background: rgba(255,255,255,0.12); }
+
+.btn-notif-desktop {
+  position: fixed; top: 22px; right: 40px; z-index: 46;
+  color: var(--ink); background: var(--surface); border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.btn-notif-desktop:hover { border-color: var(--primary-light); }
+
+.notif-badge {
+  position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px;
+  background: var(--danger); color: #fff; font-size: 0.62rem; font-weight: 700; line-height: 16px;
+  border-radius: 999px; text-align: center;
+}
+
+.notif-panel {
+  position: fixed; top: 56px; right: 12px; width: min(360px, 92vw); max-height: 70vh;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.16); z-index: 200; overflow: hidden; display: flex; flex-direction: column;
+}
+@media (min-width: 761px) { .notif-panel { top: 64px; right: 40px; } }
+
+.notif-panel-head {
+  display: flex; align-items: center; justify-content: space-between; padding: 12px 14px;
+  border-bottom: 1px solid var(--border); font-family: 'Sora', sans-serif; font-weight: 600; font-size: 0.9rem;
+}
+.notif-mark-all { background: none; border: none; color: var(--primary); font-size: 0.78rem; cursor: pointer; padding: 0; }
+.notif-mark-all:hover { text-decoration: underline; }
+
+.notif-panel-list { overflow-y: auto; }
+.notif-empty { padding: 18px 14px; text-align: center; }
+
+.notif-item {
+  display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left;
+  background: none; border: none; border-bottom: 1px solid var(--border); padding: 11px 14px; cursor: pointer;
+}
+.notif-item:last-child { border-bottom: none; }
+.notif-item:hover { background: var(--bg); }
+.notif-item.unread { background: var(--ok-bg); }
+.notif-item.unread:hover { background: #DCEEE3; }
+.notif-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-top: 6px; }
+.notif-item-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.notif-item-title { font-weight: 600; font-size: 0.85rem; }
+.notif-item-text { font-size: 0.8rem; color: var(--muted); }
+.notif-item-time { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+
 /* ---------------- Mobile top bar & off-canvas sidebar ---------------- */
 .mobile-topbar { display: none; }
 .sidebar-backdrop { display: none; }
+@media (max-width: 760px) { .btn-notif-desktop { display: none; } }
 
 @media (max-width: 760px) {
   .app-shell { grid-template-columns: 1fr; }
@@ -380,7 +434,7 @@ button { font-family: 'Inter'; cursor: pointer; }
   .report-print-head h1 { font-size: 1.3rem; }
   .main { padding: 0 !important; }
   .app-shell { display: block !important; }
-  .sidebar, .mobile-topbar { display: none !important; }
+  .sidebar, .mobile-topbar, .btn-notif-desktop, .notif-panel { display: none !important; }
 }
 .form-card { max-width: 520px; margin-bottom: 28px; }
 .form-card-wide { max-width: 720px; }
