@@ -1,5 +1,5 @@
 import { supabase, supabaseAdminCreate } from "../supabaseClient.js";
-import { toast, roleLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper, avatarHTML } from "../core.js";
+import { toast, roleLabel, jenisHubunganKerjaLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper, avatarHTML } from "../core.js";
 import {
   personalFieldsHtml, familySectionHtml, wireFamilyForm, fillBiodataForm,
   readBiodataForm, readChildren, loadChildren, saveChildren, fmtTanggal,
@@ -82,10 +82,18 @@ export async function render(container, user) {
           ${familySectionHtml()}
 
           <div class="form-section-label">Penempatan</div>
-          <div class="form-row two-col">
+          <div class="form-row three-col">
+            <label>Jenis Hubungan Kerja
+              <select name="jenis_hubungan_kerja" id="jenis_hubungan_kerja">
+                <option value="karyawan_tetap">Karyawan Tetap</option>
+                <option value="pkwt">PKWT</option>
+                <option value="outsourcing">Outsourcing</option>
+              </select>
+            </label>
             <label>Unit / PT <input name="unit_pt" placeholder="Contoh: PT Sinar Data Abadi"></label>
             ${searchSelectHtml({ id: "ss-lokasi", label: "Lokasi Kerja / Area", placeholder: "Cari lokasi kerja…" })}
           </div>
+          <p class="small field-hint hidden" id="outsourcing-hint">Isi <b>Unit / PT</b> dengan nama PT vendor/penyedia jasa outsourcing, bukan nama PT sendiri.</p>
           <div class="form-row two-col">
             ${searchSelectHtml({ id: "ss-departemen", label: "Departemen", placeholder: "Cari departemen…" })}
             ${searchSelectHtml({ id: "ss-bagian", label: "Bagian", placeholder: "Pilih departemen dulu…" })}
@@ -133,6 +141,7 @@ export async function render(container, user) {
     document.getElementById("join_date").addEventListener("input", refreshTenure);
     document.getElementById("resign_date").addEventListener("input", refreshTenure);
     document.querySelector('#form-karyawan input[name="is_active"]').addEventListener("change", refreshTenure);
+    document.getElementById("jenis_hubungan_kerja").addEventListener("change", refreshOutsourcingHint);
   }
 
   loadTable(canEdit, isFullSuperAdmin);
@@ -202,7 +211,7 @@ async function loadTable(canEdit, isFullSuperAdmin) {
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th></th><th>Kode</th><th>Nama</th><th>Email</th><th>Departemen</th><th>Jabatan</th><th>Level</th><th>PTKP</th><th>Role</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead>
+      <thead><tr><th></th><th>Kode</th><th>Nama</th><th>Email</th><th>Departemen</th><th>Jabatan</th><th>Level</th><th>PTKP</th><th>Hubungan Kerja</th><th>Role</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead>
       <tbody>
         ${data.map(k => `
           <tr>
@@ -214,6 +223,10 @@ async function loadTable(canEdit, isFullSuperAdmin) {
             <td>${k.position || "-"}</td>
             <td>${k.level || "-"}</td>
             <td>${k.ptkp || "-"}</td>
+            <td>
+              <span class="badge ${k.jenis_hubungan_kerja === "outsourcing" ? "badge-warn" : "badge-ok"}">${jenisHubunganKerjaLabel(k.jenis_hubungan_kerja)}</span>
+              ${k.jenis_hubungan_kerja === "outsourcing" && k.unit_pt ? `<br><span class="muted small">${k.unit_pt}</span>` : ""}
+            </td>
             <td>${roleLabel(k.role)}</td>
             <td>
               <span class="badge badge-${k.is_active ? "ok" : "danger"}">${k.is_active ? "Aktif" : "Nonaktif"}</span>
@@ -277,6 +290,7 @@ async function openModal(existing = null) {
     form.employee_code.value = existing.employee_code || "";
     form.is_active.checked = existing.is_active;
     form.unit_pt.value = existing.unit_pt || "";
+    form.jenis_hubungan_kerja.value = existing.jenis_hubungan_kerja || "karyawan_tetap";
     form.status_karyawan.value = existing.status_karyawan || "bulanan";
     form.join_date.value = existing.join_date || "";
     form.resign_date.value = existing.resign_date || "";
@@ -306,9 +320,11 @@ async function openModal(existing = null) {
   } else {
     form.id.value = "";
     form.status_karyawan.value = "bulanan";
+    form.jenis_hubungan_kerja.value = "karyawan_tetap";
   }
   fillBiodataForm(form, existing || {}, children);
   refreshTenure();
+  refreshOutsourcingHint();
   modal.classList.remove("hidden");
 }
 
@@ -329,6 +345,7 @@ async function onSubmit(e, currentUser, isFullSuperAdmin) {
     grade: fd.get("grade") || null,
     level: fd.get("level") || null,
     unit_pt: fd.get("unit_pt") || null,
+    jenis_hubungan_kerja: fd.get("jenis_hubungan_kerja") || "karyawan_tetap",
     lokasi_kerja: ssLokasi.value || null,
     status_karyawan: fd.get("status_karyawan"),
     join_date: fd.get("join_date") || null,
@@ -402,4 +419,11 @@ function refreshTenure() {
   document.getElementById("lama_bekerja").value = lamaBekerja(join, resign.value || null);
   const stillActive = document.querySelector('#form-karyawan input[name="is_active"]').checked;
   document.getElementById("resign-hint").classList.toggle("hidden", !(resign.value && stillActive));
+}
+
+// Tampilkan pengingat kalau Jenis Hubungan Kerja diset ke Outsourcing, supaya
+// admin ingat mengisi Unit/PT dengan nama PT vendor (bukan PT sendiri).
+function refreshOutsourcingHint() {
+  const isOutsourcing = document.getElementById("jenis_hubungan_kerja").value === "outsourcing";
+  document.getElementById("outsourcing-hint").classList.toggle("hidden", !isOutsourcing);
 }

@@ -229,6 +229,16 @@ export function roleLabel(role) {
   }[role] || role;
 }
 
+// Jenis hubungan kerja: pegawai PT sendiri (tetap/PKWT) vs outsourcing
+// (disediakan PT vendor pihak ketiga). Lihat supabase-jenis-hubungan-kerja.sql.
+export function jenisHubunganKerjaLabel(jenis) {
+  return {
+    karyawan_tetap: "Karyawan Tetap",
+    pkwt: "PKWT",
+    outsourcing: "Outsourcing",
+  }[jenis] || "Karyawan Tetap";
+}
+
 // =====================================================================
 // PERIODE SLIP GAJI (cut-off) — diatur lewat menu "Pengaturan Sistem",
 // disimpan di tabel payroll_settings (satu baris global untuk semua

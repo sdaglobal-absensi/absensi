@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { exportCSV, exportXLSX, dateOnlyISO } from "../core.js";
+import { exportCSV, exportXLSX, dateOnlyISO, jenisHubunganKerjaLabel } from "../core.js";
 
 const MONTH_NAMES = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
@@ -11,6 +11,12 @@ export async function render(container) {
       <div class="filter-row">
         <input type="month" id="filter-month" value="${dateOnlyISO(now).slice(0, 7)}">
         <select id="filter-dept"><option value="">Semua Departemen</option></select>
+        <select id="filter-jenis">
+          <option value="">Semua Hubungan Kerja</option>
+          <option value="karyawan_tetap">Karyawan Tetap</option>
+          <option value="pkwt">PKWT</option>
+          <option value="outsourcing">Outsourcing</option>
+        </select>
         <button id="btn-print" class="btn-secondary no-print">🖨️ Cetak</button>
         <button id="btn-export-xlsx" class="btn-secondary no-print">Export Excel</button>
         <button id="btn-export-csv" class="btn-secondary no-print">Export CSV</button>
@@ -31,6 +37,7 @@ export async function render(container) {
 
   document.getElementById("filter-month").addEventListener("change", load);
   document.getElementById("filter-dept").addEventListener("change", renderTable);
+  document.getElementById("filter-jenis").addEventListener("change", renderTable);
   document.getElementById("btn-export-csv").addEventListener("click", () => doExport("csv"));
   document.getElementById("btn-export-xlsx").addEventListener("click", () => doExport("xlsx"));
   document.getElementById("btn-print").addEventListener("click", () => window.print());
@@ -53,7 +60,7 @@ async function load() {
     `Periode: ${currentMonthLabel} — dicetak ${new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })}`;
 
   const [{ data: profiles }, { data: attendance }, { data: leaves }] = await Promise.all([
-    supabase.from("profiles").select("id, full_name, department").eq("is_active", true).order("full_name"),
+    supabase.from("profiles").select("id, full_name, department, jenis_hubungan_kerja, unit_pt").eq("is_active", true).order("full_name"),
     supabase.from("attendance").select("user_id, check_in, check_in_status").gte("date", start).lte("date", end),
     supabase.from("leave_requests").select("user_id").eq("status", "approved").lte("start_date", end).gte("end_date", start),
   ]);
@@ -74,6 +81,8 @@ async function load() {
     return {
       Nama: p.full_name,
       Departemen: p.department || "-",
+      "Hubungan Kerja": jenisHubunganKerjaLabel(p.jenis_hubungan_kerja),
+      "Unit / PT": p.unit_pt || "-",
       "Hari Hadir": hadir,
       "Hari Telat": telat,
       "Izin/Cuti/Sakit": izin,
@@ -117,22 +126,33 @@ function renderSummary(workingDays) {
   `;
 }
 
-function renderTable() {
+function filteredRows() {
   const dept = document.getElementById("filter-dept").value;
-  const rows = dept ? allRows.filter(r => r.Departemen === dept) : allRows;
+  const jenis = document.getElementById("filter-jenis").value;
+  return allRows
+    .filter(r => !dept || r.Departemen === dept)
+    .filter(r => !jenis || r["Hubungan Kerja"] === jenisHubunganKerjaLabel(jenis));
+}
+
+function renderTable() {
+  const rows = filteredRows();
   const el = document.getElementById("laporan-table");
   if (!rows.length) { el.innerHTML = `<p class="muted">Tidak ada data.</p>`; return; }
 
   el.innerHTML = `
     <table class="table">
       <thead>
-        <tr><th>Nama</th><th>Departemen</th><th>Hari Hadir</th><th>Hari Telat</th><th>Izin/Cuti/Sakit</th><th>Tingkat Kehadiran</th></tr>
+        <tr><th>Nama</th><th>Departemen</th><th>Hubungan Kerja</th><th>Hari Hadir</th><th>Hari Telat</th><th>Izin/Cuti/Sakit</th><th>Tingkat Kehadiran</th></tr>
       </thead>
       <tbody>
         ${rows.map(r => `
           <tr>
             <td>${escapeHtml(r.Nama)}</td>
             <td>${escapeHtml(r.Departemen)}</td>
+            <td>
+              <span class="badge ${r["Hubungan Kerja"] === "Outsourcing" ? "badge-warn" : "badge-ok"}">${escapeHtml(r["Hubungan Kerja"])}</span>
+              ${r["Hubungan Kerja"] === "Outsourcing" ? `<br><span class="muted small">${escapeHtml(r["Unit / PT"])}</span>` : ""}
+            </td>
             <td>${r["Hari Hadir"]}</td>
             <td>${r["Hari Telat"] > 0 ? `<span class="badge badge-warn">${r["Hari Telat"]}</span>` : "0"}</td>
             <td>${r["Izin/Cuti/Sakit"]}</td>
@@ -164,9 +184,10 @@ function countWorkingDays(year, month) {
 
 function doExport(kind) {
   const dept = document.getElementById("filter-dept").value;
-  const rows = dept ? allRows.filter(r => r.Departemen === dept) : allRows;
+  const jenis = document.getElementById("filter-jenis").value;
+  const rows = filteredRows();
   const month = document.getElementById("filter-month").value;
-  const suffix = dept ? `-${dept}` : "";
+  const suffix = (dept ? `-${dept}` : "") + (jenis ? `-${jenis}` : "");
   if (kind === "xlsx") {
     exportXLSX(`laporan-absensi-${month}${suffix}.xlsx`, rows, "Laporan");
   } else {
