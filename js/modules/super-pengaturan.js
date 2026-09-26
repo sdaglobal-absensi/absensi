@@ -339,7 +339,7 @@ function updateCutoffPreview() {
 
   const [y, m, d] = startVal.split("-").map(Number);
   if (d > 28) {
-    previewEl.innerHTML = `<span style="color:#c0392b;">Pilih tanggal 1 - 28 saja supaya aturannya tetap konsisten walau di bulan Februari.</span>`;
+    previewEl.innerHTML = `<span class="text-danger">Pilih tanggal 1 - 28 saja supaya aturannya tetap konsisten walau di bulan Februari.</span>`;
     endEl.value = "";
     return;
   }

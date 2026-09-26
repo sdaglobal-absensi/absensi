@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, roleLabel } from "../core.js";
+import { toast, roleLabel, confirmDialog } from "../core.js";
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -71,7 +71,7 @@ export async function render(container, user) {
           </div>
 
           <div class="modal-actions" style="justify-content:space-between;">
-            <button type="button" id="btn-delete-schedule" class="btn-secondary hidden" style="color:var(--danger); border-color:var(--danger);">Hapus Jadwal</button>
+            <button type="button" id="btn-delete-schedule" class="btn-outline-danger hidden">Hapus Jadwal</button>
             <div style="display:flex; gap:10px; margin-left:auto;">
               <button type="button" id="btn-cancel-modal" class="btn-secondary">Batal</button>
               <button type="submit" class="btn-primary">Simpan</button>
@@ -169,7 +169,7 @@ function renderAssignedList() {
             <strong>${emp.full_name}</strong>
             <div class="small muted">${empMetaLabel(emp)}</div>
           </div>
-          <button type="button" class="btn-link btn-remove-emp" data-id="${emp.id}" style="color:var(--danger);">Hapus</button>
+          <button type="button" class="btn-link-danger btn-remove-emp" data-id="${emp.id}">Hapus</button>
         </div>
       `).join("")
     : `<p class="muted small">Belum ada karyawan yang memakai jadwal ini.</p>`;
@@ -319,9 +319,10 @@ async function onDeleteSchedule() {
   if (!id) return;
   const affected = allEmployees.filter(e => e.schedule_id === id).length;
   const warning = affected
-    ? `Hapus jadwal ini? ${affected} karyawan yang masih memakainya akan kehilangan jadwal kerja (tidak akan ditandai telat/tepat waktu) sampai diberi jadwal baru.`
-    : "Hapus jadwal ini? Tindakan ini tidak bisa dibatalkan.";
-  if (!confirm(warning)) return;
+    ? `${affected} karyawan yang masih memakainya akan kehilangan jadwal kerja (tidak akan ditandai telat/tepat waktu) sampai diberi jadwal baru.`
+    : "Tindakan ini tidak bisa dibatalkan.";
+  const ok = await confirmDialog({ title: "Hapus jadwal ini?", message: warning, confirmLabel: "Hapus", confirmClass: "btn-danger" });
+  if (!ok) return;
 
   try {
     // Lepas dulu karyawan yang masih memakainya, baru hapus hari kerja &

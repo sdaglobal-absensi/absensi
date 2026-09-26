@@ -87,8 +87,12 @@
       document.getElementById("login-error").textContent =
         "Akun berhasil login tapi datanya belum lengkap di database (baris di tabel 'profiles' tidak ditemukan). Hubungi admin, atau jalankan ulang supabase-schema.sql lalu buat ulang akun lewat panel admin.";
     }
+    if (params.get("reason") === "inactive") {
+      document.getElementById("login-error").textContent =
+        "Akun kamu sudah dinonaktifkan. Hubungi admin untuk info lebih lanjut.";
+    }
     if (params.get("reset") === "success") {
-      document.getElementById("login-error").style.color = "var(--ok)";
+      document.getElementById("login-error").classList.add("success");
       document.getElementById("login-error").textContent = "Password berhasil diubah. Silakan masuk dengan password baru.";
     }
 
@@ -108,7 +112,7 @@
       e.preventDefault();
       const fd = new FormData(e.target);
       const errEl = document.getElementById("login-error");
-      errEl.style.color = "";
+      errEl.classList.remove("success");
       errEl.textContent = "";
       try {
         await login(fd.get("email"), fd.get("password"));

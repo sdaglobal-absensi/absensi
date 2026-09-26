@@ -118,7 +118,7 @@ function roleBadge(role) {
     super_admin_hr: `<span class="badge badge-warn">Super Admin HR</span>`,
     admin_hr: `<span class="badge badge-ok">Admin HR</span>`,
     admin_approval: `<span class="badge badge-ok">Admin</span>`,
-    karyawan: `<span class="badge">Karyawan</span>`,
+    karyawan: `<span class="badge badge-muted">Karyawan</span>`,
   })[role] || "";
 }
 

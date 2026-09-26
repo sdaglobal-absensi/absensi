@@ -46,7 +46,7 @@ export async function render(container, user) {
         <p class="muted small" style="max-width:70ch;">Upah harian untuk karyawan berstatus "Harian". Kenaikan diterapkan 2x setahun (Maret &amp; September); nominalnya diinput manual saat menerapkan, bisa disesuaikan per karyawan.</p>
         <button id="btn-apply-period-harian" class="btn-primary">Terapkan Kenaikan — ${periodHarian.label}</button>
       </div>
-      <p class="small muted" style="margin-top:-16px;">Periode berjalan saat ini: <strong>${periodHarian.rangeLabel}</strong></p>
+      <p class="small muted page-subtext">Periode berjalan saat ini: <strong>${periodHarian.rangeLabel}</strong></p>
       <div id="wage-table-harian" class="table-wrap" style="margin-top:16px;"><p class="muted">Memuat…</p></div>
     </div>
 
@@ -55,7 +55,7 @@ export async function render(container, user) {
         <p class="muted small" style="max-width:70ch;">Gaji bulanan untuk karyawan berstatus "Bulanan". Gaji pokok bersifat individual per karyawan (bukan per grade) — atur lewat "Set Gaji Awal"/"Sesuaikan". Kenaikan tahunan (mengikuti UMK) diinput nominalnya saat menekan tombol di bawah, lalu ditambahkan ke gaji lama masing-masing.</p>
         <button id="btn-apply-period-bulanan" class="btn-primary">Terapkan Kenaikan — ${periodBulanan.label}</button>
       </div>
-      <p class="small muted" style="margin-top:-16px;">Periode berjalan saat ini: <strong>${periodBulanan.rangeLabel}</strong></p>
+      <p class="small muted page-subtext">Periode berjalan saat ini: <strong>${periodBulanan.rangeLabel}</strong></p>
       <div id="wage-table-bulanan" class="table-wrap" style="margin-top:16px;"><p class="muted">Memuat…</p></div>
     </div>
 

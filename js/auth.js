@@ -39,13 +39,11 @@ export async function requireAuth(allowedRoles = null) {
   }
   if (!user.is_active) {
     await supabase.auth.signOut();
-    alert("Akun kamu sudah dinonaktifkan. Hubungi admin.");
-    window.location.href = "index.html";
+    window.location.href = "index.html?reason=inactive";
     return null;
   }
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    alert("Kamu tidak punya akses ke halaman ini.");
-    window.location.href = "app.html";
+    window.location.href = "app.html?reason=forbidden";
     return null;
   }
   return user;

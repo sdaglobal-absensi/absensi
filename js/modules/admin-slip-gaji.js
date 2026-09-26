@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exportXLSX, dayOfWeekFromDateStr, zonedMinutesOfDay, hmToMinutes, getPayrollCutoffDay, payrollPeriodRange, STAFF_ROLES } from "../core.js";
+import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exportXLSX, dayOfWeekFromDateStr, zonedMinutesOfDay, hmToMinutes, getPayrollCutoffDay, payrollPeriodRange, STAFF_ROLES, confirmDialog } from "../core.js";
 
 // =======================================================================
 // SLIP GAJI — dihitung otomatis dari data yang sudah ada di sistem:
@@ -364,7 +364,11 @@ function renderLockBanner() {
 async function onFinalize() {
   if (!roleFlags.canFinalize) { toast("Hanya Super Admin yang bisa finalisasi periode.", "error"); return; }
   if (!employees.length) { toast("Tidak ada data karyawan untuk difinalisasi", "error"); return; }
-  const ok = confirm(`Finalisasi periode ${periodLabel(period)}?\n\nSetelah ini, angka slip gaji periode ini dikunci dan tidak akan berubah otomatis lagi walau cut-off/tarif diubah di kemudian hari. Bisa dibuka kunci lagi kalau perlu dikoreksi.`);
+  const ok = await confirmDialog({
+    title: `Finalisasi periode ${periodLabel(period)}?`,
+    message: "Setelah ini, angka slip gaji periode ini dikunci dan tidak akan berubah otomatis lagi walau cut-off/tarif diubah di kemudian hari. Bisa dibuka kunci lagi kalau perlu dikoreksi.",
+    confirmLabel: "Finalisasi",
+  });
   if (!ok) return;
 
   const { data: inserted, error: errPeriod } = await supabase.from("payroll_periods").insert({
@@ -395,7 +399,12 @@ async function onFinalize() {
 
 async function onUnlock() {
   if (!roleFlags.canFinalize) { toast("Hanya Super Admin yang bisa membuka kunci periode.", "error"); return; }
-  const ok = confirm(`Buka kunci periode ${periodLabel(period)}?\n\nSlip yang sudah dibekukan akan dihapus dan periode ini kembali ke mode draft (dihitung live). Angka bisa jadi berbeda dari yang tadinya sudah dicetak, sampai difinalisasi ulang.`);
+  const ok = await confirmDialog({
+    title: `Buka kunci periode ${periodLabel(period)}?`,
+    message: "Slip yang sudah dibekukan akan dihapus dan periode ini kembali ke mode draft (dihitung live). Angka bisa jadi berbeda dari yang tadinya sudah dicetak, sampai difinalisasi ulang.",
+    confirmLabel: "Buka Kunci",
+    confirmClass: "btn-outline-danger",
+  });
   if (!ok) return;
 
   const { error } = await supabase.from("payroll_periods").delete().eq("period", period);

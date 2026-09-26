@@ -94,6 +94,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary-lig
 }
 .form-section-label:first-of-type { margin-top: 4px; padding-top: 0; border-top: none; }
 .field-hint { margin: -8px 0 16px; }
+.page-subtext { margin: -16px 0 16px; }
 
 /* ---------------- Search Select ---------------- */
 .search-select { position: relative; display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
@@ -174,12 +175,18 @@ button { font-family: 'Inter'; cursor: pointer; }
 .btn-secondary:hover { border-color: var(--primary); }
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover { background: #96311f; }
+.btn-outline-danger { background: var(--surface); color: var(--danger); border: 1px solid var(--danger); }
+.btn-outline-danger:hover { background: var(--danger-bg); }
+.btn-link-danger { background: none; border: none; color: var(--danger); font-size: 0.85rem; padding: 0; text-decoration: underline; cursor: pointer; }
+.btn-link-danger:hover { color: #8a2a1a; }
+.text-danger { color: var(--danger); }
 .btn-batalkan { color: var(--danger); margin-left: 10px; }
 .btn-block { width: 100%; }
 .btn-lg { padding: 16px 28px; font-size: 1.05rem; }
 .btn-link { background: none; border: none; color: var(--primary); font-size: 0.85rem; padding: 0; text-decoration: underline; }
 
 .error-msg { color: var(--danger); font-size: 0.85rem; margin-top: 4px; min-height: 1.2em; }
+.error-msg.success { color: var(--ok); }
 .success-msg { color: var(--ok); font-size: 0.85rem; margin-top: 4px; background: var(--ok-bg); padding: 10px 12px; border-radius: var(--radius); }
 .forgot-link { display: block; margin-top: 16px; font-size: 0.85rem; }
 

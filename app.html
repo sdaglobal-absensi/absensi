@@ -54,7 +54,7 @@
 
   <script type="module">
     import { requireAuth, logout } from "./js/auth.js";
-    import { renderSidebar, isSuper } from "./js/core.js";
+    import { renderSidebar, isSuper, toast } from "./js/core.js";
     import { initNotifications } from "./js/notifications.js";
 
     const MODULE_MAP = {
@@ -125,6 +125,11 @@
         return;
       }
       if (!currentUser) return;
+
+      if (new URLSearchParams(location.search).get("reason") === "forbidden") {
+        toast("Kamu tidak punya akses ke halaman itu.", "error");
+        history.replaceState(null, "", "app.html");
+      }
 
       const menu = await renderSidebar(currentUser, null); // activeId diisi ulang di loadTab lewat startTab
       // super_admin = All Akses, tidak difilter (null). Semua role lain

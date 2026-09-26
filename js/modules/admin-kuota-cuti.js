@@ -62,7 +62,7 @@ export async function render(container, user) {
           <button id="btn-save-all" class="btn-primary">Simpan Semua Perubahan</button>
         </div>
       </div>
-      <p class="muted small" style="margin-top:-16px;">Kolom Excel yang dibaca: <strong>Kode Karyawan</strong>, <strong>Nama</strong> (info saja), <strong>Kuota Hari</strong>. Dicocokkan lewat Kode Karyawan. Belum punya filenya? Klik <strong>Download Template Excel</strong> — sudah terisi kode &amp; nama semua karyawan aktif, tinggal isi/ubah angka Kuota Hari lalu import lagi.</p>
+      <p class="muted small page-subtext">Kolom Excel yang dibaca: <strong>Kode Karyawan</strong>, <strong>Nama</strong> (info saja), <strong>Kuota Hari</strong>. Dicocokkan lewat Kode Karyawan. Belum punya filenya? Klik <strong>Download Template Excel</strong> — sudah terisi kode &amp; nama semua karyawan aktif, tinggal isi/ubah angka Kuota Hari lalu import lagi.</p>
       <input type="text" id="search-tahunan" placeholder="Cari nama atau kode karyawan…" style="max-width:320px; margin-top:8px;">
       <div id="kuota-table" class="table-wrap" style="margin-top:16px;"><p class="muted">Memuat…</p></div>
     </div>
@@ -306,7 +306,7 @@ function renderKhusus(user) {
             <td style="white-space:nowrap;">
               <button class="btn-link btn-save-khusus" data-kode="${esc(r.kode)}">Simpan</button>
               &nbsp;|&nbsp;
-              <button class="btn-link btn-hapus-khusus" data-kode="${esc(r.kode)}" style="color:#c0392b;">Hapus</button>
+              <button class="btn-link-danger btn-hapus-khusus" data-kode="${esc(r.kode)}">Hapus</button>
             </td>
           </tr>
         `).join("")}

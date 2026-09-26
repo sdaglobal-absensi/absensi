@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtRupiah } from "../core.js";
+import { toast, fmtRupiah, confirmDialog } from "../core.js";
 
 // =======================================================================
 // MASTER DENDA TERLAMBAT & PULANG CEPAT
@@ -84,7 +84,7 @@ export async function render(container, user) {
             <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Aktif</label>
           </div>
           <div class="modal-actions">
-            <button type="button" id="btn-delete-denda" class="btn-secondary" style="display:none; color:#c0392b;">Hapus</button>
+            <button type="button" id="btn-delete-denda" class="btn-outline-danger hidden">Hapus</button>
             <button type="button" id="btn-cancel-modal" class="btn-secondary">Batal</button>
             <button type="submit" class="btn-primary">Simpan</button>
           </div>
@@ -178,7 +178,7 @@ function openModal(existing = null) {
   const form = document.getElementById("form-denda");
   form.reset();
   document.getElementById("modal-title").textContent = existing ? "Edit Tier" : "Tambah Tier";
-  document.getElementById("btn-delete-denda").style.display = existing ? "" : "none";
+  document.getElementById("btn-delete-denda").classList.toggle("hidden", !existing);
 
   if (existing) {
     form.id.value = existing.id;
@@ -235,7 +235,8 @@ async function onDelete() {
   const form = document.getElementById("form-denda");
   const id = form.id.value;
   if (!id) return;
-  if (!confirm("Hapus tier ini?")) return;
+  const ok = await confirmDialog({ title: "Hapus tier ini?", message: "Tindakan ini tidak bisa dibatalkan.", confirmLabel: "Hapus", confirmClass: "btn-danger" });
+  if (!ok) return;
   try {
     const { error } = await supabase.from("late_penalty_rules").delete().eq("id", id);
     if (error) throw error;

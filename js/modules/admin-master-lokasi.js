@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, getPosition, TIMEZONE_OPTIONS } from "../core.js";
+import { toast, getPosition, TIMEZONE_OPTIONS, confirmDialog } from "../core.js";
 
 export async function render(container, user) {
   const canEdit = true; // siapa pun yang sampai ke sini sudah lolos guard permission menu ini
@@ -46,7 +46,7 @@ export async function render(container, user) {
             <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Aktif dipakai</label>
           </div>
           <div class="modal-actions" style="justify-content:space-between;">
-            <button type="button" id="btn-delete" class="btn-secondary hidden" style="color:var(--danger); border-color:var(--danger);">Hapus</button>
+            <button type="button" id="btn-delete" class="btn-outline-danger hidden">Hapus</button>
             <div style="display:flex; gap:10px; margin-left:auto;">
               <button type="button" id="btn-cancel-modal" class="btn-secondary">Batal</button>
               <button type="submit" class="btn-primary">Simpan</button>
@@ -150,7 +150,13 @@ function closeModal() {
 async function onDelete() {
   const id = document.querySelector('#form-lokasi input[name="id"]').value;
   if (!id) return;
-  if (!confirm("Hapus lokasi ini? Karyawan yang absen dekat lokasi ini nantinya tidak akan tervalidasi terhadap titik ini lagi.")) return;
+  const ok = await confirmDialog({
+    title: "Hapus lokasi ini?",
+    message: "Karyawan yang absen dekat lokasi ini nantinya tidak akan tervalidasi terhadap titik ini lagi.",
+    confirmLabel: "Hapus",
+    confirmClass: "btn-danger"
+  });
+  if (!ok) return;
 
   try {
     const { error } = await supabase.from("office_locations").delete().eq("id", id);
