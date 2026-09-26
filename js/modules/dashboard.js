@@ -116,9 +116,10 @@ async function loadPersonalStats(user, tz) {
   const att = state.activeRow;
   // Tombol absen hanya untuk yang menu "Absensi"-nya diizinkan (di server,
   // insert absensi juga ditolak kalau menu itu mati — jadi tombolnya
-  // sekalian tidak ditampilkan). Kalau karyawan sedang izin/cuti/sakit yang
-  // disetujui untuk hari ini (state.onLeaveToday), tombol absen juga
-  // disembunyikan — lihat catatan di loadAttendanceState() untuk alasannya.
+  // sekalian tidak ditampilkan). Kalau karyawan sedang izin/cuti/sakit untuk
+  // hari ini, baik yang sudah disetujui MAUPUN yang masih menunggu
+  // (state.onLeaveToday), tombol absen juga disembunyikan — lihat catatan
+  // di loadAttendanceState() untuk alasannya.
   const canAbsen = allowedMenu.has("absensi") && !state.onLeaveToday;
   const canCheckIn = canAbsen && !state.openShift && !state.completedToday;
   const canCheckOut = canAbsen && state.openShift;
