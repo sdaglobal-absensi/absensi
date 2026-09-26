@@ -133,6 +133,28 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary-lig
 .employee-checklist input[type="checkbox"] { width: auto; flex-shrink: 0; }
 .employee-checklist .emp-meta { color: var(--muted); font-size: 0.78rem; }
 
+/* ---------------- Karyawan per jadwal: "tambah lalu pilih nama" ---------------- */
+.assigned-employee-list {
+  max-height: 240px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius);
+}
+.assigned-employee-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 0.88rem;
+}
+.assigned-employee-row:last-child { border-bottom: none; }
+.assigned-employee-list > p { padding: 12px; margin: 0; }
+.add-employee-area { margin-top: 10px; }
+#add-employee-picker { margin-top: 10px; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; }
+#add-employee-picker input[type="text"] { margin-bottom: 8px; }
+.employee-search-results { max-height: 220px; overflow-y: auto; }
+.employee-search-result {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
+  text-align: left; background: none; border: none; border-bottom: 1px solid var(--border);
+  padding: 9px 4px; font-family: inherit; font-size: 0.88rem; cursor: pointer;
+}
+.employee-search-result:last-child { border-bottom: none; }
+.employee-search-result:hover { background: var(--bg); }
+
 /* ---------------- Location search (Master Lokasi Kantor) ---------------- */
 .location-search-results {
   border: 1px solid var(--border); border-radius: var(--radius); margin-top: 8px;

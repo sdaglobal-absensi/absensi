@@ -61,12 +61,21 @@ export async function render(container, user) {
           </div>
 
           <div class="form-section-label">Karyawan yang Menggunakan Jadwal Ini</div>
-          <input type="text" id="employee-filter" placeholder="Cari nama karyawan…" style="margin-bottom:10px;">
-          <div id="employee-checklist" class="employee-checklist"><p class="muted small">Memuat daftar karyawan…</p></div>
+          <div id="assigned-employee-list" class="assigned-employee-list"><p class="muted small">Memuat…</p></div>
+          <div class="add-employee-area">
+            <button type="button" id="btn-add-employee" class="btn-secondary btn-sm">+ Tambah Karyawan</button>
+            <div id="add-employee-picker" class="hidden">
+              <input type="text" id="employee-search" placeholder="Cari nama karyawan…">
+              <div id="employee-search-results" class="employee-search-results"></div>
+            </div>
+          </div>
 
-          <div class="modal-actions">
-            <button type="button" id="btn-cancel-modal" class="btn-secondary">Batal</button>
-            <button type="submit" class="btn-primary">Simpan</button>
+          <div class="modal-actions" style="justify-content:space-between;">
+            <button type="button" id="btn-delete-schedule" class="btn-secondary hidden" style="color:var(--danger); border-color:var(--danger);">Hapus Jadwal</button>
+            <div style="display:flex; gap:10px; margin-left:auto;">
+              <button type="button" id="btn-cancel-modal" class="btn-secondary">Batal</button>
+              <button type="submit" class="btn-primary">Simpan</button>
+            </div>
           </div>
         </form>
       </div>
@@ -77,11 +86,13 @@ export async function render(container, user) {
   if (canEdit) {
     document.getElementById("btn-new").addEventListener("click", () => openModal());
     document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
+    document.getElementById("btn-delete-schedule").addEventListener("click", onDeleteSchedule);
     document.getElementById("form-schedule").addEventListener("submit", onSubmit);
     document.querySelectorAll(".day-active").forEach((cb, i) => {
       cb.addEventListener("change", () => toggleDayInputs(i, cb.checked));
     });
-    document.getElementById("employee-filter").addEventListener("input", e => filterEmployeeChecklist(e.target.value));
+    document.getElementById("btn-add-employee").addEventListener("click", toggleAddEmployeePicker);
+    document.getElementById("employee-search").addEventListener("input", e => renderEmployeeSearchResults(e.target.value));
 
     document.querySelectorAll(".btn-days").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -106,41 +117,118 @@ function toggleDayInputs(i, active) {
 }
 
 // =====================================================================
-// Checklist karyawan yang memakai jadwal ini
+// Karyawan yang memakai jadwal ini — konsep "tambah lalu pilih nama":
+// daftar yang tampil HANYA nama yang memang sudah dipasangkan ke jadwal
+// ini (bukan checklist semua karyawan seperti sebelumnya). Untuk
+// menambah, klik "+ Tambah Karyawan" lalu cari & pilih namanya dari
+// karyawan yang belum masuk daftar ini. Perubahan baru benar-benar
+// disimpan ke database saat form di-Simpan (lihat onSubmit), supaya
+// tombol Batal tetap bisa membatalkan semuanya.
 // =====================================================================
 let allEmployees = [];
+let scheduleNameById = {};
+let assignedIds = new Set();
 
-async function loadEmployeeChecklist(scheduleId) {
-  const el = document.getElementById("employee-checklist");
-  // Tampilkan SEMUA profil aktif apa pun rolenya (karyawan, admin_hr,
-  // super_admin_hr, admin_approval, super_admin) — bukan cuma role
-  // "karyawan" seperti sebelumnya, karena staff dengan role lain pun bisa
-  // ikut absen dan butuh jadwal kerja (lihat catatan di render() atas soal
-  // kenapa filter role lama ini keliru).
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, full_name, employee_code, department, schedule_id, role")
-    .eq("is_active", true)
-    .order("full_name");
+async function loadEmployeeData(scheduleId) {
+  const el = document.getElementById("assigned-employee-list");
+  const [{ data: profiles, error }, { data: schedules }] = await Promise.all([
+    // Tampilkan SEMUA profil aktif apa pun rolenya (karyawan, admin_hr,
+    // super_admin_hr, admin_approval, super_admin) — staff dengan role
+    // lain pun bisa ikut absen dan butuh jadwal kerja.
+    supabase.from("profiles").select("id, full_name, employee_code, department, schedule_id, role").eq("is_active", true).order("full_name"),
+    supabase.from("work_schedules").select("id, name"),
+  ]);
 
   if (error) { el.innerHTML = `<p class="muted small">Gagal memuat daftar karyawan.</p>`; return; }
-  allEmployees = data || [];
+  allEmployees = profiles || [];
+  scheduleNameById = Object.fromEntries((schedules || []).map(s => [s.id, s.name]));
+  // Jadwal baru (belum tersimpan) belum mungkin dipakai siapa pun —
+  // jangan ikut mencocokkan profil yang schedule_id-nya kosong (null).
+  assignedIds = new Set(scheduleId ? allEmployees.filter(e => e.schedule_id === scheduleId).map(e => e.id) : []);
 
-  if (!allEmployees.length) { el.innerHTML = `<p class="muted small">Belum ada data karyawan.</p>`; return; }
-
-  el.innerHTML = allEmployees.map(emp => `
-    <label data-name="${(emp.full_name || "").toLowerCase()}">
-      <input type="checkbox" class="emp-check" value="${emp.id}" ${emp.schedule_id === scheduleId ? "checked" : ""}>
-      <span>${emp.full_name}</span>
-      <span class="emp-meta">${[emp.employee_code, emp.department, roleLabel(emp.role)].filter(Boolean).join(" · ")}</span>
-    </label>
-  `).join("");
+  renderAssignedList();
+  renderEmployeeSearchResults("");
 }
 
-function filterEmployeeChecklist(query) {
-  const q = query.toLowerCase();
-  document.querySelectorAll("#employee-checklist label").forEach(label => {
-    label.classList.toggle("hidden", !label.dataset.name.includes(q));
+function empMetaLabel(emp) {
+  return [emp.employee_code, emp.department, roleLabel(emp.role)].filter(Boolean).join(" · ");
+}
+
+function renderAssignedList() {
+  const el = document.getElementById("assigned-employee-list");
+  if (!el) return;
+  const rows = [...assignedIds]
+    .map(id => allEmployees.find(e => e.id === id))
+    .filter(Boolean)
+    .sort((a, b) => a.full_name.localeCompare(b.full_name));
+
+  el.innerHTML = rows.length
+    ? rows.map(emp => `
+        <div class="assigned-employee-row">
+          <div>
+            <strong>${emp.full_name}</strong>
+            <div class="small muted">${empMetaLabel(emp)}</div>
+          </div>
+          <button type="button" class="btn-link btn-remove-emp" data-id="${emp.id}" style="color:var(--danger);">Hapus</button>
+        </div>
+      `).join("")
+    : `<p class="muted small">Belum ada karyawan yang memakai jadwal ini.</p>`;
+
+  el.querySelectorAll(".btn-remove-emp").forEach(btn => {
+    btn.addEventListener("click", () => {
+      assignedIds.delete(btn.dataset.id);
+      renderAssignedList();
+      renderEmployeeSearchResults(document.getElementById("employee-search")?.value || "");
+    });
+  });
+}
+
+function toggleAddEmployeePicker() {
+  const picker = document.getElementById("add-employee-picker");
+  picker.classList.toggle("hidden");
+  if (!picker.classList.contains("hidden")) {
+    const search = document.getElementById("employee-search");
+    search.value = "";
+    renderEmployeeSearchResults("");
+    search.focus();
+  }
+}
+
+function renderEmployeeSearchResults(query) {
+  const el = document.getElementById("employee-search-results");
+  if (!el) return;
+  const q = query.trim().toLowerCase();
+  const candidates = allEmployees.filter(e => !assignedIds.has(e.id));
+  const filtered = q ? candidates.filter(e => (e.full_name || "").toLowerCase().includes(q)) : candidates;
+
+  if (!filtered.length) {
+    el.innerHTML = `<p class="muted small" style="padding:8px 2px;">${candidates.length ? "Tidak ada nama yang cocok." : "Semua karyawan aktif sudah masuk daftar ini."}</p>`;
+    return;
+  }
+
+  el.innerHTML = filtered.map(emp => {
+    // Satu orang cuma bisa punya satu jadwal — kalau dia sedang dipakai
+    // jadwal lain, ingatkan admin bahwa memilihnya di sini akan
+    // memindahkannya, bukan menambah jadwal kedua.
+    const currentSchedule = emp.schedule_id ? scheduleNameById[emp.schedule_id] : null;
+    return `
+      <button type="button" class="employee-search-result" data-id="${emp.id}">
+        <span>
+          <strong>${emp.full_name}</strong>
+          <span class="small muted" style="display:block;">${empMetaLabel(emp)}</span>
+          ${currentSchedule ? `<span class="small" style="display:block; color:var(--warn);">Saat ini di ${currentSchedule} — akan dipindah ke jadwal ini</span>` : ""}
+        </span>
+        <span class="btn-link">+ Tambah</span>
+      </button>
+    `;
+  }).join("");
+
+  el.querySelectorAll(".employee-search-result").forEach(btn => {
+    btn.addEventListener("click", () => {
+      assignedIds.add(btn.dataset.id);
+      renderAssignedList();
+      document.getElementById("add-employee-picker").classList.add("hidden");
+    });
   });
 }
 
@@ -195,7 +283,8 @@ function openModal(existing = null, existingDays = []) {
   const form = document.getElementById("form-schedule");
   form.reset();
   document.getElementById("modal-title").textContent = existing ? "Edit Jadwal" : "Tambah Jadwal";
-  document.getElementById("employee-filter").value = "";
+  document.getElementById("btn-delete-schedule").classList.toggle("hidden", !existing);
+  document.getElementById("add-employee-picker").classList.add("hidden");
 
   DAY_NAMES.forEach((_, i) => toggleDayInputs(i, false));
 
@@ -217,12 +306,37 @@ function openModal(existing = null, existingDays = []) {
   } else {
     form.id.value = "";
   }
-  loadEmployeeChecklist(existing ? existing.id : null);
+  loadEmployeeData(existing ? existing.id : null);
   modal.classList.remove("hidden");
 }
 
 function closeModal() {
   document.getElementById("modal-schedule").classList.add("hidden");
+}
+
+async function onDeleteSchedule() {
+  const id = document.querySelector('#form-schedule input[name="id"]').value;
+  if (!id) return;
+  const affected = allEmployees.filter(e => e.schedule_id === id).length;
+  const warning = affected
+    ? `Hapus jadwal ini? ${affected} karyawan yang masih memakainya akan kehilangan jadwal kerja (tidak akan ditandai telat/tepat waktu) sampai diberi jadwal baru.`
+    : "Hapus jadwal ini? Tindakan ini tidak bisa dibatalkan.";
+  if (!confirm(warning)) return;
+
+  try {
+    // Lepas dulu karyawan yang masih memakainya, baru hapus hari kerja &
+    // jadwalnya sendiri — supaya tidak ada referensi yang menggantung.
+    await supabase.from("profiles").update({ schedule_id: null }).eq("schedule_id", id);
+    await supabase.from("work_schedule_days").delete().eq("schedule_id", id);
+    const { error } = await supabase.from("work_schedules").delete().eq("id", id);
+    if (error) throw error;
+
+    toast("Jadwal dihapus", "success");
+    closeModal();
+    loadList(true);
+  } catch (err) {
+    toast("Gagal menghapus: " + err.message, "error");
+  }
 }
 
 async function onSubmit(e) {
@@ -268,11 +382,11 @@ async function onSubmit(e) {
     const { error: dayError } = await supabase.from("work_schedule_days").insert(dayRows);
     if (dayError) throw dayError;
 
-    // Terapkan pilihan karyawan: yang dicentang -> dikaitkan ke jadwal ini,
-    // yang sebelumnya terkait tapi sekarang dicentang-lepas -> dilepas.
-    const checkedIds = new Set(
-      Array.from(document.querySelectorAll(".emp-check:checked")).map(cb => cb.value)
-    );
+    // Terapkan pilihan karyawan: yang ada di assignedIds -> dikaitkan ke
+    // jadwal ini, yang sebelumnya terkait tapi sekarang dihapus dari daftar
+    // -> dilepas (lihat renderAssignedList/renderEmployeeSearchResults untuk
+    // bagaimana assignedIds diisi lewat UI "+ Tambah Karyawan" / "Hapus").
+    const checkedIds = assignedIds;
     const previouslyAssignedIds = new Set(
       allEmployees.filter(emp => emp.schedule_id === scheduleId).map(emp => emp.id)
     );
