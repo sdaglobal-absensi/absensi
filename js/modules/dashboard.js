@@ -109,8 +109,8 @@ async function loadPersonalStats(user, tz) {
   // Lihat reminderBannerHTML() di employee-absensi.js untuk detailnya.
   const bannerEl = document.getElementById("dash-reminder-banner");
   if (bannerEl) {
-    bannerEl.innerHTML = state.staleOpen ? reminderBannerHTML(state.latest) : "";
-    bannerEl.querySelector("#btn-koreksi-checkout")?.addEventListener("click", () => goToKoreksiCheckout(state.latest));
+    bannerEl.innerHTML = state.staleOpen ? reminderBannerHTML(state.staleRow) : "";
+    bannerEl.querySelector("#btn-koreksi-checkout")?.addEventListener("click", () => goToKoreksiCheckout(state.staleRow));
   }
 
   const att = state.activeRow;

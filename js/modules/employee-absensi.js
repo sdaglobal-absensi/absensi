@@ -27,7 +27,6 @@ export async function loadAttendanceState(user, tz) {
 
   const today = todayISO(tz);
   let openShift = !!(latest && !latest.check_out);
-  let staleOpen = false;
 
   // Sesi terbuka HANYA dianggap "masih berjalan" (dan memblokir check-in baru)
   // kalau tanggalnya hari ini, atau kalau itu memang shift lintas hari dari
@@ -36,20 +35,37 @@ export async function loadAttendanceState(user, tz) {
   // anggap sesi lama itu tertinggal, dan izinkan check-in baru hari ini.
   if (openShift && latest.date !== today) {
     const continuation = await isOvernightContinuation(user, latest, tz);
-    if (!continuation) {
-      staleOpen = true;
-      openShift = false;
-    }
+    if (!continuation) openShift = false;
   }
 
-  // Kalau karyawan SUDAH mengajukan Koreksi Absen (pulang) untuk sesi stale
-  // ini dan pengajuannya belum ditolak, jangan tampilkan banner "belum
-  // check-out" lagi — sudah ditindaklanjuti, tinggal menunggu approval.
-  // Banner baru muncul lagi kalau pengajuan itu DITOLAK (dan belum diajukan
-  // ulang), supaya karyawan sadar harus bertindak lagi.
-  if (staleOpen) {
-    const alreadyRequested = await hasActiveCheckoutCorrection(user, latest.date);
-    if (alreadyRequested) staleOpen = false;
+  // Cari sesi lama yang lupa di-check-out — dicek terpisah dari "latest" di
+  // atas (dan mencakup SEMUA sesi terbuka, bukan cuma satu yang paling baru),
+  // supaya begitu karyawan check-in lagi hari ini (yang otomatis menjadikan
+  // baris hari ini sebagai "latest" versi query di atas), sesi lama yang
+  // belum pernah di-checkout tetap terdeteksi dan bannernya tidak hilang
+  // begitu saja padahal belum ada pengajuan koreksi.
+  const { data: openRows } = await supabase
+    .from("attendance")
+    .select("*")
+    .eq("user_id", user.id)
+    .is("check_out", null)
+    .lt("date", today)
+    .order("date", { ascending: false });
+
+  let staleOpen = false;
+  let staleRow = null;
+  for (const row of openRows || []) {
+    const continuation = await isOvernightContinuation(user, row, tz);
+    if (continuation) continue; // shift lintas hari yang masih sah berjalan, bukan "lupa"
+    // Kalau karyawan SUDAH mengajukan Koreksi Absen (pulang) untuk sesi ini
+    // dan pengajuannya belum ditolak, lewati — sudah ditindaklanjuti, tinggal
+    // menunggu approval. Kalau pengajuannya DITOLAK (dan belum diajukan
+    // ulang), tetap dianggap belum ditindaklanjuti supaya banner muncul lagi.
+    const alreadyRequested = await hasActiveCheckoutCorrection(user, row.date);
+    if (alreadyRequested) continue;
+    staleRow = row; // yang paling baru di antara sesi-sesi lama yang belum ditindaklanjuti
+    staleOpen = true;
+    break;
   }
 
   let completedToday = !!(latest && latest.check_out && latest.date === today);
@@ -60,7 +76,7 @@ export async function loadAttendanceState(user, tz) {
   }
   const activeRow = openShift || completedToday ? latest : null;
 
-  return { latest, openShift, staleOpen, completedToday, activeRow, misdatedTail };
+  return { latest, openShift, staleOpen, staleRow, completedToday, activeRow, misdatedTail };
 }
 
 // Cek apakah karyawan sudah punya pengajuan Koreksi Absen (jenis "pulang")
@@ -84,7 +100,7 @@ async function hasActiveCheckoutCorrection(user, attendanceDate) {
 
 export async function render(container, user) {
   const tz = await resolveUserTimezone(user);
-  const { latest, openShift, staleOpen, completedToday, activeRow, misdatedTail } = await loadAttendanceState(user, tz);
+  const { latest, openShift, staleOpen, staleRow, completedToday, activeRow, misdatedTail } = await loadAttendanceState(user, tz);
 
   const scheduleInfo = await loadMySchedule(user);
 
@@ -97,7 +113,7 @@ export async function render(container, user) {
       </div>
     </div>
 
-    ${staleOpen ? reminderBannerHTML(latest) : ""}
+    ${staleOpen ? reminderBannerHTML(staleRow) : ""}
     ${openShift ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">Sesi kerja dari ${fmtDate(activeRow.date)} masih berjalan (belum check-out).</p>` : ""}
     ${misdatedTail ? `<p class="small" style="margin-top:-14px; margin-bottom:18px; color:var(--muted);">ℹ️ Check-in ${fmtTime(latest.check_in)} – check-out ${fmtTime(latest.check_out)} tadi adalah sisa shift semalam. Kamu tetap bisa check-in untuk shift malam ini.</p>` : ""}
 
@@ -132,7 +148,7 @@ export async function render(container, user) {
   const btnOpen = document.getElementById("btn-open-camera");
   if (btnOpen) btnOpen.addEventListener("click", () => openCamera(btnOpen.dataset.mode, user, activeRow, tz));
 
-  document.getElementById("btn-koreksi-checkout")?.addEventListener("click", () => goToKoreksiCheckout(latest));
+  document.getElementById("btn-koreksi-checkout")?.addEventListener("click", () => goToKoreksiCheckout(staleRow));
 
   startLiveClock(tz);
   renderPushOptIn(user);
