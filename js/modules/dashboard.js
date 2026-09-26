@@ -1,6 +1,6 @@
 import { supabase } from "../supabaseClient.js";
 import { fmtTime, fmtDate, todayISO, roleLabel, resolveMenu, ICONS, resolveUserTimezone, tzLabel } from "../core.js";
-import { loadAttendanceState, cameraModalHtml, openCamera, reminderBannerHTML, goToKoreksiCheckout } from "./employee-absensi.js";
+import { loadAttendanceState, cameraModalHtml, openCamera, reminderBannerHTML, goToKoreksiCheckout, onLeaveLabel } from "./employee-absensi.js";
 import { countPendingForMe } from "../approvalHelper.js";
 
 // Menu personal yang sudah punya kartu ringkasannya sendiri di dashboard —
@@ -116,25 +116,29 @@ async function loadPersonalStats(user, tz) {
   const att = state.activeRow;
   // Tombol absen hanya untuk yang menu "Absensi"-nya diizinkan (di server,
   // insert absensi juga ditolak kalau menu itu mati — jadi tombolnya
-  // sekalian tidak ditampilkan).
-  const canAbsen = allowedMenu.has("absensi");
+  // sekalian tidak ditampilkan). Kalau karyawan sedang izin/cuti/sakit yang
+  // disetujui untuk hari ini (state.onLeaveToday), tombol absen juga
+  // disembunyikan — lihat catatan di loadAttendanceState() untuk alasannya.
+  const canAbsen = allowedMenu.has("absensi") && !state.onLeaveToday;
   const canCheckIn = canAbsen && !state.openShift && !state.completedToday;
   const canCheckOut = canAbsen && state.openShift;
+  const leaveLabel = state.onLeaveToday ? await onLeaveLabel(state.onLeaveToday) : null;
   // Sesi yang dimulai bukan hari ini (shift lintas hari) diberi keterangan tanggalnya.
   const otherDay = att && att.date !== today ? `<span class="muted small">Sesi ${fmtDate(att.date)}</span>` : "";
 
   el.innerHTML = `
     <div class="status-card ${att?.check_in ? "done" : ""}">
       <span class="status-label">Check-in Hari Ini</span>
-      <span class="status-value">${att?.check_in ? fmtTime(att.check_in) : "Belum absen"}</span>
+      <span class="status-value">${att?.check_in ? fmtTime(att.check_in) : leaveLabel ? leaveLabel : "Belum absen"}</span>
       ${att?.check_in_status ? `<span class="badge badge-${att.check_in_status === "telat" ? "warn" : "ok"}">${att.check_in_status === "telat" ? "Telat" : "Tepat waktu"}</span>` : ""}
       ${otherDay}
       ${state.misdatedTail ? `<span class="small muted">ℹ️ ${fmtTime(state.latest.check_in)}–${fmtTime(state.latest.check_out)} tadi = sisa shift semalam.</span>` : ""}
+      ${leaveLabel ? `<span class="muted small">🗓️ ${fmtDate(state.onLeaveToday.start_date)} – ${fmtDate(state.onLeaveToday.end_date)}</span>` : ""}
       ${canCheckIn ? `<button type="button" class="btn-primary btn-card-action" data-mode="in">Check-in Sekarang</button>` : ""}
     </div>
     <div class="status-card ${att?.check_out ? "done" : ""}">
       <span class="status-label">Check-out Hari Ini</span>
-      <span class="status-value">${att?.check_out ? fmtTime(att.check_out) : "Belum absen"}</span>
+      <span class="status-value">${att?.check_out ? fmtTime(att.check_out) : leaveLabel ? leaveLabel : "Belum absen"}</span>
       ${canCheckOut ? `<button type="button" class="btn-primary btn-card-action" data-mode="out">Check-out Sekarang</button>` : ""}
     </div>
     <div class="status-card">

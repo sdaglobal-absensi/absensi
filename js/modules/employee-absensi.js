@@ -1,6 +1,7 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, reverseGeocode, fmtTime, fmtDate, todayISO, dateOnlyISO, zonedDayOfWeek, zonedMinutesOfDay, zonedTimestamp, hmToMinutes, resolveUserTimezone, tzLabel } from "../core.js";
 import { pushSupported, getPushStatus, subscribeToPush } from "../push.js";
+import { fetchSpecialLeaveRules, leaveTypeLabel } from "../leaveRules.js";
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -76,7 +77,36 @@ export async function loadAttendanceState(user, tz) {
   }
   const activeRow = openShift || completedToday ? latest : null;
 
-  return { latest, openShift, staleOpen, staleRow, completedToday, activeRow, misdatedTail };
+  // Kalau karyawan sedang izin/cuti/sakit yang SUDAH DISETUJUI untuk hari
+  // ini (semua jenis izin), dia tidak perlu absen — konsisten dengan panel
+  // "Belum Absen" di Monitor Absensi (admin-absensi.js) yang juga membaca
+  // leave_requests supaya tidak menganggap karyawan izin sebagai "bolos".
+  // Cuma dicek kalau memang belum ada sesi aktif/selesai hari ini — kalau
+  // karyawan ternyata tetap check-in (misal rencana berubah), data absennya
+  // yang diutamakan, bukan status izinnya.
+  let onLeaveToday = null;
+  if (!activeRow) {
+    const { data: leave } = await supabase
+      .from("leave_requests")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("status", "approved")
+      .lte("start_date", today)
+      .gte("end_date", today)
+      .order("start_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    onLeaveToday = leave || null;
+  }
+
+  return { latest, openShift, staleOpen, staleRow, completedToday, activeRow, misdatedTail, onLeaveToday };
+}
+
+// Label singkat "Sedang Izin/Cuti/Sakit" untuk baris leave_requests, dipakai
+// bareng oleh halaman Absensi dan kartu Dashboard supaya labelnya konsisten.
+export async function onLeaveLabel(leaveRow) {
+  const rules = await fetchSpecialLeaveRules();
+  return leaveTypeLabel(leaveRow, rules);
 }
 
 // Cek apakah karyawan sudah punya pengajuan Koreksi Absen (jenis "pulang")
@@ -100,9 +130,10 @@ async function hasActiveCheckoutCorrection(user, attendanceDate) {
 
 export async function render(container, user) {
   const tz = await resolveUserTimezone(user);
-  const { latest, openShift, staleOpen, staleRow, completedToday, activeRow, misdatedTail } = await loadAttendanceState(user, tz);
+  const { latest, openShift, staleOpen, staleRow, completedToday, activeRow, misdatedTail, onLeaveToday } = await loadAttendanceState(user, tz);
 
   const scheduleInfo = await loadMySchedule(user);
+  const leaveLabel = onLeaveToday ? await onLeaveLabel(onLeaveToday) : null;
 
   container.innerHTML = `
     <div class="page-header">
@@ -116,23 +147,26 @@ export async function render(container, user) {
     ${staleOpen ? reminderBannerHTML(staleRow) : ""}
     ${openShift ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">Sesi kerja dari ${fmtDate(activeRow.date)} masih berjalan (belum check-out).</p>` : ""}
     ${misdatedTail ? `<p class="small" style="margin-top:-14px; margin-bottom:18px; color:var(--muted);">ℹ️ Check-in ${fmtTime(latest.check_in)} – check-out ${fmtTime(latest.check_out)} tadi adalah sisa shift semalam. Kamu tetap bisa check-in untuk shift malam ini.</p>` : ""}
+    ${leaveLabel ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">🗓️ Kamu sedang <strong>${leaveLabel}</strong> (${fmtDate(onLeaveToday.start_date)} – ${fmtDate(onLeaveToday.end_date)}), jadi tidak perlu absen.</p>` : ""}
 
     ${scheduleCardHtml(scheduleInfo, tz)}
 
     <div class="status-grid">
       <div class="status-card ${activeRow?.check_in ? "done" : ""}">
         <span class="status-label">Check-in</span>
-        <span class="status-value">${activeRow?.check_in ? fmtTime(activeRow.check_in) : "Belum absen"}</span>
+        <span class="status-value">${activeRow?.check_in ? fmtTime(activeRow.check_in) : leaveLabel ? leaveLabel : "Belum absen"}</span>
         ${activeRow?.check_in_status ? `<span class="badge badge-${activeRow.check_in_status === "telat" ? "warn" : "ok"}">${activeRow.check_in_status === "telat" ? "Telat" : "Tepat waktu"}</span>` : ""}
       </div>
       <div class="status-card ${activeRow?.check_out ? "done" : ""}">
         <span class="status-label">Check-out</span>
-        <span class="status-value">${activeRow?.check_out ? fmtTime(activeRow.check_out) : "Belum absen"}</span>
+        <span class="status-value">${activeRow?.check_out ? fmtTime(activeRow.check_out) : leaveLabel ? leaveLabel : "Belum absen"}</span>
       </div>
     </div>
 
     <div class="action-area">
-      ${!openShift && !completedToday
+      ${leaveLabel
+        ? `<p class="muted">Kamu tercatat ${leaveLabel} hari ini, jadi tombol absen tidak ditampilkan. Kalau ini keliru, hubungi HR/Admin.</p>`
+        : !openShift && !completedToday
         ? `<button id="btn-open-camera" class="btn-primary btn-lg" data-mode="in">Check-in Sekarang</button>`
         : openShift
         ? `<button id="btn-open-camera" class="btn-primary btn-lg" data-mode="out">Check-out Sekarang</button>`
