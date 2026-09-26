@@ -216,6 +216,7 @@ js/modules/
   admin-struktur-organisasi.js  Pohon unit + anggota + tingkat approval; editor untuk yang punya hak "struktur-kelola"
   admin-kenaikan-upah.js     Riwayat & input kenaikan upah/gaji (menu "kenaikan-upah")
   admin-slip-gaji.js         Hitung & cetak slip gaji, ikut periode cut-off, bisa difinalisasi/dikunci (menu "slip-gaji")
+  admin-invoice-outsourcing.js  Cocokkan tagihan PT vendor outsourcing dengan Total Pendapatan Slip Gaji yang sudah final (menu "invoice-outsourcing")
   admin-laporan.js           Laporan bulanan + export (menu "laporan")
   admin-master-*.js          Master data (level, tunjangan, denda, departemen, jadwal, libur, lokasi)
   super-pengaturan.js        Kelola akses menu Admin HR + atur cut-off slip gaji (khusus Super Admin/Super Admin HR)
@@ -224,6 +225,8 @@ supabase-org-approval.sql   Migrasi struktur organisasi + approval bertingkat (s
 supabase-revisi-pengajuan.sql  Migrasi pengajuan ulang (revisi) izin & lembur yang ditolak — WAJIB dijalankan sekali sebelum fitur "Ajukan Ulang" dipakai
 supabase-role-admin-approval.sql  Migrasi role Admin untuk database yang SUDAH berjalan (instalasi baru tidak perlu; sudah termasuk di dua file di atas)
 supabase-koreksi-absen.sql  Migrasi Pengajuan Koreksi Absen (lupa absen masuk/pulang) — WAJIB dijalankan sekali (baik project baru maupun yang sudah berjalan) sebelum menu "Koreksi Absen"/"Approval Koreksi Absen" dipakai
+supabase-jenis-hubungan-kerja.sql  Migrasi kolom Jenis Hubungan Kerja (Karyawan Tetap/PKWT/Outsourcing) di Data Karyawan — WAJIB dijalankan sekali
+supabase-invoice-outsourcing.sql  Migrasi tabel Invoice Outsourcing — WAJIB dijalankan sekali sebelum menu "Invoice Outsourcing" dipakai (butuh supabase-jenis-hubungan-kerja.sql lebih dulu)
 ```
 
 ## Setup
@@ -255,6 +258,11 @@ cut-off = tanggal 1, alias kalender biasa).
 Lalu paste & jalankan juga `supabase-revisi-pengajuan.sql` dan `supabase-koreksi-absen.sql`
 (keduanya belum termasuk di `supabase-schema.sql`, dan diperlukan untuk fitur "Ajukan Ulang"
 dan "Koreksi Absen"). Aman dijalankan ulang.
+
+Kalau perusahaan kamu punya karyawan outsourcing (selain karyawan tetap/PKWT PT sendiri),
+jalankan juga `supabase-jenis-hubungan-kerja.sql` lalu `supabase-invoice-outsourcing.sql`
+(urutannya penting — yang kedua butuh kolom dari yang pertama). Lihat bagian **Jenis
+Hubungan Kerja & Invoice Outsourcing** di bawah untuk detailnya.
 
 ### 3. Sambungkan aplikasi ke Supabase
 Buka **Project Settings → API**, salin **Project URL** dan **anon public key**,
@@ -450,3 +458,39 @@ Waktu menambah/edit jadwal di **Master Jadwal Kerja**, sekarang ada:
   kalau melebihi batas (maks 8 jam/hari untuk 5 hari kerja, atau 7 jam/hari untuk 6 hari kerja, dengan
   total maks 40 jam/minggu). Ini hanya pengingat di form (bukan validasi keras dan bukan nasihat hukum),
   karena sektor operasional 24 jam (RS, hotel, ritel, pabrik) kadang punya aturan shift sendiri.
+
+## Jenis Hubungan Kerja & Invoice Outsourcing
+
+Selain karyawan tetap/PKWT milik PT sendiri, aplikasi ini mendukung karyawan yang
+disediakan oleh **PT vendor outsourcing** pihak ketiga.
+
+- Setiap karyawan di **Data Karyawan** sekarang punya field **Jenis Hubungan Kerja**
+  (Karyawan Tetap / PKWT / Outsourcing), terpisah dari **Status Karyawan** (Bulanan/Harian —
+  itu soal pola gaji, bukan soal status kepegawaian) dan dari **Unit / PT** (nama badan
+  hukum: untuk karyawan tetap/PKWT isi PT sendiri, untuk outsourcing isi nama PT vendor).
+- **Absensi, Izin, Lembur, Koreksi Absen, Struktur Organisasi & approval bertingkat**
+  berlaku sama persis untuk semua jenis hubungan kerja — outsourcing tetap ikut alur yang
+  sama karena tetap bekerja di unit/lokasi yang sama.
+- **Slip Gaji & Kenaikan Upah** juga dihitung dengan cara yang sama untuk semua jenis
+  hubungan kerja.
+- **Laporan** bisa difilter per Jenis Hubungan Kerja (selain per Departemen), untuk
+  memisahkan rekap kehadiran karyawan outsourcing dari karyawan sendiri.
+- **Invoice Outsourcing** (menu baru): mencocokkan tagihan PT vendor dengan **Total
+  Pendapatan** di Slip Gaji karyawan outsourcing untuk periode yang sama. Alurnya:
+  1. Finalisasi dulu periode yang mau dicocokkan di menu **Slip Gaji** (klik
+     **🔒 Finalisasi Periode Ini**) — Invoice Outsourcing sengaja hanya memakai angka
+     yang sudah dikunci, supaya tidak dicocokkan ke angka yang masih bisa berubah.
+  2. Buka menu **Invoice Outsourcing**, pilih periode yang sama. Karyawan outsourcing
+     dikelompokkan per vendor (nilai **Unit / PT**-nya), masing-masing menampilkan Total
+     Pendapatan (acuan internal) berdampingan dengan input **Nominal Tagihan Vendor**,
+     **No. Invoice**, dan **Catatan**.
+  3. Selisih (Tagihan Vendor − Total Pendapatan) dihitung otomatis per karyawan dan per
+     vendor (badge hijau "Cocok" kalau pas, kuning kalau beda), lalu bisa diexport ke Excel
+     untuk lampiran/dokumentasi.
+
+Wajib jalankan `supabase-jenis-hubungan-kerja.sql` lalu `supabase-invoice-outsourcing.sql`
+sekali di SQL Editor sebelum fitur ini dipakai (instalasi baru maupun yang sudah berjalan).
+Aman dijalankan ulang. Data karyawan yang sudah ada otomatis dianggap "Karyawan Tetap" —
+admin tinggal ubah satu-satu ke "Outsourcing"/"PKWT" lewat Data Karyawan untuk yang memang
+berstatus begitu. Akses menu **Invoice Outsourcing** diatur lewat **Pengaturan Sistem**
+sama seperti menu lain (default: menyala untuk Super Admin HR, mati untuk Admin HR/Admin/Karyawan).

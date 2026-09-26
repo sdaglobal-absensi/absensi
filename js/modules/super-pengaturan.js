@@ -45,6 +45,7 @@ const MENU_LABELS = {
   "profil-approval": "Approval Perubahan Data",
   "kenaikan-upah": "Kenaikan Upah & Gaji",
   "slip-gaji": "Slip Gaji",
+  "invoice-outsourcing": "Invoice Outsourcing (Cocokan Tagihan Vendor Outsourcing)",
   "laporan": "Laporan",
   "master-level": "Master Level",
   "master-tunjangan": "Master Tunjangan",
@@ -61,6 +62,7 @@ const MENU_LABELS = {
 // sebelum menyalakan menu itu.
 const MENU_HINTS = {
   "profil-approval": "Menyetujui akan menimpa data di Data Karyawan, jadi menu Data Karyawan perlu ikut diizinkan untuk role yang sama.",
+  "invoice-outsourcing": "Acuan angkanya diambil dari Slip Gaji yang sudah difinalisasi, jadi menu Slip Gaji sebaiknya ikut diizinkan untuk role yang sama.",
 };
 
 // Menu pribadi (absensi/izin/lembur/riwayat sendiri).

@@ -120,6 +120,7 @@ const MENUS = {
     { id: "profil-approval", label: "Approval Perubahan Data", icon: "check", section: "Approval & Monitoring" },
     { id: "kenaikan-upah", label: "Kenaikan Upah & Gaji", icon: "chart", section: "Payroll & Laporan" },
     { id: "slip-gaji", label: "Slip Gaji", icon: "file", section: "Payroll & Laporan" },
+    { id: "invoice-outsourcing", label: "Invoice Outsourcing", icon: "file", section: "Payroll & Laporan" },
     { id: "laporan", label: "Laporan", icon: "chart", section: "Payroll & Laporan" },
     { id: "master-level", label: "Master Level", icon: "layers", section: "Master Data" },
     { id: "master-tunjangan", label: "Master Tunjangan", icon: "chart", section: "Master Data" },
