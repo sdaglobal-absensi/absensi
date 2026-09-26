@@ -16,8 +16,16 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
     </button>
     <span class="brand"><img src="assets/kerjora-icon.png" alt="KERJORA" class="brand-logo">KERJORA</span>
-    <span style="width:24px"></span>
+    <button id="btn-notif-mobile" class="btn-notif" aria-label="Notifikasi">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9z"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+      <span id="notif-badge-mobile" class="notif-badge hidden"></span>
+    </button>
   </div>
+  <button id="btn-notif-desktop" class="btn-notif btn-notif-desktop" aria-label="Notifikasi">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9z"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+    <span id="notif-badge-desktop" class="notif-badge hidden"></span>
+  </button>
+  <div id="notif-panel" class="notif-panel hidden"></div>
   <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
   <div class="app-shell">
     <aside class="sidebar" id="sidebar">
@@ -45,6 +53,7 @@
   <script type="module">
     import { requireAuth, logout } from "./js/auth.js";
     import { renderSidebar, isSuper } from "./js/core.js";
+    import { initNotifications } from "./js/notifications.js";
 
     const MODULE_MAP = {
       "dashboard": () => import("./js/modules/dashboard.js"),
@@ -146,6 +155,11 @@
         }
       });
       document.getElementById("btn-logout").addEventListener("click", logout);
+
+      window.addEventListener("kerjora:navigate", e => {
+        if (e.detail?.tab) loadTab(e.detail.tab);
+      });
+      initNotifications(currentUser);
 
       loadTab(startTab);
     })();
