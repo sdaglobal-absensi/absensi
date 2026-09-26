@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast } from "../core.js";
+import { toast, roleLabel } from "../core.js";
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -112,11 +112,15 @@ let allEmployees = [];
 
 async function loadEmployeeChecklist(scheduleId) {
   const el = document.getElementById("employee-checklist");
+  // Tampilkan SEMUA profil aktif apa pun rolenya (karyawan, admin_hr,
+  // super_admin_hr, admin_approval, super_admin) — bukan cuma role
+  // "karyawan" seperti sebelumnya, karena staff dengan role lain pun bisa
+  // ikut absen dan butuh jadwal kerja (lihat catatan di render() atas soal
+  // kenapa filter role lama ini keliru).
   const { data, error } = await supabase
     .from("profiles")
     .select("id, full_name, employee_code, department, schedule_id, role")
     .eq("is_active", true)
-    .eq("role", "karyawan")
     .order("full_name");
 
   if (error) { el.innerHTML = `<p class="muted small">Gagal memuat daftar karyawan.</p>`; return; }
@@ -128,7 +132,7 @@ async function loadEmployeeChecklist(scheduleId) {
     <label data-name="${(emp.full_name || "").toLowerCase()}">
       <input type="checkbox" class="emp-check" value="${emp.id}" ${emp.schedule_id === scheduleId ? "checked" : ""}>
       <span>${emp.full_name}</span>
-      <span class="emp-meta">${[emp.employee_code, emp.department].filter(Boolean).join(" · ")}</span>
+      <span class="emp-meta">${[emp.employee_code, emp.department, roleLabel(emp.role)].filter(Boolean).join(" · ")}</span>
     </label>
   `).join("");
 }
@@ -147,7 +151,7 @@ async function loadList(canEdit) {
   if (!schedules.length) { el.innerHTML = `<p class="muted">Belum ada jadwal kerja.</p>`; return; }
 
   const { data: days } = await supabase.from("work_schedule_days").select("*");
-  const { data: employees } = await supabase.from("profiles").select("id, schedule_id").eq("is_active", true).eq("role", "karyawan");
+  const { data: employees } = await supabase.from("profiles").select("id, schedule_id").eq("is_active", true);
 
   el.innerHTML = schedules.map(s => {
     const myDays = (days || []).filter(d => d.schedule_id === s.id).sort((a, b) => a.day_of_week - b.day_of_week);
