@@ -77,26 +77,29 @@ export async function loadAttendanceState(user, tz) {
   }
   const activeRow = openShift || completedToday ? latest : null;
 
-  // Kalau karyawan sedang izin/cuti/sakit yang SUDAH DISETUJUI untuk hari
-  // ini (semua jenis izin), dia tidak perlu absen — konsisten dengan panel
-  // "Belum Absen" di Monitor Absensi (admin-absensi.js) yang juga membaca
-  // leave_requests supaya tidak menganggap karyawan izin sebagai "bolos".
+  // Kalau karyawan sedang izin/cuti/sakit (SUDAH DISETUJUI ATAU MASIH
+  // MENUNGGU) untuk hari ini, dia tidak perlu absen — konsisten dengan panel
+  // "Belum Absen" di Monitor Absensi (admin-absensi.js) yang juga menganggap
+  // pengajuan pending sebagai keterangan, bukan "bolos". Kalau nanti
+  // pengajuannya DITOLAK, baris ini otomatis tidak ke-select lagi (lihat
+  // filter status di bawah) sehingga tombol check-in muncul kembali dengan
+  // sendirinya, tanpa logic tambahan.
   // Cuma dicek kalau memang belum ada sesi aktif/selesai hari ini — kalau
   // karyawan ternyata tetap check-in (misal rencana berubah), data absennya
   // yang diutamakan, bukan status izinnya.
   let onLeaveToday = null;
   if (!activeRow) {
-    const { data: leave } = await supabase
+    const { data: leaves } = await supabase
       .from("leave_requests")
       .select("*")
       .eq("user_id", user.id)
-      .eq("status", "approved")
+      .in("status", ["pending", "approved"])
       .lte("start_date", today)
       .gte("end_date", today)
-      .order("start_date", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    onLeaveToday = leave || null;
+      .order("start_date", { ascending: false });
+    // Approved menang atas pending kalau (jarang terjadi) ada dua pengajuan
+    // yang sama-sama mencakup tanggal ini — sama seperti Monitor Absensi.
+    onLeaveToday = (leaves || []).find(l => l.status === "approved") || (leaves || [])[0] || null;
   }
 
   return { latest, openShift, staleOpen, staleRow, completedToday, activeRow, misdatedTail, onLeaveToday };
@@ -106,7 +109,8 @@ export async function loadAttendanceState(user, tz) {
 // bareng oleh halaman Absensi dan kartu Dashboard supaya labelnya konsisten.
 export async function onLeaveLabel(leaveRow) {
   const rules = await fetchSpecialLeaveRules();
-  return leaveTypeLabel(leaveRow, rules);
+  const label = leaveTypeLabel(leaveRow, rules);
+  return leaveRow?.status === "pending" ? `${label} (menunggu persetujuan)` : label;
 }
 
 // Cek apakah karyawan sudah punya pengajuan Koreksi Absen (jenis "pulang")
@@ -147,7 +151,7 @@ export async function render(container, user) {
     ${staleOpen ? reminderBannerHTML(staleRow) : ""}
     ${openShift ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">Sesi kerja dari ${fmtDate(activeRow.date)} masih berjalan (belum check-out).</p>` : ""}
     ${misdatedTail ? `<p class="small" style="margin-top:-14px; margin-bottom:18px; color:var(--muted);">ℹ️ Check-in ${fmtTime(latest.check_in)} – check-out ${fmtTime(latest.check_out)} tadi adalah sisa shift semalam. Kamu tetap bisa check-in untuk shift malam ini.</p>` : ""}
-    ${leaveLabel ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">🗓️ Kamu sedang <strong>${leaveLabel}</strong> (${fmtDate(onLeaveToday.start_date)} – ${fmtDate(onLeaveToday.end_date)}), jadi tidak perlu absen.</p>` : ""}
+    ${leaveLabel ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">🗓️ Kamu sedang <strong>${leaveLabel}</strong> (${fmtDate(onLeaveToday.start_date)} – ${fmtDate(onLeaveToday.end_date)})${onLeaveToday.status === "pending" ? "" : ", jadi tidak perlu absen"}.</p>` : ""}
 
     ${scheduleCardHtml(scheduleInfo, tz)}
 
@@ -165,7 +169,9 @@ export async function render(container, user) {
 
     <div class="action-area">
       ${leaveLabel
-        ? `<p class="muted">Kamu tercatat ${leaveLabel} hari ini, jadi tombol absen tidak ditampilkan. Kalau ini keliru, hubungi HR/Admin.</p>`
+        ? onLeaveToday?.status === "pending"
+          ? `<p class="muted">Pengajuanmu <strong>${leaveLabel}</strong> untuk hari ini masih menunggu persetujuan, jadi tombol absen untuk sementara tidak ditampilkan. Kalau pengajuan ini ditolak, tombol check-in akan muncul kembali di sini.</p>`
+          : `<p class="muted">Kamu tercatat ${leaveLabel} hari ini, jadi tombol absen tidak ditampilkan. Kalau ini keliru, hubungi HR/Admin.</p>`
         : !openShift && !completedToday
         ? `<button id="btn-open-camera" class="btn-primary btn-lg" data-mode="in">Check-in Sekarang</button>`
         : openShift
