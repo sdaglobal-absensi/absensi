@@ -244,26 +244,29 @@ async function loadList(canEdit) {
   el.innerHTML = schedules.map(s => {
     const myDays = (days || []).filter(d => d.schedule_id === s.id).sort((a, b) => a.day_of_week - b.day_of_week);
     const empCount = (employees || []).filter(e => e.schedule_id === s.id).length;
-    const ringkasan = myDays.filter(d => d.is_working_day).map(d => {
-      const jam = `${(d.start_time || "").slice(0, 5)}–${(d.end_time || "").slice(0, 5)}${d.crosses_midnight ? " (+1 hari)" : ""}`;
-      return `${DAY_NAMES[d.day_of_week].slice(0, 3)}: ${jam}`;
-    }).join(" · ") || "Belum ada hari kerja diatur";
+    const hariKerja = myDays.filter(d => d.is_working_day);
+    const ringkasan = hariKerja.length
+      ? hariKerja.map(d => {
+          const jam = `${(d.start_time || "").slice(0, 5)}–${(d.end_time || "").slice(0, 5)}${d.crosses_midnight ? " (+1 hari)" : ""}`;
+          return `<span class="jd-day"><b>${DAY_NAMES[d.day_of_week].slice(0, 3)}</b>${jam}</span>`;
+        }).join("")
+      : `<span class="muted small">Belum ada hari kerja diatur</span>`;
 
     return `
-      <div class="card" style="margin-bottom:14px;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-          <div>
-            <div style="display:flex; align-items:center; gap:10px;">
-              <strong>${s.name}</strong>
-              <span class="badge badge-${s.is_active ? "ok" : "danger"}">${s.is_active ? "Aktif" : "Nonaktif"}</span>
-              <span class="small muted">${empCount} karyawan</span>
-            </div>
-            <p class="small muted" style="margin:6px 0 0;">${ringkasan}</p>
-            <p class="small muted" style="margin:4px 0 0;">Toleransi telat: ${s.late_tolerance_minutes} menit</p>
+      <section class="pg-card jd-card">
+        <div class="jd-head">
+          <div class="jd-title">
+            <strong>${s.name}</strong>
+            <span class="badge badge-${s.is_active ? "ok" : "danger"}">${s.is_active ? "Aktif" : "Nonaktif"}</span>
           </div>
-          ${canEdit ? `<button class="btn-link btn-edit" data-id="${s.id}">Edit</button>` : ""}
+          <div class="jd-meta">
+            <span>${empCount} karyawan</span>
+            <span>Toleransi telat ${s.late_tolerance_minutes} menit</span>
+          </div>
+          ${canEdit ? `<button class="btn-secondary btn-edit jd-edit" data-id="${s.id}">Edit</button>` : ""}
         </div>
-      </div>
+        <div class="jd-days">${ringkasan}</div>
+      </section>
     `;
   }).join("");
 

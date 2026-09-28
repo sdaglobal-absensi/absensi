@@ -47,9 +47,9 @@ export async function render(container, user) {
     </div>
 
     <div id="panel-tahunan">
-      <div class="page-header">
+      <div class="pg-panel-head pg-panel-head-center">
         <div class="form-row" style="margin:0;">
-          <label>Tahun
+          <label style="margin:0;">Tahun
             <select id="tahun-select">
               ${years.map(y => `<option value="${y}" ${y === selectedYear ? "selected" : ""}>${y}</option>`).join("")}
             </select>
@@ -62,18 +62,24 @@ export async function render(container, user) {
           <button id="btn-save-all" class="btn-primary">Simpan Semua Perubahan</button>
         </div>
       </div>
-      <p class="muted small page-subtext">Kolom Excel yang dibaca: <strong>Kode Karyawan</strong>, <strong>Nama</strong> (info saja), <strong>Kuota Hari</strong>. Dicocokkan lewat Kode Karyawan. Belum punya filenya? Klik <strong>Download Template Excel</strong> — sudah terisi kode &amp; nama semua karyawan aktif, tinggal isi/ubah angka Kuota Hari lalu import lagi.</p>
-      <input type="text" id="search-tahunan" placeholder="Cari nama atau kode karyawan…" style="max-width:320px; margin-top:8px;">
-      <div id="kuota-table" class="table-wrap" style="margin-top:16px;"><p class="muted">Memuat…</p></div>
+      <p class="pg-panel-desc" style="margin-bottom:14px;">Kolom Excel yang dibaca: <strong>Kode Karyawan</strong>, <strong>Nama</strong> (info saja), <strong>Kuota Hari</strong>. Dicocokkan lewat Kode Karyawan. Belum punya filenya? Klik <strong>Download Template Excel</strong> — sudah terisi kode &amp; nama semua karyawan aktif, tinggal isi/ubah angka Kuota Hari lalu import lagi.</p>
+      <div class="ap-search kc-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="search" id="search-tahunan" placeholder="Cari nama atau kode karyawan…" autocomplete="off">
+      </div>
+      <div id="kuota-table" class="table-wrap" style="margin-top:14px;"><p class="muted">Memuat…</p></div>
     </div>
 
     <div id="panel-khusus" class="hidden">
-      <div class="page-header" style="margin:0 0 4px;">
-        <p class="muted small" style="max-width:70ch; margin:0;">Jumlah hari di sini otomatis dipakai saat karyawan memilih jenis Cuti Khusus di Pengajuan Izin — tanggal selesai ikut terhitung ulang otomatis kalau angkanya diubah. Tambah jenis baru atau hapus yang sudah tidak dipakai lewat tombol di bawah.</p>
+      <div class="pg-panel-head">
+        <p class="pg-panel-desc" style="margin:0;">Jumlah hari di sini otomatis dipakai saat karyawan memilih jenis Cuti Khusus di Pengajuan Izin — tanggal selesai ikut terhitung ulang otomatis kalau angkanya diubah. Tambah jenis baru atau hapus yang sudah tidak dipakai lewat tombol di bawah.</p>
         <button id="btn-tambah-khusus" class="btn-primary">+ Tambah Jenis Cuti Khusus</button>
       </div>
-      <input type="text" id="search-khusus" placeholder="Cari jenis cuti khusus…" style="max-width:320px; margin:12px 0 0;">
-      <div id="khusus-table" class="table-wrap" style="margin-top:16px;"><p class="muted">Memuat…</p></div>
+      <div class="ap-search kc-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="search" id="search-khusus" placeholder="Cari jenis cuti khusus…" autocomplete="off">
+      </div>
+      <div id="khusus-table" class="table-wrap" style="margin-top:14px;"><p class="muted">Memuat…</p></div>
     </div>
 
     <div id="modal-khusus" class="modal hidden">

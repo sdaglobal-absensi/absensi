@@ -40,11 +40,15 @@ export async function render(container, user) {
       ${canEdit ? `<button id="btn-new-type" class="btn-primary">+ Jenis Tunjangan</button>` : ""}
     </div>
 
-    <h3 style="margin-bottom:10px;">Jenis Tunjangan</h3>
-    <div id="type-table" class="table-wrap" style="margin-bottom:32px;"><p class="muted">Memuat…</p></div>
+    <div class="pg-section-head" style="margin-top:8px;">
+      <h2>Jenis Tunjangan</h2>
+    </div>
+    <div id="type-table" class="table-wrap"><p class="muted">Memuat…</p></div>
 
-    <h3 style="margin-bottom:4px;">Atur Nominal per Karyawan</h3>
-    <p class="muted small" style="margin-top:0; margin-bottom:14px;">Satu tabel untuk semua jenis tunjangan sekaligus — kalau ada jenis tunjangan baru ditambahkan di atas, kolomnya otomatis muncul di sini juga.</p>
+    <div class="pg-section-head">
+      <h2>Atur Nominal per Karyawan</h2>
+      <p>Satu tabel untuk semua jenis tunjangan sekaligus — kalau ada jenis tunjangan baru ditambahkan di atas, kolomnya otomatis muncul di sini juga.</p>
+    </div>
     <div id="employee-table" class="table-wrap"></div>
 
     ${canEdit ? `
@@ -190,7 +194,7 @@ function renderEmployeeTable() {
   if (!employees.length) { el.innerHTML = `<p class="muted">Belum ada karyawan aktif.</p>`; return; }
 
   el.innerHTML = `
-    <table class="table">
+    <table class="table tbl-fit ${canEdit ? "tbl-sticky-end" : ""}">
       <thead>
         <tr>
           <th>Nama</th>

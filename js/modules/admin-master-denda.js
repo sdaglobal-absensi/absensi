@@ -39,10 +39,20 @@ export async function render(container, user) {
     <div class="page-header">
       <div>
         <h1>Master Denda Terlambat &amp; Pulang Cepat</h1>
-        <p class="muted">Tabel bertingkat untuk potongan telat &amp; pulang cepat di Slip Gaji, dihitung dari jam masuk/pulang sesuai <strong>jadwal kerja masing-masing karyawan</strong> (bukan jam dinding tetap), jadi tetap benar untuk shift apa pun (pagi, sore, malam). Karyawan tanpa jadwal pakai acuan default 08:00–17:00. Tier bertipe "% dari denda level" mengalikan persentase dengan kolom "Denda Terlambat &amp; Pulang Cepat" di Master Level masing-masing karyawan; tier bertipe "Nominal tetap" selalu memotong sejumlah itu berapa pun denda levelnya.</p>
+        <p class="muted">Tabel bertingkat untuk potongan telat &amp; pulang cepat di Slip Gaji, dihitung dari jam masuk/pulang sesuai <strong>jadwal kerja masing-masing karyawan</strong>.</p>
       </div>
       ${canEdit ? `<button id="btn-new" class="btn-primary">+ Tambah Tier</button>` : ""}
     </div>
+
+    <aside class="pg-note" style="margin-bottom:22px;">
+      <h3>Cara kerja</h3>
+      <ul>
+        <li>Dihitung dari jadwal kerja tiap karyawan (bukan jam dinding tetap), jadi tetap benar untuk shift pagi, sore, maupun malam.</li>
+        <li>Karyawan tanpa jadwal memakai acuan default 08:00–17:00.</li>
+        <li>Tier <strong>"% dari denda level"</strong> mengalikan persentase dengan kolom "Denda Terlambat &amp; Pulang Cepat" di Master Level milik karyawan tersebut.</li>
+        <li>Tier <strong>"Nominal tetap"</strong> selalu memotong sejumlah itu, berapa pun denda levelnya.</li>
+      </ul>
+    </aside>
 
     <div id="denda-groups"></div>
 
@@ -138,10 +148,13 @@ function fmtDurasi(menit) {
 function renderGroup(g, canEdit) {
   const rows = rules.filter(r => r.day_type === g.day_type && r.jenis === g.jenis);
   return `
-    <div class="table-wrap" style="margin-bottom:20px;">
-      <h4 style="margin-bottom:2px;">${g.title}</h4>
-      <p class="small muted" style="margin-top:0; margin-bottom:10px;">${g.hint}</p>
-      ${!rows.length ? `<p class="muted">Belum ada tier untuk kelompok ini.</p>` : `
+    <section class="pg-card" style="margin-bottom:20px;">
+      <div class="pg-card-head">
+        <h2>${g.title}</h2>
+        <p class="pg-card-hint">${g.hint}</p>
+      </div>
+      ${!rows.length ? `<p class="muted" style="padding:18px 24px; margin:0;">Belum ada tier untuk kelompok ini.</p>` : `
+      <div class="ap-scroll">
       <table class="table">
         <thead><tr><th>${g.jenis === "telat" ? "Telat" : "Pulang Cepat"}</th><th>Potongan</th><th>Label</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead>
         <tbody>
@@ -155,8 +168,9 @@ function renderGroup(g, canEdit) {
             </tr>
           `).join("")}
         </tbody>
-      </table>`}
-    </div>
+      </table>
+      </div>`}
+    </section>
   `;
 }
 

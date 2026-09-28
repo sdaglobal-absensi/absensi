@@ -102,28 +102,20 @@ export async function render(container, user) {
       </div>
     </div>
 
-    <h3 style="margin-bottom:10px;">Kelola Akses Menu</h3>
-    <p class="muted small" style="margin-top:-6px; margin-bottom:14px;">
-      Nyalakan/matikan menu apa saja untuk role <strong>Super Admin HR</strong>,
-      <strong>Admin HR</strong>, <strong>Admin</strong>, dan <strong>Karyawan</strong> — keempat toggle di setiap baris
-      independen satu sama lain, jadi mematikan sebuah menu untuk satu role tidak memengaruhi role
-      lainnya. Ketiganya diperlakukan sama persis, termasuk Super Admin HR — tidak ada lagi akses
-      otomatis, semua diatur manual lewat tabel ini. Super Admin sendiri tidak ada di tabel ini:
-      akses Super Admin selalu penuh dan tidak bisa dibatasi lewat toggle apapun. Menu yang
-      dimatikan otomatis hilang dari sidebar, dan aksesnya tetap ditolak di sisi server walau
-      dicoba lewat cara lain.
-      <br><br>
-      <strong>Admin</strong> adalah role admin yang aksesnya diatur penuh di sini: default-nya hanya
-      menu pribadi + <em>Approval Izin</em> &amp; <em>Approval Lembur</em> yang menyala, menu lain
-      tinggal dinyalakan sesuai kebutuhan. Role ini tidak dianggap staff HR, jadi tidak otomatis
-      bisa membaca data karyawan lain atau mengatur role orang.
-      <br><br>
-      <strong>Catatan soal baris "Pengaturan Sistem":</strong> menu ini adalah halaman yang sedang
-      kamu buka sekarang. Menyalakannya untuk sebuah role berarti role itu ikut bisa membuka
-      halaman ini — termasuk mengubah tabel Kelola Akses (punya role lain, maupun punya dirinya
-      sendiri) dan Periode Cut-Off Slip Gaji. Nyalakan hanya kalau memang mau didelegasikan
-      sebagai admin cadangan (biasanya cukup untuk Super Admin HR saja).
-    </p>
+    <div class="pg-section-head" style="margin-top:8px;">
+      <h2>Kelola Akses Menu</h2>
+      <p>Nyalakan atau matikan menu untuk role <strong>Super Admin HR</strong>, <strong>Admin HR</strong>, <strong>Admin</strong>, dan <strong>Karyawan</strong>. Toggle tiap role independen satu sama lain.</p>
+    </div>
+
+    <details class="pg-details">
+      <summary>Baca penjelasan lengkap akses menu</summary>
+      <div class="pg-details-body">
+        <p>Mematikan sebuah menu untuk satu role tidak memengaruhi role lainnya. Semua role diperlakukan sama persis, termasuk Super Admin HR — tidak ada akses otomatis, semua diatur manual lewat tabel ini. Super Admin sendiri tidak ada di tabel ini: akses Super Admin selalu penuh dan tidak bisa dibatasi lewat toggle apapun. Menu yang dimatikan otomatis hilang dari sidebar, dan aksesnya tetap ditolak di sisi server walau dicoba lewat cara lain.</p>
+        <p><strong>Admin</strong> adalah role admin yang aksesnya diatur penuh di sini: default-nya hanya menu pribadi + <em>Approval Izin</em> &amp; <em>Approval Lembur</em> yang menyala, menu lain tinggal dinyalakan sesuai kebutuhan. Role ini tidak dianggap staff HR, jadi tidak otomatis bisa membaca data karyawan lain atau mengatur role orang.</p>
+        <p><strong>Catatan soal baris "Pengaturan Sistem":</strong> menu ini adalah halaman yang sedang kamu buka sekarang. Menyalakannya untuk sebuah role berarti role itu ikut bisa membuka halaman ini — termasuk mengubah tabel Kelola Akses (punya role lain, maupun punya dirinya sendiri) dan Periode Cut-Off Slip Gaji. Nyalakan hanya kalau memang mau didelegasikan sebagai admin cadangan (biasanya cukup untuk Super Admin HR saja).</p>
+      </div>
+    </details>
+
     <div class="ap-toolbar perm-toolbar">
       <div class="ap-tools">
         <div class="ap-search">
@@ -138,42 +130,42 @@ export async function render(container, user) {
       </div>
       <span class="ap-meta" id="perm-meta"></span>
     </div>
-    <div id="perm-list" class="table-wrap" style="margin-bottom:32px;"><p class="muted">Memuat…</p></div>
+    <div id="perm-list" class="table-wrap"><p class="muted">Memuat…</p></div>
 
-    <h3 style="margin-bottom:10px;">Periode Cut-Off Slip Gaji</h3>
-    <p class="muted small" style="margin-top:-6px; margin-bottom:14px;">
-      Berlaku global untuk semua karyawan, berulang tiap bulan. Pilih <strong>tanggal mulai</strong>
-      periode yang sedang berjalan (lengkap tanggal/bulan/tahun biar jelas) — tanggal selesai
-      terisi otomatis, dan aturan ini otomatis berlaku sama untuk bulan-bulan berikutnya juga.
-      Khusus tanggal 1 - 28 (supaya konsisten walau di bulan Februari).
-    </p>
-    <form id="form-cutoff" class="form-row two-col" style="align-items:end; max-width:420px;">
-      <label>Tanggal Mulai (periode berjalan)
-        <input type="date" id="cutoff-start" required>
-      </label>
-      <label>Tanggal Selesai <span class="muted small">(otomatis)</span>
-        <input type="date" id="cutoff-end" disabled>
-      </label>
-    </form>
-    <p class="muted small" id="cutoff-preview" style="margin-top:10px;"></p>
-    <button type="submit" form="form-cutoff" class="btn-primary" style="margin-top:14px;">Simpan</button>
+    <div class="pg-section-head">
+      <h2>Periode Cut-Off Slip Gaji</h2>
+      <p>Berlaku global untuk semua karyawan, berulang tiap bulan. Pilih <strong>tanggal mulai</strong> periode yang sedang berjalan — tanggal selesai terisi otomatis, dan aturan ini otomatis berlaku sama untuk bulan-bulan berikutnya. Khusus tanggal 1–28 (supaya konsisten walau di bulan Februari).</p>
+    </div>
+    <section class="pg-card">
+      <div class="pg-card-body">
+        <form id="form-cutoff" class="form-row two-col" style="align-items:end; max-width:520px; margin-bottom:0;">
+          <label>Tanggal Mulai (periode berjalan)
+            <input type="date" id="cutoff-start" required>
+          </label>
+          <label>Tanggal Selesai <span class="muted small">(otomatis)</span>
+            <input type="date" id="cutoff-end" disabled>
+          </label>
+        </form>
+        <p class="muted small" id="cutoff-preview" style="margin:12px 0 0;"></p>
+        <button type="submit" form="form-cutoff" class="btn-primary" style="margin-top:16px;">Simpan</button>
+      </div>
+    </section>
 
-    <h3 style="margin-bottom:10px; margin-top:32px;">Notifikasi Push Absensi</h3>
-    <p class="muted small" style="margin-top:-6px; margin-bottom:14px;">
-      Saklar global untuk SEMUA pengingat push absensi (sebelum/sesudah jam masuk & pulang).
-      Kalau dimatikan, tidak ada notifikasi yang dikirim ke siapapun sampai dinyalakan lagi.
-      <br><br>
-      <strong>Catatan penting:</strong> saklar ini cuma mengatur pengiriman dari server —
-      bukan pengganti izin notifikasi di HP masing-masing karyawan. Setiap karyawan tetap
-      harus klik "Aktifkan Pengingat" satu kali di halaman Absensi miliknya sendiri supaya
-      browser/HP-nya mengizinkan notifikasi masuk. Ini aturan keamanan browser yang berlaku di
-      semua website — tidak ada cara bagi Super Admin untuk mengaktifkan izin itu dari sini
-      atas nama karyawan lain.
-    </p>
-    <label style="display:flex; align-items:center; gap:10px; max-width:420px;">
-      <input type="checkbox" id="push-reminders-toggle" style="width:18px; height:18px;">
-      <span id="push-reminders-label">Memuat…</span>
-    </label>
+    <div class="pg-section-head">
+      <h2>Notifikasi Push Absensi</h2>
+      <p>Saklar global untuk semua pengingat push absensi (sebelum/sesudah jam masuk &amp; pulang). Kalau dimatikan, tidak ada notifikasi yang dikirim ke siapapun sampai dinyalakan lagi.</p>
+    </div>
+    <section class="pg-card">
+      <div class="pg-card-body">
+        <label class="pg-switch-row">
+          <input type="checkbox" id="push-reminders-toggle">
+          <span id="push-reminders-label">Memuat…</span>
+        </label>
+        <div class="pg-callout">
+          <strong>Catatan penting:</strong> saklar ini cuma mengatur pengiriman dari server, bukan pengganti izin notifikasi di HP masing-masing karyawan. Setiap karyawan tetap harus klik "Aktifkan Pengingat" satu kali di halaman Absensi miliknya sendiri supaya browser/HP-nya mengizinkan notifikasi masuk. Ini aturan keamanan browser yang berlaku di semua website — tidak ada cara bagi Super Admin untuk mengaktifkan izin itu dari sini atas nama karyawan lain.
+        </div>
+      </div>
+    </section>
   `;
 
   document.getElementById("cutoff-start").addEventListener("input", updateCutoffPreview);

@@ -97,40 +97,40 @@ async function loadTable(canEdit) {
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
   if (!data.length) { el.innerHTML = `<p class="muted">Belum ada data master level.</p>`; return; }
 
+  const kv = (label, value) => `<div class="kv-row"><span>${label}</span><b>${value}</b></div>`;
   el.innerHTML = `
-    <table class="table">
+    <table class="table tbl-sticky-end lv-table">
       <thead>
         <tr>
-          <th>Grade</th>
-          <th>Level</th>
-          <th>Status</th>
-          <th>Denda Telat &amp; Pulang Cepat</th>
-          <th>Uang Perjalanan Dinas</th>
-          <th>Lembur Hari Biasa</th>
-          <th>Lembur Hari Libur</th>
-          <th>Upah Lapor BPJS</th>
-          <th>BPJS Kesehatan (Karyawan/Perusahaan)</th>
-          <th>BPJS Ketenagakerjaan (Karyawan/Perusahaan)</th>
-          <th>PPh21</th>
-          <th>Upah Harian Pokok</th>
+          <th>Grade / Level</th>
+          <th>Denda &amp; Perjalanan</th>
+          <th>Lembur &amp; Upah Pokok</th>
+          <th>BPJS &amp; PPh21</th>
           ${canEdit ? "<th></th>" : ""}
         </tr>
       </thead>
       <tbody>
         ${data.map(r => `
           <tr>
-            <td>${r.grade}</td>
-            <td>${r.level}</td>
-            <td><span class="badge badge-${r.is_active ? "ok" : "danger"}">${r.is_active ? "Aktif" : "Nonaktif"}</span></td>
-            <td>${fmtRupiah(r.denda_terlambat)}</td>
-            <td>${fmtRupiah(r.uang_perjalanan_dinas)}</td>
-            <td>${fmtRupiah(r.upah_lembur_hari_biasa)}/jam</td>
-            <td>${fmtRupiah(r.upah_lembur_hari_libur)}/jam</td>
-            <td>${fmtRupiah(r.upah_lapor_bpjs)}</td>
-            <td>${r.bpjs_kesehatan_karyawan_persen}% / ${r.bpjs_kesehatan_perusahaan_persen}%</td>
-            <td>${r.bpjs_tk_karyawan_persen}% / ${r.bpjs_tk_perusahaan_persen}%</td>
-            <td>${r.pph21_persen}%</td>
-            <td>${fmtRupiah(r.upah_harian_pokok)}/hari</td>
+            <td>
+              <div class="lv-title">Grade ${r.grade} <span class="lv-sep">·</span> ${r.level}</div>
+              <span class="badge badge-${r.is_active ? "ok" : "danger"}">${r.is_active ? "Aktif" : "Nonaktif"}</span>
+            </td>
+            <td class="kv-cell">
+              ${kv("Denda telat &amp; pulang cepat", fmtRupiah(r.denda_terlambat))}
+              ${kv("Uang perjalanan dinas", fmtRupiah(r.uang_perjalanan_dinas))}
+            </td>
+            <td class="kv-cell">
+              ${kv("Lembur hari biasa", `${fmtRupiah(r.upah_lembur_hari_biasa)}/jam`)}
+              ${kv("Lembur hari libur", `${fmtRupiah(r.upah_lembur_hari_libur)}/jam`)}
+              ${kv("Upah harian pokok", `${fmtRupiah(r.upah_harian_pokok)}/hari`)}
+            </td>
+            <td class="kv-cell">
+              ${kv("Upah lapor BPJS", fmtRupiah(r.upah_lapor_bpjs))}
+              ${kv("BPJS Kesehatan (kary./persh.)", `${r.bpjs_kesehatan_karyawan_persen}% / ${r.bpjs_kesehatan_perusahaan_persen}%`)}
+              ${kv("BPJS TK (kary./persh.)", `${r.bpjs_tk_karyawan_persen}% / ${r.bpjs_tk_perusahaan_persen}%`)}
+              ${kv("PPh21", `${r.pph21_persen}%`)}
+            </td>
             ${canEdit ? `<td><button class="btn-link btn-edit" data-id="${r.id}">Edit</button></td>` : ""}
           </tr>
         `).join("")}
