@@ -7,6 +7,17 @@ import { countPendingForMe } from "../approvalHelper.js";
 // tidak perlu diulang lagi di grid "Menu Lainnya" di bawah.
 const HANDLED_IN_SUMMARY = new Set(["dashboard", "absensi", "izin", "lembur"]);
 
+// Ikon kecil untuk kartu ringkasan Dashboard.
+const DASH_SVG = paths => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const DASH_ICONS = {
+  login: DASH_SVG('<path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/>'),
+  logout: DASH_SVG('<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>'),
+  file: DASH_SVG('<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/>'),
+  check: DASH_SVG('<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/>'),
+  alert: DASH_SVG('<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/>'),
+  chevron: DASH_SVG('<path d="M9 18l6-6-6-6"/>'),
+};
+
 export async function render(container, user) {
   const tz = await resolveUserTimezone(user); // zona waktu lokasi kerja karyawan, bukan WIB/device yang di-hardcode
 
@@ -28,21 +39,21 @@ export async function render(container, user) {
 
     <div id="dash-reminder-banner"></div>
 
-    <div class="status-grid" id="dash-personal-stats">
+    <div class="dash-stats" id="dash-personal-stats">
       ${skeletonCards(3)}
     </div>
 
     <div id="dash-org-section" class="hidden">
-      <h2 class="section-title">Ringkasan Perusahaan Hari Ini</h2>
-      <div class="status-grid" id="dash-org-stats"></div>
+      <h2 class="dash-section-title">Ringkasan Perusahaan Hari Ini</h2>
+      <div class="dash-stats" id="dash-org-stats"></div>
     </div>
 
     <div id="dash-activity-section" class="hidden">
-      <h2 class="section-title">Aktivitas Absensi Terbaru</h2>
-      <div id="dash-activity" class="table-wrap"><p class="muted">Memuat…</p></div>
+      <h2 class="dash-section-title">Aktivitas Absensi Terbaru</h2>
+      <div id="dash-activity" class="table-wrap dash-panel"><p class="muted">Memuat…</p></div>
     </div>
 
-    <h2 class="section-title">Menu Lainnya</h2>
+    <h2 class="dash-section-title">Akses Cepat</h2>
     <div class="quick-links-grid" id="dash-quick-links"><p class="muted">Memuat menu…</p></div>
 
     ${cameraModalHtml()}
@@ -127,25 +138,37 @@ async function loadPersonalStats(user, tz) {
   // Sesi yang dimulai bukan hari ini (shift lintas hari) diberi keterangan tanggalnya.
   const otherDay = att && att.date !== today ? `<span class="muted small">Sesi ${fmtDate(att.date)}</span>` : "";
 
+  const inVal = att?.check_in ? fmtTime(att.check_in) : "";
+  const outVal = att?.check_out ? fmtTime(att.check_out) : "";
+  const pendingTotal = (izinPending || 0) + (lemburPending || 0);
+  const leaveBadge = leaveLabel ? `<span class="badge badge-warn">${leaveLabel}</span>` : "";
+
   el.innerHTML = `
-    <div class="status-card ${att?.check_in ? "done" : ""}">
-      <span class="status-label">Check-in Hari Ini</span>
-      <span class="status-value">${att?.check_in ? fmtTime(att.check_in) : leaveLabel ? leaveLabel : "Belum absen"}</span>
-      ${att?.check_in_status ? `<span class="badge badge-${att.check_in_status === "telat" ? "warn" : "ok"}">${att.check_in_status === "telat" ? "Telat" : "Tepat waktu"}</span>` : ""}
-      ${otherDay}
-      ${state.misdatedTail ? `<span class="small muted">ℹ️ ${fmtTime(state.latest.check_in)}–${fmtTime(state.latest.check_out)} tadi = sisa shift semalam.</span>` : ""}
-      ${leaveLabel ? `<span class="muted small">🗓️ ${fmtDate(state.onLeaveToday.start_date)} – ${fmtDate(state.onLeaveToday.end_date)}</span>` : ""}
+    <div class="dash-stat ${inVal ? "ok" : ""}">
+      <div class="dash-stat-top"><span class="dash-stat-icon">${DASH_ICONS.login}</span><span class="dash-stat-label">Check-in Hari Ini</span></div>
+      <div class="dash-stat-value ${inVal ? "" : "empty"}">${inVal || "--.--"}</div>
+      <div class="dash-stat-meta">
+        ${att?.check_in_status
+          ? `<span class="badge badge-${att.check_in_status === "telat" ? "warn" : "ok"}">${att.check_in_status === "telat" ? "Telat" : "Tepat waktu"}</span>`
+          : leaveBadge || `<span>Belum check-in</span>`}
+        ${otherDay}
+      </div>
+      ${state.misdatedTail ? `<div class="dash-stat-note">ℹ️ ${fmtTime(state.latest.check_in)}–${fmtTime(state.latest.check_out)} tadi = sisa shift semalam.</div>` : ""}
+      ${leaveLabel ? `<div class="dash-stat-note">🗓️ ${fmtDate(state.onLeaveToday.start_date)} – ${fmtDate(state.onLeaveToday.end_date)}</div>` : ""}
       ${canCheckIn ? `<button type="button" class="btn-primary btn-card-action" data-mode="in">Check-in Sekarang</button>` : ""}
     </div>
-    <div class="status-card ${att?.check_out ? "done" : ""}">
-      <span class="status-label">Check-out Hari Ini</span>
-      <span class="status-value">${att?.check_out ? fmtTime(att.check_out) : leaveLabel ? leaveLabel : "Belum absen"}</span>
+    <div class="dash-stat ${outVal ? "ok" : ""}">
+      <div class="dash-stat-top"><span class="dash-stat-icon">${DASH_ICONS.logout}</span><span class="dash-stat-label">Check-out Hari Ini</span></div>
+      <div class="dash-stat-value ${outVal ? "" : "empty"}">${outVal || "--.--"}</div>
+      <div class="dash-stat-meta">
+        ${outVal ? `<span class="badge badge-ok">Tercatat</span>` : leaveBadge || `<span>Belum check-out</span>`}
+      </div>
       ${canCheckOut ? `<button type="button" class="btn-primary btn-card-action" data-mode="out">Check-out Sekarang</button>` : ""}
     </div>
-    <div class="status-card">
-      <span class="status-label">Pengajuan Saya Pending</span>
-      <span class="status-value">${(izinPending || 0) + (lemburPending || 0)}</span>
-      <span class="muted small">${izinPending || 0} izin/cuti • ${lemburPending || 0} lembur</span>
+    <div class="dash-stat ${pendingTotal ? "warn" : ""}">
+      <div class="dash-stat-top"><span class="dash-stat-icon">${DASH_ICONS.file}</span><span class="dash-stat-label">Pengajuan Pending</span></div>
+      <div class="dash-stat-value ${pendingTotal ? "" : "empty"}">${pendingTotal}</div>
+      <div class="dash-stat-meta"><span>${izinPending || 0} izin/cuti • ${lemburPending || 0} lembur</span></div>
     </div>
   `;
 
@@ -221,12 +244,16 @@ async function loadOrgStats(user) {
   if (!el || !cards.length) return;
   section.classList.remove("hidden");
   el.innerHTML = cards.map(c => `
-    <div class="status-card ${c.tone === "ok" ? "done" : ""} ${c.target ? "status-card-link" : ""}" ${c.target ? `data-target="${c.target}"` : ""}>
-      <span class="status-label">${c.label}</span>
-      <span class="status-value">${c.value}</span>
+    <div class="dash-stat ${c.tone === "ok" ? "ok" : c.tone === "warn" ? "warn" : ""} ${c.target ? "dash-stat-link" : ""}" ${c.target ? `data-target="${c.target}"` : ""}>
+      <div class="dash-stat-top">
+        <span class="dash-stat-icon">${c.tone === "warn" ? DASH_ICONS.alert : DASH_ICONS.check}</span>
+        <span class="dash-stat-label">${c.label}</span>
+        ${c.target ? `<span class="dash-stat-chevron">${DASH_ICONS.chevron}</span>` : ""}
+      </div>
+      <div class="dash-stat-value">${c.value}</div>
     </div>
   `).join("");
-  el.querySelectorAll(".status-card-link").forEach(card => {
+  el.querySelectorAll(".dash-stat-link").forEach(card => {
     card.addEventListener("click", () => goTo(card.dataset.target));
   });
 
@@ -307,7 +334,7 @@ function goTo(tabId) {
 
 function skeletonCards(n) {
   return Array.from({ length: n }).map(() => `
-    <div class="status-card"><span class="status-label">&nbsp;</span><span class="status-value muted">…</span></div>
+    <div class="dash-stat"><div class="dash-stat-top"><span class="dash-stat-icon"></span><span class="dash-stat-label">&nbsp;</span></div><div class="dash-stat-value empty">--</div></div>
   `).join("");
 }
 
