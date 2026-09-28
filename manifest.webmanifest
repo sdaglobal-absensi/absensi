@@ -6,7 +6,6 @@
   "start_url": "./app.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
   "background_color": "#0f2e22",
   "theme_color": "#0f2e22",
   "icons": [
