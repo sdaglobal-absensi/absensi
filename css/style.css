@@ -50,7 +50,6 @@ h1, h2, h3 { font-family: 'Sora', sans-serif; font-weight: 600; margin: 0; lette
   display: grid;
   grid-template-columns: 1.1fr 1fr;
 }
-@media (max-width: 860px) { .login-wrap { grid-template-columns: 1fr; } .login-hero { display: none; } }
 
 .login-hero {
   background:
@@ -709,12 +708,23 @@ button { font-family: 'Inter'; cursor: pointer; }
 .slip-net .value { font-family: 'Sora'; font-size: 1.4rem; font-weight: 700; color: var(--ok); }
 
 @media print {
-  body * { visibility: hidden; }
-  .slip-print-area, .slip-print-area * { visibility: visible; }
-  .slip-print-area { position: absolute; top: 0; left: 0; width: 100%; }
-  .modal { position: static; background: none; padding: 0; }
-  .modal-box { box-shadow: none; max-width: 100%; max-height: none; overflow: visible; padding: 0; }
+  @page { size: A4 portrait; margin: 12mm; }
+  html, body { background: #fff !important; height: auto !important; }
+  /* Sembunyikan seluruh aplikasi (display:none, bukan visibility, agar tidak memakan ruang/halaman) */
+  body.printing-slip > *:not(#print-root) { display: none !important; }
+  #print-root { display: block !important; }
   .no-print { display: none !important; }
+  #print-root .slip-print-area { width: 100%; color: #000; font-size: 10.5pt; }
+  #print-root .slip-box { border: 1px solid #cfcfcf; border-radius: 6px; box-shadow: none; padding: 16px 18px; break-inside: avoid; page-break-inside: avoid; }
+  #print-root .slip-header { padding-bottom: 10px; margin-bottom: 12px; }
+  #print-root .slip-emp-grid { margin-bottom: 14px; font-size: 9.5pt; gap: 3px 20px; }
+  #print-root .slip-cols { grid-template-columns: 1fr 1fr !important; gap: 22px; }
+  #print-root .slip-line { padding: 4px 0; font-size: 9.5pt; }
+  #print-root .slip-net { margin-top: 14px; padding: 10px 14px; break-inside: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  #print-root .slip-emp-grid { grid-template-columns: 1fr 1fr !important; }
+  #print-root * { break-inside: avoid; }
+}
+#print-root { display: none; }
 }
 
 /* ---------------- Toasts ---------------- */
@@ -1423,3 +1433,27 @@ button { font-family: 'Inter'; cursor: pointer; }
 }
 .pg-callout strong { color: var(--warn); }
 .perm-toolbar { margin-bottom: 8px; }
+
+
+/* ---------------- Login: tampilan mobile (kompak & profesional) ---------------- */
+@media (max-width: 860px) {
+  .login-wrap { grid-template-columns: 1fr; grid-template-rows: auto 1fr; min-height: 100vh; min-height: 100dvh; background: var(--bg); }
+  .login-hero {
+    padding: calc(28px + env(safe-area-inset-top, 0px)) 24px 64px;
+    gap: 14px; justify-content: flex-start;
+  }
+  .login-hero .brand { font-size: 1.15rem; }
+  .login-hero .brand-logo { width: 30px; height: 30px; }
+  .login-hero .brand-tagline { margin-left: 40px; font-size: 0.66rem; }
+  .login-hero h1 { font-size: 1.4rem; line-height: 1.3; }
+  .login-hero h1 br { display: none; }
+  .hero-tags { display: none; }
+  .login-panel { align-items: flex-start; padding: 0 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
+  .login-box {
+    max-width: 440px; margin-top: -40px; position: relative; z-index: 1;
+    padding: 26px 22px; border-radius: 16px; box-shadow: var(--shadow-lg);
+  }
+  .login-box h2 { font-size: 1.3rem; }
+  .login-box .muted { margin-bottom: 20px; font-size: 0.88rem; }
+  .login-box input { font-size: 16px; } /* cegah auto-zoom iOS */
+}

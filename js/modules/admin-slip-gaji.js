@@ -1,6 +1,22 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exportXLSX, dayOfWeekFromDateStr, zonedMinutesOfDay, hmToMinutes, getPayrollCutoffDay, payrollPeriodRange, STAFF_ROLES, confirmDialog } from "../core.js";
 
+
+// Cetak slip: salin isi slip ke #print-root (langsung di bawah <body>) lalu
+// sembunyikan seluruh aplikasi saat print, sehingga hasilnya 1 halaman rapi
+// baik di desktop maupun HP.
+export function printSlip() {
+  const src = document.getElementById("slip-content");
+  if (!src) return window.print();
+  let root = document.getElementById("print-root");
+  if (!root) { root = document.createElement("div"); root.id = "print-root"; document.body.appendChild(root); }
+  root.innerHTML = '<div class="slip-print-area">' + src.innerHTML + '</div>';
+  document.body.classList.add("printing-slip");
+  const cleanup = () => { document.body.classList.remove("printing-slip"); root.innerHTML = ""; window.removeEventListener("afterprint", cleanup); };
+  window.addEventListener("afterprint", cleanup);
+  setTimeout(() => window.print(), 50);
+}
+
 // =======================================================================
 // SLIP GAJI — dihitung otomatis dari data yang sudah ada di sistem:
 //   - Gaji pokok: Riwayat Upah Harian (x hari hadir) / Riwayat Gaji Bulanan
@@ -218,7 +234,7 @@ export async function render(container, user, opts = {}) {
   document.getElementById("filter-period").addEventListener("change", e => { period = e.target.value; loadAndRender(); });
   document.getElementById("btn-export")?.addEventListener("click", doExport);
   document.getElementById("btn-close-slip").addEventListener("click", () => document.getElementById("modal-slip").classList.add("hidden"));
-  document.getElementById("btn-print-slip").addEventListener("click", () => window.print());
+  document.getElementById("btn-print-slip").addEventListener("click", printSlip);
   document.getElementById("btn-edit-adjust")?.addEventListener("click", () => openAdjustModal(currentSlip.emp.id));
   document.getElementById("btn-cancel-adjust").addEventListener("click", () => document.getElementById("modal-adjust").classList.add("hidden"));
   document.getElementById("form-adjust").addEventListener("submit", e => onSubmitAdjust(e, user));
