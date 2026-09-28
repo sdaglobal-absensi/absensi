@@ -1213,3 +1213,67 @@ button { font-family: 'Inter'; cursor: pointer; }
   .prof-form-actions .btn-primary { width: 100%; }
   .prof-section-head p { margin-left: 0; }
 }
+
+/* =====================================================================
+   HALAMAN KARYAWAN LAINNYA (Pengajuan Izin/Lembur/Koreksi, Riwayat,
+   Slip Gaji) — prefix .pg-
+   ===================================================================== */
+.pg-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+.pg-head h1 { font-size: 1.5rem; margin: 0; }
+.pg-head-sub { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; line-height: 1.5; max-width: 640px; }
+
+.pg-section-head { margin: 32px 0 14px; }
+.pg-section-head h2 { display: flex; align-items: center; gap: 10px; font-size: 1rem; font-weight: 600; margin: 0; }
+.pg-section-head h2::before { content: ""; width: 4px; height: 16px; border-radius: 2px; background: var(--primary-light); }
+.pg-section-head p { margin: 5px 0 0 14px; font-size: 0.84rem; color: var(--muted); line-height: 1.5; }
+
+/* Form pengajuan + kartu informasi di sampingnya */
+.pg-form-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.pg-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); overflow: hidden; }
+.pg-card-head { padding: 16px 24px; border-bottom: 1px solid var(--border); }
+.pg-card-head h2 { font-family: 'Sora', sans-serif; font-size: 0.98rem; font-weight: 600; margin: 0; }
+.pg-card-body { padding: 20px 24px 24px; }
+.pg-card-body .btn-block { margin-top: 18px; }
+.pg-note {
+  background: var(--surface-2); border: 1px solid var(--border); border-left: 3px solid var(--primary-light);
+  border-radius: var(--radius-lg); padding: 18px 22px;
+}
+.pg-note h3 { font-size: 0.92rem; margin: 0 0 10px; }
+.pg-note ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 9px; }
+.pg-note li { font-size: 0.85rem; line-height: 1.55; color: var(--muted); }
+
+/* Pesan kosong / memuat di dalam kartu tabel */
+.table-wrap > p.muted { margin: 0; padding: 22px 24px; }
+
+/* Angka di kartu ringkasan (dipakai juga Riwayat & Slip Gaji) */
+.dash-stat-unit { font-family: 'Inter', sans-serif; font-size: 0.85rem; font-weight: 500; color: var(--muted); margin-left: 6px; }
+.dash-stat-value-sm { font-size: 1.45rem; }
+
+/* Slip Gaji Saya — kartu ringkasan menggantikan tabel satu baris */
+.pg-slip { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); overflow: hidden; }
+.pg-slip-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 20px 24px; border-bottom: 1px solid var(--border); }
+.pg-slip-head h2 { font-size: 1.1rem; margin: 0; }
+.pg-slip-meta { margin: 5px 0 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); }
+.pg-slip-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.pg-slip-grid > div { padding: 18px 24px; display: flex; flex-direction: column; gap: 6px; }
+.pg-slip-grid > div + div { border-left: 1px solid var(--border); }
+.pg-slip-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.pg-slip-value { font-family: 'Sora', sans-serif; font-size: 1.2rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pg-slip-value small { font-family: 'Inter', sans-serif; font-size: 0.78rem; font-weight: 500; color: var(--muted); }
+.pg-slip-net { background: var(--ok-bg); }
+.pg-slip-net .pg-slip-value { color: var(--primary); }
+.pg-slip-net.neg { background: var(--danger-bg); }
+.pg-slip-net.neg .pg-slip-value { color: var(--danger); }
+
+@media (max-width: 900px) {
+  .pg-form-layout { grid-template-columns: 1fr; }
+  .pg-slip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pg-slip-grid > div:nth-child(3) { border-left: none; }
+  .pg-slip-grid > div:nth-child(n+3) { border-top: 1px solid var(--border); }
+}
+@media (max-width: 480px) {
+  .pg-card-body { padding: 16px; }
+  .pg-slip-head { padding: 16px; }
+  .pg-slip-head .btn-primary { width: 100%; }
+  .pg-slip-grid > div { padding: 14px 16px; }
+}

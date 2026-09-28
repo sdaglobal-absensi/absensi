@@ -59,17 +59,36 @@ async function submitRequest(fd, user, revisionOf) {
 
 export async function render(container, user) {
   container.innerHTML = `
-    <div class="page-header">
-      <h1>Pengajuan Lembur</h1>
-      <p class="muted">Ajukan lembur untuk disetujui admin/HR</p>
+    <div class="pg-head">
+      <div>
+        <h1>Pengajuan Lembur</h1>
+        <p class="pg-head-sub">Ajukan lembur untuk disetujui admin/HR.</p>
+      </div>
     </div>
 
-    <form id="form-lembur" class="card form-card">
-      ${FIELDS_HTML}
-      <button type="submit" class="btn-primary btn-block">Kirim Pengajuan</button>
-    </form>
+    <div class="pg-form-layout">
+      <form id="form-lembur" class="pg-card">
+        <div class="pg-card-head"><h2>Formulir Pengajuan</h2></div>
+        <div class="pg-card-body">
+          ${FIELDS_HTML}
+          <button type="submit" class="btn-primary btn-block">Kirim Pengajuan</button>
+        </div>
+      </form>
+      <aside class="pg-note">
+        <h3>Informasi</h3>
+        <ul>
+          <li>Isi jam mulai dan jam selesai sesuai jam lembur yang sebenarnya.</li>
+          <li>Hari Minggu dan tanggal yang ada di Master Hari Libur otomatis dihitung sebagai lembur hari libur.</li>
+          <li>Uang lembur baru masuk ke Slip Gaji setelah pengajuan disetujui.</li>
+          <li>Kalau ditolak, kamu bisa mengajukan ulang dari tabel riwayat.</li>
+        </ul>
+      </aside>
+    </div>
 
-    <h2 class="section-title">Riwayat Pengajuan Lembur</h2>
+    <div class="pg-section-head">
+      <h2>Riwayat Pengajuan Lembur</h2>
+      <p>Status dan tahap persetujuan setiap pengajuan lembur yang pernah kamu kirim.</p>
+    </div>
     <div id="lembur-list" class="table-wrap"><p class="muted">Memuat…</p></div>
   `;
 

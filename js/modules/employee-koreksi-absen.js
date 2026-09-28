@@ -69,17 +69,36 @@ async function submitRequest(fd, user, revisionOf) {
 
 export async function render(container, user) {
   container.innerHTML = `
-    <div class="page-header">
-      <h1>Pengajuan Koreksi Absen</h1>
-      <p class="muted">Lupa absen masuk atau pulang? Ajukan koreksi di sini untuk disetujui admin/HR.</p>
+    <div class="pg-head">
+      <div>
+        <h1>Pengajuan Koreksi Absen</h1>
+        <p class="pg-head-sub">Lupa absen masuk atau pulang? Ajukan koreksi untuk disetujui admin/HR.</p>
+      </div>
     </div>
 
-    <form id="form-koreksi" class="card form-card">
-      ${FIELDS_HTML}
-      <button type="submit" class="btn-primary btn-block">Kirim Pengajuan</button>
-    </form>
+    <div class="pg-form-layout">
+      <form id="form-koreksi" class="pg-card">
+        <div class="pg-card-head"><h2>Formulir Pengajuan</h2></div>
+        <div class="pg-card-body">
+          ${FIELDS_HTML}
+          <button type="submit" class="btn-primary btn-block">Kirim Pengajuan</button>
+        </div>
+      </form>
+      <aside class="pg-note">
+        <h3>Informasi</h3>
+        <ul>
+          <li>Satu pengajuan untuk satu tanggal dan satu jenis koreksi (masuk atau pulang).</li>
+          <li>Isi jam sesuai waktu kamu sebenarnya masuk atau pulang, lalu jelaskan alasannya.</li>
+          <li>Setelah disetujui sampai tahap terakhir, jam yang kamu ajukan otomatis diterapkan ke data absensi.</li>
+          <li>Kalau ditolak, kamu bisa mengajukan ulang dari tabel riwayat.</li>
+        </ul>
+      </aside>
+    </div>
 
-    <h2 class="section-title">Riwayat Pengajuan Koreksi</h2>
+    <div class="pg-section-head">
+      <h2>Riwayat Pengajuan Koreksi</h2>
+      <p>Status setiap pengajuan koreksi absen yang pernah kamu kirim.</p>
+    </div>
     <div id="koreksi-list" class="table-wrap"><p class="muted">Memuat…</p></div>
   `;
 

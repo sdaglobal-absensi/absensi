@@ -156,21 +156,21 @@ export async function render(container, user, opts = {}) {
     : `<input type="month" id="filter-period" value="${period}">`;
 
   container.innerHTML = `
-    <div class="page-header">
+    <div class="pg-head">
       <div>
         <h1>Slip Gaji</h1>
-        <p class="muted">${roleFlags.isKaryawan
+        <p class="pg-head-sub">${roleFlags.isKaryawan
           ? "Slip gaji kamu, dihitung otomatis dari absensi, lembur, dan data upah/gaji. Kalau ada yang dirasa keliru, hubungi HR/Admin."
           : "Dihitung otomatis dari absensi, lembur, riwayat upah/gaji, dan Master Level. Tunjangan/potongan yang tidak tercatat otomatis bisa ditambahkan manual per karyawan. Rentang tanggal periode mengikuti pengaturan cut-off di menu Pengaturan Sistem, sampai periode itu difinalisasi."}</p>
       </div>
-      <div class="filter-row">
+      <div class="filter-row pg-head-actions">
         ${periodFilterHtml}
         ${roleFlags.isKaryawan ? "" : `<button id="btn-export" class="btn-secondary">Export Ringkasan (Excel)</button>`}
       </div>
     </div>
 
     <div id="slip-lock-banner"></div>
-    <div id="slip-summary" class="status-grid"></div>
+    <div id="slip-summary" class="dash-stats"></div>
     <div id="slip-table" class="table-wrap"><p class="muted">Memuat…</p></div>
 
     <!-- Modal: detail & cetak slip -->
@@ -501,23 +501,24 @@ function renderSummary() {
   const totalLembur = slips.reduce((s, x) => s + x.jamLemburBiasa + x.jamLemburLibur, 0);
   const belumDiatur = slips.filter(x => !x.emp.status_karyawan).length;
 
+  const svg = paths => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
   el.innerHTML = `
-    <div class="status-card">
-      <span class="status-label">Karyawan Aktif</span>
-      <span class="status-value">${slips.length}</span>
+    <div class="dash-stat">
+      <div class="dash-stat-top"><span class="dash-stat-icon">${svg('<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>')}</span><span class="dash-stat-label">Karyawan Aktif</span></div>
+      <div class="dash-stat-value">${slips.length}</div>
     </div>
-    <div class="status-card done">
-      <span class="status-label">Total Gaji Bersih</span>
-      <span class="status-value">${fmtRupiah(totalBersih)}</span>
+    <div class="dash-stat ok">
+      <div class="dash-stat-top"><span class="dash-stat-icon">${svg('<path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>')}</span><span class="dash-stat-label">Total Gaji Bersih</span></div>
+      <div class="dash-stat-value dash-stat-value-sm">${fmtRupiah(totalBersih)}</div>
     </div>
-    <div class="status-card">
-      <span class="status-label">Total Jam Lembur</span>
-      <span class="status-value">${fmtJam(totalLembur)}</span>
+    <div class="dash-stat">
+      <div class="dash-stat-top"><span class="dash-stat-icon">${svg('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>')}</span><span class="dash-stat-label">Total Jam Lembur</span></div>
+      <div class="dash-stat-value">${fmtJam(totalLembur)}</div>
     </div>
     ${belumDiatur ? `
-    <div class="status-card">
-      <span class="status-label">Status Karyawan Belum Diatur</span>
-      <span class="status-value">${belumDiatur}</span>
+    <div class="dash-stat warn">
+      <div class="dash-stat-top"><span class="dash-stat-icon">${svg('<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/>')}</span><span class="dash-stat-label">Status Karyawan Belum Diatur</span></div>
+      <div class="dash-stat-value">${belumDiatur}</div>
     </div>` : ""}
   `;
 }
@@ -525,7 +526,40 @@ function renderSummary() {
 function renderTable() {
   const el = document.getElementById("slip-table");
   const slips = getSlipList();
+  // Kartu slip Karyawan tidak dibungkus .table-wrap (supaya tidak dobel border).
+  el.classList.toggle("table-wrap", !(roleFlags.isKaryawan && slips.length === 1));
   if (!slips.length) { el.innerHTML = `<p class="muted">${periodInfo ? "Tidak ada slip yang difinalisasi untuk periode ini." : "Belum ada data karyawan aktif."}</p>`; return; }
+
+  // Tampilan Karyawan (1 slip = dirinya sendiri): kartu ringkasan, bukan
+  // tabel satu baris. Tombol tetap memakai class .btn-detail supaya handler
+  // klik di bawah dipakai bersama.
+  if (roleFlags.isKaryawan && slips.length === 1) {
+    const s = slips[0];
+    const statusBadge = s.emp.status_karyawan
+      ? `<span class="badge badge-ok">${s.emp.status_karyawan === "bulanan" ? "Bulanan" : "Harian"}</span>`
+      : `<span class="badge badge-warn">Status belum diatur</span>`;
+    el.innerHTML = `
+      <div class="pg-slip">
+        <div class="pg-slip-head">
+          <div>
+            <h2>${s.emp.full_name}</h2>
+            <p class="pg-slip-meta">${s.emp.grade ? `${s.emp.grade} — ${s.emp.level || "-"}` : "Grade belum diatur"} ${statusBadge}</p>
+          </div>
+          <button type="button" class="btn-primary btn-detail" data-id="${s.emp.id}">Lihat Detail &amp; Cetak Slip</button>
+        </div>
+        <div class="pg-slip-grid">
+          <div><span class="pg-slip-label">Hadir / Telat</span><span class="pg-slip-value">${s.hariHadir} / ${s.hariTelat} <small>hari</small></span></div>
+          <div><span class="pg-slip-label">Lembur</span><span class="pg-slip-value">${fmtJam(s.jamLemburBiasa + s.jamLemburLibur)}</span></div>
+          <div><span class="pg-slip-label">Gaji Pokok</span><span class="pg-slip-value">${fmtRupiah(s.gajiPokok)}</span></div>
+          <div class="pg-slip-net ${s.gajiBersih < 0 ? "neg" : ""}"><span class="pg-slip-label">Gaji Bersih</span><span class="pg-slip-value">${fmtRupiah(s.gajiBersih)}</span></div>
+        </div>
+      </div>
+    `;
+    el.querySelectorAll(".btn-detail").forEach(btn => {
+      btn.addEventListener("click", () => openSlipModal(btn.dataset.id));
+    });
+    return;
+  }
 
   el.innerHTML = `
     <table class="table">

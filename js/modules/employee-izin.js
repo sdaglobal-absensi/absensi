@@ -175,17 +175,36 @@ export async function render(container, user) {
   current.rules = await fetchSpecialLeaveRules();
 
   container.innerHTML = `
-    <div class="page-header">
-      <h1>Pengajuan Izin</h1>
-      <p class="muted">Ajukan izin tidak masuk, sakit, atau cuti</p>
+    <div class="pg-head">
+      <div>
+        <h1>Pengajuan Izin</h1>
+        <p class="pg-head-sub">Ajukan izin tidak masuk, sakit, atau cuti.</p>
+      </div>
     </div>
 
-    <form id="form-izin" class="card form-card">
-      ${fieldsHTML()}
-      <button type="submit" class="btn-primary btn-block">Kirim Pengajuan</button>
-    </form>
+    <div class="pg-form-layout">
+      <form id="form-izin" class="pg-card">
+        <div class="pg-card-head"><h2>Formulir Pengajuan</h2></div>
+        <div class="pg-card-body">
+          ${fieldsHTML()}
+          <button type="submit" class="btn-primary btn-block">Kirim Pengajuan</button>
+        </div>
+      </form>
+      <aside class="pg-note">
+        <h3>Informasi</h3>
+        <ul>
+          <li>Pengajuan diteruskan ke atasan sesuai struktur organisasi, bisa melalui lebih dari satu tahap persetujuan.</li>
+          <li>Pantau status pengajuan di tabel Riwayat Pengajuan di bawah.</li>
+          <li>Selama izin/cuti disetujui atau masih menunggu persetujuan, tombol absen untuk tanggal tersebut tidak ditampilkan.</li>
+          <li>Kalau ditolak, kamu bisa mengajukan ulang dari tabel riwayat.</li>
+        </ul>
+      </aside>
+    </div>
 
-    <h2 class="section-title">Riwayat Pengajuan</h2>
+    <div class="pg-section-head">
+      <h2>Riwayat Pengajuan</h2>
+      <p>Status dan tahap persetujuan setiap pengajuan izin/cuti yang pernah kamu kirim.</p>
+    </div>
     <div id="izin-list" class="table-wrap"><p class="muted">Memuat…</p></div>
   `;
 
