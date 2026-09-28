@@ -62,46 +62,63 @@ export async function render(container, user) {
   }
   originalChildIds = children.map(c => c.id);
 
-  container.innerHTML = `
-    <div class="page-header"><h1>Profil Saya</h1></div>
+  const joinLabel = currentProfile.join_date ? new Date(currentProfile.join_date).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-";
+  const jabatanDept = [currentProfile.position, currentProfile.department].filter(Boolean).join(" • ");
 
-    <div class="card profil-header-card">
-      <div class="profil-avatar-wrap">
-        <div class="profil-avatar" id="profil-avatar">
-          ${avatarHTML(currentProfile, "Foto profil")}
-        </div>
-        <label class="btn-secondary btn-photo-upload">
-          Ganti Foto
-          <input type="file" id="input-photo" accept="image/*" class="hidden">
-        </label>
-      </div>
-      <div class="profil-header-info">
-        <h2>${escapeHtml(currentProfile.full_name)}</h2>
-        <span class="badge badge-ok">${roleLabel(currentProfile.role)}</span>
-        <p class="muted small" style="margin-top:8px;">
-          ${escapeHtml(currentProfile.employee_code || "-")} • ${escapeHtml(currentProfile.email || "-")}<br>
-          Bergabung sejak ${currentProfile.join_date ? new Date(currentProfile.join_date).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-"}
-          (${lamaBekerja(currentProfile.join_date)})
-        </p>
-      </div>
+  container.innerHTML = `
+    <div class="prof-head">
+      <h1>Profil Saya</h1>
+      <p class="prof-head-sub">Kelola data pribadimu dan ajukan perubahan untuk data resmi.</p>
     </div>
 
-    <h2 class="section-title">Data yang Bisa Diubah Langsung</h2>
-    <form id="form-quick" class="card form-card form-card-wide">
+    <section class="prof-hero">
+      <div class="prof-hero-band"></div>
+      <div class="prof-hero-body">
+        <div class="prof-avatar-wrap">
+          <div class="profil-avatar prof-avatar" id="profil-avatar">
+            ${avatarHTML(currentProfile, "Foto profil")}
+          </div>
+          <label class="prof-photo-btn" title="Ganti foto profil">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            <span class="prof-photo-text">Ganti Foto</span>
+            <input type="file" id="input-photo" accept="image/*" class="hidden">
+          </label>
+        </div>
+        <div class="prof-hero-info">
+          <div class="prof-name-row">
+            <h2>${escapeHtml(currentProfile.full_name)}</h2>
+            <span class="badge badge-ok">${roleLabel(currentProfile.role)}</span>
+          </div>
+          ${jabatanDept ? `<p class="prof-subtitle">${escapeHtml(jabatanDept)}</p>` : ""}
+        </div>
+      </div>
+      <dl class="prof-facts">
+        <div><dt>Kode Karyawan</dt><dd>${escapeHtml(currentProfile.employee_code || "-")}</dd></div>
+        <div><dt>Email</dt><dd>${escapeHtml(currentProfile.email || "-")}</dd></div>
+        <div><dt>Bergabung Sejak</dt><dd>${joinLabel}<span class="prof-fact-note">${lamaBekerja(currentProfile.join_date)}</span></dd></div>
+      </dl>
+    </section>
+
+    <div class="prof-section-head">
+      <h2>Data yang Bisa Diubah Langsung</h2>
+      <p>Perubahan tersimpan setelah kamu klik <strong>Simpan Perubahan</strong>.</p>
+    </div>
+    <form id="form-quick" class="prof-card">
       <div class="form-row two-col">
         <label>No. HP <input name="phone" value="${escapeAttr(currentProfile.phone || "")}"></label>
         <label>Alamat Domisili <input name="alamat" value="${escapeAttr(currentProfile.alamat || "")}"></label>
       </div>
       ${personalFieldsHtml({ includeIdentity: false })}
       ${familySectionHtml({ includeStatus: false })}
-      <button type="submit" class="btn-primary">Simpan Perubahan</button>
+      <div class="prof-form-actions">
+        <button type="submit" class="btn-primary">Simpan Perubahan</button>
+      </div>
     </form>
 
-    <h2 class="section-title">Data Lain</h2>
-    <p class="muted small" style="margin-top:-8px;">
-      Field di bawah ini terkait payroll, BPJS, dan dokumen resmi, jadi tidak bisa diubah langsung.
-      Kalau ada yang salah, klik <strong>Ajukan Perubahan</strong> — perubahan baru berlaku setelah disetujui admin.
-    </p>
+    <div class="prof-section-head">
+      <h2>Data Lain</h2>
+      <p>Terkait payroll, BPJS, dan dokumen resmi, jadi tidak bisa diubah langsung. Klik <strong>Ajukan Perubahan</strong> — perubahan baru berlaku setelah disetujui admin.</p>
+    </div>
     <div class="table-wrap">
       <table class="table table-responsive-stack">
         <thead><tr><th>Field</th><th>Nilai Saat Ini</th><th>Aksi</th></tr></thead>
@@ -129,7 +146,10 @@ export async function render(container, user) {
       </table>
     </div>
 
-    <h2 class="section-title">Riwayat Pengajuan Perubahan Data</h2>
+    <div class="prof-section-head">
+      <h2>Riwayat Pengajuan Perubahan Data</h2>
+      <p>Status pengajuan perubahan data yang pernah kamu kirim.</p>
+    </div>
     <div id="pcr-table" class="table-wrap"><p class="muted">Memuat…</p></div>
 
     <div id="modal-ajukan" class="modal hidden">

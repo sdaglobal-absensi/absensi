@@ -1137,3 +1137,79 @@ button { font-family: 'Inter'; cursor: pointer; }
   .dash-title { font-size: 1.5rem; }
   .dash-stat-value { font-size: 1.6rem; }
 }
+
+/* =====================================================================
+   PROFIL SAYA (redesign) — prefix .prof-
+   ===================================================================== */
+.prof-head { margin-bottom: 20px; }
+.prof-head h1 { font-size: 1.5rem; margin: 0; }
+.prof-head-sub { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+
+.prof-hero {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs); overflow: hidden; margin-bottom: 8px;
+}
+.prof-hero-band {
+  height: 84px; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); position: relative;
+}
+.prof-hero-band::after {
+  content: ""; position: absolute; top: -70px; right: -50px; width: 220px; height: 220px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(201,138,62,0.28) 0%, rgba(201,138,62,0) 70%);
+}
+.prof-hero-body { display: flex; align-items: flex-end; gap: 20px; padding: 0 28px 20px; margin-top: -44px; flex-wrap: wrap; }
+.prof-avatar-wrap { position: relative; flex-shrink: 0; }
+.profil-avatar.prof-avatar {
+  width: 96px; height: 96px; border: 4px solid var(--surface); box-shadow: var(--shadow-sm);
+}
+.prof-photo-btn {
+  position: absolute; right: -4px; bottom: 2px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 999px;
+  padding: 5px 10px; font-size: 0.72rem; font-weight: 600; box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.prof-photo-btn:hover { border-color: var(--primary); color: var(--primary); }
+.prof-photo-btn svg { width: 13px; height: 13px; }
+.prof-hero-info { min-width: 0; padding-bottom: 4px; }
+.prof-name-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.prof-name-row h2 { font-size: 1.35rem; margin: 0; }
+.prof-subtitle { margin: 4px 0 0; font-size: 0.88rem; color: var(--muted); }
+
+.prof-facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0; margin: 0;
+  border-top: 1px solid var(--border); background: var(--surface-2);
+}
+.prof-facts > div { padding: 14px 28px; min-width: 0; }
+.prof-facts > div + div { border-left: 1px solid var(--border); }
+.prof-facts dt { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 3px; }
+.prof-facts dd { margin: 0; font-size: 0.92rem; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+.prof-fact-note { display: block; font-size: 0.78rem; font-weight: 400; color: var(--muted); margin-top: 1px; }
+
+.prof-section-head { margin: 32px 0 14px; }
+.prof-section-head h2 { display: flex; align-items: center; gap: 10px; font-size: 1rem; font-weight: 600; margin: 0; }
+.prof-section-head h2::before { content: ""; width: 4px; height: 16px; border-radius: 2px; background: var(--primary-light); }
+.prof-section-head p { margin: 5px 0 0 14px; font-size: 0.84rem; color: var(--muted); line-height: 1.5; max-width: 720px; }
+
+.prof-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs); padding: 24px 28px 22px;
+}
+.prof-form-actions { display: flex; justify-content: flex-end; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
+
+.table-responsive-stack .btn-ajukan, .table-responsive-stack .btn-batal {
+  text-decoration: none; font-weight: 600; font-size: 0.8rem; padding: 6px 12px; border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--border); color: var(--primary); white-space: nowrap;
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.table-responsive-stack .btn-ajukan:hover { border-color: var(--primary); background: var(--ok-bg); }
+.table-responsive-stack .btn-batal { color: var(--danger); }
+.table-responsive-stack .btn-batal:hover { border-color: var(--danger); background: var(--danger-bg); }
+
+@media (max-width: 640px) {
+  .prof-hero-body { padding: 0 18px 18px; flex-direction: column; align-items: center; text-align: center; }
+  .prof-name-row { justify-content: center; }
+  .prof-facts > div { padding: 12px 18px; }
+  .prof-facts > div + div { border-left: none; border-top: 1px solid var(--border); }
+  .prof-card { padding: 18px; }
+  .prof-form-actions .btn-primary { width: 100%; }
+  .prof-section-head p { margin-left: 0; }
+}
