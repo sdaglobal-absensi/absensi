@@ -6,8 +6,13 @@ const MONTH_NAMES = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Ju
 export async function render(container) {
   const now = new Date();
   container.innerHTML = `
-    <div class="page-header">
-      <h1>Laporan Bulanan</h1>
+    <div class="pg-head no-print">
+      <div>
+        <h1>Laporan Bulanan</h1>
+        <p class="pg-head-sub">Rekap kehadiran karyawan per bulan. Filter per departemen atau hubungan kerja, lalu cetak atau export.</p>
+      </div>
+    </div>
+    <div class="pg-toolbar no-print">
       <div class="filter-row">
         <input type="month" id="filter-month" value="${dateOnlyISO(now).slice(0, 7)}">
         <select id="filter-dept"><option value="">Semua Departemen</option></select>

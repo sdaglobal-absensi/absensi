@@ -1,4 +1,5 @@
 import { supabase, supabaseAdminCreate } from "../supabaseClient.js";
+import { esc } from "../approvalHelper.js";
 import { toast, roleLabel, jenisHubunganKerjaLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper, avatarHTML } from "../core.js";
 import {
   personalFieldsHtml, familySectionHtml, wireFamilyForm, fillBiodataForm,
@@ -29,9 +30,32 @@ export async function render(container, user) {
 
   container.innerHTML = `
     <div class="page-header">
-      <h1>Data Karyawan</h1>
+      <div>
+        <h1>Data Karyawan</h1>
+        <p class="muted">Kelola data kepegawaian, penempatan, dan status karyawan.</p>
+      </div>
       ${canEdit ? `<button id="btn-new" class="btn-primary">+ Tambah Karyawan</button>` : ""}
     </div>
+    <div class="ap-toolbar kr-toolbar">
+      <div class="ap-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="search" id="kr-search" placeholder="Cari nama, kode, atau email…" autocomplete="off" aria-label="Cari karyawan">
+      </div>
+      <div class="ap-tools">
+        <select id="kr-filter-jenis" class="ap-sort" aria-label="Filter hubungan kerja">
+          <option value="">Semua Hubungan Kerja</option>
+          <option value="karyawan_tetap">Karyawan Tetap</option>
+          <option value="pkwt">PKWT</option>
+          <option value="outsourcing">Outsourcing</option>
+        </select>
+        <select id="kr-filter-status" class="ap-sort" aria-label="Filter status">
+          <option value="">Semua Status</option>
+          <option value="aktif">Aktif</option>
+          <option value="nonaktif">Nonaktif</option>
+        </select>
+      </div>
+    </div>
+    <div class="ap-meta" id="kr-meta"></div>
     <div id="karyawan-table" class="table-wrap"><p class="muted">Memuat…</p></div>
 
     ${canEdit ? `
@@ -131,6 +155,16 @@ export async function render(container, user) {
     ` : ""}
   `;
 
+  // Pencarian & filter daftar (dipasang tiap halaman dirender ulang, karena
+  // elemennya ikut dibuat ulang bersama container.innerHTML di atas).
+  karyawanRows = [];
+  {
+    let timer;
+    document.getElementById("kr-search").addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(renderKaryawanTable, 120); });
+    document.getElementById("kr-filter-jenis").addEventListener("change", renderKaryawanTable);
+    document.getElementById("kr-filter-status").addEventListener("change", renderKaryawanTable);
+  }
+
   if (canEdit) {
     await loadMasterData();
     setupSearchSelects();
@@ -209,42 +243,84 @@ function setupSearchSelects() {
   });
 }
 
+let karyawanRows = [];
+let karyawanCanEdit = false;
+
 async function loadTable(canEdit, isFullSuperAdmin) {
   const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
   const el = document.getElementById("karyawan-table");
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
 
-  // Tombol Edit sekarang muncul untuk SEMUA baris tanpa kecuali (termasuk
-  // akun Super Admin) -- role tidak diubah dari sini
-  // (lihat renderRoleDisplay) -- diatur lewat Struktur Organisasi.
-  const canEditRow = () => canEdit;
+  karyawanRows = data || [];
+  karyawanCanEdit = canEdit;
+
+  renderKaryawanTable();
+}
+
+const normText = s => String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+function renderKaryawanTable() {
+  const el = document.getElementById("karyawan-table");
+  const canEdit = karyawanCanEdit;
+  const tokens = normText(document.getElementById("kr-search").value).split(/\s+/).filter(Boolean);
+  const jenis = document.getElementById("kr-filter-jenis").value;
+  const status = document.getElementById("kr-filter-status").value;
+
+  const data = karyawanRows.filter(k => {
+    if (jenis && (k.jenis_hubungan_kerja || "karyawan_tetap") !== jenis) return false;
+    if (status && (status === "aktif") !== !!k.is_active) return false;
+    if (!tokens.length) return true;
+    const hay = normText([k.full_name, k.employee_code, k.email, k.department, k.position].join(" "));
+    return tokens.every(t => hay.includes(t));
+  });
+
+  document.getElementById("kr-meta").textContent = karyawanRows.length
+    ? (data.length === karyawanRows.length ? `${karyawanRows.length} karyawan` : `Menampilkan ${data.length} dari ${karyawanRows.length} karyawan`)
+    : "";
+
+  if (!data.length) {
+    el.innerHTML = `<p class="muted" style="text-align:center;">${karyawanRows.length ? "Tidak ada karyawan yang cocok dengan pencarian/filter." : "Belum ada data karyawan."}</p>`;
+    return;
+  }
 
   el.innerHTML = `
-    <table class="table">
-      <thead><tr><th></th><th>Kode</th><th>Nama</th><th>Email</th><th>Departemen</th><th>Jabatan</th><th>Level</th><th>PTKP</th><th>Hubungan Kerja</th><th>Role</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead>
+    <table class="table kr-table">
+      <thead><tr><th>Karyawan</th><th>Kode</th><th>Departemen / Jabatan</th><th>Level</th><th>Hubungan Kerja</th><th>Role</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead>
       <tbody>
-        ${data.map(k => `
+        ${data.map(k => {
+          const outsourcing = k.jenis_hubungan_kerja === "outsourcing";
+          return `
           <tr>
-            <td><span class="row-avatar">${avatarHTML(k, k.full_name)}</span></td>
-            <td>${k.employee_code || "-"}</td>
-            <td>${k.full_name}</td>
-            <td>${k.email || "-"}</td>
-            <td>${k.department || "-"}</td>
-            <td>${k.position || "-"}</td>
-            <td>${k.level || "-"}</td>
-            <td>${k.ptkp || "-"}</td>
             <td>
-              <span class="badge ${k.jenis_hubungan_kerja === "outsourcing" ? "badge-warn" : "badge-ok"}">${jenisHubunganKerjaLabel(k.jenis_hubungan_kerja)}</span>
-              ${k.jenis_hubungan_kerja === "outsourcing" && k.unit_pt ? `<br><span class="muted small">${k.unit_pt}</span>` : ""}
+              <div class="kr-emp">
+                <span class="row-avatar">${avatarHTML(k, k.full_name)}</span>
+                <div>
+                  <div class="kr-name">${esc(k.full_name)}</div>
+                  <div class="kr-sub">${esc(k.email || "-")}</div>
+                </div>
+              </div>
+            </td>
+            <td>${esc(k.employee_code || "-")}</td>
+            <td>
+              <div class="kr-name kr-name-plain">${esc(k.position || "-")}</div>
+              <div class="kr-sub">${esc(k.department || "-")}</div>
+            </td>
+            <td>
+              ${esc(k.level || "-")}
+              ${k.ptkp ? `<div class="kr-sub">PTKP ${esc(k.ptkp)}</div>` : ""}
+            </td>
+            <td class="kr-wrap">
+              <span class="badge ${outsourcing ? "badge-warn" : "badge-ok"}">${jenisHubunganKerjaLabel(k.jenis_hubungan_kerja)}</span>
+              ${k.unit_pt ? `<div class="kr-sub">${esc(k.unit_pt)}</div>` : ""}
             </td>
             <td>${roleLabel(k.role)}</td>
             <td>
               <span class="badge badge-${k.is_active ? "ok" : "danger"}">${k.is_active ? "Aktif" : "Nonaktif"}</span>
-              ${k.resign_date ? `<br><span class="muted small">Resign ${fmtTanggal(k.resign_date)}</span>` : ""}
+              ${k.resign_date ? `<div class="kr-sub">Resign ${fmtTanggal(k.resign_date)}</div>` : ""}
             </td>
-            ${canEdit ? `<td>${canEditRow(k) ? `<button class="btn-link btn-edit" data-id="${k.id}">Edit</button>` : ""}</td>` : ""}
-          </tr>
-        `).join("")}
+            ${canEdit ? `<td><button class="btn-link btn-edit" data-id="${k.id}">Edit</button></td>` : ""}
+          </tr>`;
+        }).join("")}
       </tbody>
     </table>
   `;
@@ -252,7 +328,7 @@ async function loadTable(canEdit, isFullSuperAdmin) {
   if (canEdit) {
     el.querySelectorAll(".btn-edit").forEach(btn => {
       btn.addEventListener("click", () => {
-        const row = data.find(k => k.id === btn.dataset.id);
+        const row = karyawanRows.find(k => k.id === btn.dataset.id);
         openModal(row);
       });
     });

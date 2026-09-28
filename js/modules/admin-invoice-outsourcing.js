@@ -32,17 +32,19 @@ export async function render(container) {
   period = dateOnlyISO(new Date()).slice(0, 7);
 
   container.innerHTML = `
-    <div class="page-header">
-      <h1>Invoice Outsourcing</h1>
-      <div class="filter-row">
+    <div class="pg-head">
+      <div>
+        <h1>Invoice Outsourcing</h1>
+        <p class="pg-head-sub">
+          Cocokkan tagihan PT vendor outsourcing dengan acuan internal (Total Pendapatan di Slip Gaji
+          yang sudah difinalisasi). Input nominal tagihan vendor per karyawan — selisih dihitung otomatis.
+        </p>
+      </div>
+      <div class="filter-row pg-head-actions">
         <input type="month" id="filter-period" value="${period}">
         <button id="btn-export" class="btn-secondary no-print">Export Excel</button>
       </div>
     </div>
-    <p class="small muted">
-      Cocokkan tagihan PT vendor outsourcing dengan acuan internal (Total Pendapatan di Slip Gaji
-      yang sudah difinalisasi). Input nominal tagihan vendor per karyawan -- selisih dihitung otomatis.
-    </p>
     <div id="invoice-status"></div>
     <div id="invoice-content"><p class="muted">Memuat…</p></div>
   `;
@@ -80,11 +82,13 @@ async function load() {
   if (!periodInfo) {
     slipByUser = {};
     content.innerHTML = `
-      <p class="muted">
-        Periode ini belum difinalisasi di menu <strong>Slip Gaji</strong>, jadi belum ada angka resmi
-        untuk dicocokkan dengan tagihan vendor. Buka menu Slip Gaji, pilih periode ${periodLabelSimple(period)},
-        lalu klik <strong>Finalisasi Periode Ini</strong> terlebih dahulu.
-      </p>`;
+      <div class="pg-banner pg-banner-warn">
+        <span class="pg-banner-icon">🔒</span>
+        <div class="pg-banner-text">
+          <strong>Periode ${periodLabelSimple(period)} belum difinalisasi</strong>
+          <span>Belum ada angka resmi untuk dicocokkan dengan tagihan vendor. Buka menu <strong>Slip Gaji</strong>, pilih periode ini, lalu klik <strong>Finalisasi Periode Ini</strong> terlebih dahulu.</span>
+        </div>
+      </div>`;
     return;
   }
 
@@ -108,7 +112,14 @@ function renderStatus() {
   const el = document.getElementById("invoice-status");
   if (!employees.length) { el.innerHTML = ""; return; }
   if (periodInfo) {
-    el.innerHTML = `<p class="small muted">🔒 Periode ${periodLabelSimple(period)} sudah final di Slip Gaji pada ${fmtDate(periodInfo.finalized_at)} -- angka acuan di bawah dibekukan (tidak berubah walau data absensi/tarif diubah lagi nanti).</p>`;
+    el.innerHTML = `
+      <div class="pg-banner pg-banner-ok">
+        <span class="pg-banner-icon">🔒</span>
+        <div class="pg-banner-text">
+          <strong>Periode ${periodLabelSimple(period)} sudah final</strong>
+          <span>Difinalisasi di Slip Gaji pada ${fmtDate(periodInfo.finalized_at)}. Angka acuan di bawah dibekukan, tidak berubah walau data absensi/tarif diubah lagi nanti.</span>
+        </div>
+      </div>`;
   } else {
     el.innerHTML = "";
   }

@@ -346,16 +346,24 @@ function renderLockBanner() {
   if (periodInfo) {
     const namaPenetap = employees.find(e => e.id === periodInfo.finalized_by)?.full_name || "—";
     el.innerHTML = `
-      <div class="status-card done" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
-        <span>🔒 <strong>Final</strong> — periode ini sudah difinalisasi oleh ${namaPenetap} pada ${fmtDate(periodInfo.finalized_at)}. Nilai di bawah dibekukan, tidak berubah walau pengaturan cut-off/tarif berubah lagi nanti.</span>
-        ${roleFlags.canFinalize ? `<button id="btn-unlock-period" class="btn-secondary" style="white-space:nowrap;">🔓 Buka Kunci</button>` : ""}
+      <div class="pg-banner pg-banner-ok">
+        <span class="pg-banner-icon">🔒</span>
+        <div class="pg-banner-text">
+          <strong>Periode Final</strong>
+          <span>Difinalisasi oleh ${namaPenetap} pada ${fmtDate(periodInfo.finalized_at)}. Nilai di bawah dibekukan, tidak berubah walau pengaturan cut-off/tarif berubah lagi nanti.</span>
+        </div>
+        ${roleFlags.canFinalize ? `<button id="btn-unlock-period" class="btn-secondary">🔓 Buka Kunci</button>` : ""}
       </div>`;
     document.getElementById("btn-unlock-period")?.addEventListener("click", onUnlock);
   } else {
     el.innerHTML = `
-      <div class="status-card" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
-        <span>📝 <strong>Draft</strong> — nilai masih dihitung otomatis dan bisa berubah kalau absensi/lembur/tarif/pengaturan cut-off diubah.${roleFlags.canFinalize ? " Finalisasi untuk mengunci angka periode ini." : " Menunggu Super Admin memfinalisasi periode ini."}</span>
-        ${roleFlags.canFinalize ? `<button id="btn-finalize-period" class="btn-primary" style="white-space:nowrap;">🔒 Finalisasi Periode Ini</button>` : ""}
+      <div class="pg-banner pg-banner-warn">
+        <span class="pg-banner-icon">📝</span>
+        <div class="pg-banner-text">
+          <strong>Draft</strong>
+          <span>Nilai masih dihitung otomatis dan bisa berubah kalau absensi/lembur/tarif/pengaturan cut-off diubah.${roleFlags.canFinalize ? " Finalisasi untuk mengunci angka periode ini." : " Menunggu Super Admin memfinalisasi periode ini."}</span>
+        </div>
+        ${roleFlags.canFinalize ? `<button id="btn-finalize-period" class="btn-primary">🔒 Finalisasi Periode Ini</button>` : ""}
       </div>`;
     document.getElementById("btn-finalize-period")?.addEventListener("click", onFinalize);
   }
