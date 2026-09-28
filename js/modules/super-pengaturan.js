@@ -51,6 +51,7 @@ const MENU_LABELS = {
   "master-tunjangan": "Master Tunjangan",
   "master-denda": "Master Denda Telat",
   "master-departemen": "Master Departemen",
+  "master-pt": "Master PT / Vendor",
   "master-jadwal": "Master Jadwal Kerja",
   "master-libur": "Master Hari Libur",
   "master-lokasi": "Master Lokasi Kantor",

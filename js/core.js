@@ -126,6 +126,7 @@ const MENUS = {
     { id: "master-tunjangan", label: "Master Tunjangan", icon: "chart", section: "Master Data" },
     { id: "master-denda", label: "Master Denda Telat", icon: "file", section: "Master Data" },
     { id: "master-departemen", label: "Master Departemen", icon: "grid", section: "Master Data" },
+    { id: "master-pt", label: "Master PT / Vendor", icon: "grid", section: "Master Data" },
     { id: "master-jadwal", label: "Master Jadwal Kerja", icon: "clock", section: "Master Data" },
     { id: "master-libur", label: "Master Hari Libur", icon: "file", section: "Master Data" },
     { id: "master-lokasi", label: "Master Lokasi Kantor", icon: "grid", section: "Master Data" },

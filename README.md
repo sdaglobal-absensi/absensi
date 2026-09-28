@@ -226,6 +226,7 @@ supabase-revisi-pengajuan.sql  Migrasi pengajuan ulang (revisi) izin & lembur ya
 supabase-role-admin-approval.sql  Migrasi role Admin untuk database yang SUDAH berjalan (instalasi baru tidak perlu; sudah termasuk di dua file di atas)
 supabase-koreksi-absen.sql  Migrasi Pengajuan Koreksi Absen (lupa absen masuk/pulang) — WAJIB dijalankan sekali (baik project baru maupun yang sudah berjalan) sebelum menu "Koreksi Absen"/"Approval Koreksi Absen" dipakai
 supabase-jenis-hubungan-kerja.sql  Migrasi kolom Jenis Hubungan Kerja (Karyawan Tetap/PKWT/Outsourcing) di Data Karyawan — WAJIB dijalankan sekali
+supabase-master-pt.sql  Migrasi Master PT / Vendor (pilihan Unit / PT di Data Karyawan, tidak perlu ketik manual) — WAJIB dijalankan sekali; menu "Master PT / Vendor"
 supabase-invoice-outsourcing.sql  Migrasi tabel Invoice Outsourcing — WAJIB dijalankan sekali sebelum menu "Invoice Outsourcing" dipakai (butuh supabase-jenis-hubungan-kerja.sql lebih dulu)
 ```
 
@@ -494,3 +495,10 @@ Aman dijalankan ulang. Data karyawan yang sudah ada otomatis dianggap "Karyawan 
 admin tinggal ubah satu-satu ke "Outsourcing"/"PKWT" lewat Data Karyawan untuk yang memang
 berstatus begitu. Akses menu **Invoice Outsourcing** diatur lewat **Pengaturan Sistem**
 sama seperti menu lain (default: menyala untuk Super Admin HR, mati untuk Admin HR/Admin/Karyawan).
+
+**Master PT / Vendor:** kolom **Unit / PT** di Data Karyawan sekarang berupa pilihan (bisa dicari),
+bukan ketik manual. Daftarnya diatur di menu **Master PT / Vendor** (jenis: PT Sendiri atau Vendor
+Outsourcing). Pilihannya otomatis mengikuti Jenis Hubungan Kerja: Outsourcing menampilkan daftar
+vendor, Karyawan Tetap/PKWT menampilkan daftar PT sendiri. Jalankan `supabase-master-pt.sql` sekali —
+nama Unit/PT yang sudah pernah diketik otomatis dimasukkan ke daftar. Kalau nama PT diedit di master,
+nama di Data Karyawan ikut diperbarui.

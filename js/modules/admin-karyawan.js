@@ -8,7 +8,8 @@ import {
 let masterDepartments = [];
 let masterLevels = [];
 let masterLocations = [];
-let ssDepartemen, ssBagian, ssJabatan, ssGrade, ssLokasi;
+let masterPts = []; // Master PT / Vendor (tabel master_pt)
+let ssDepartemen, ssBagian, ssJabatan, ssGrade, ssLokasi, ssUnitPt;
 // Izin user yang sedang login, dipakai lagi di openModal() waktu membangun
 // pilihan Role untuk baris yang sedang diedit.
 // ID anak yang sudah tersimpan untuk karyawan yang sedang dibuka di modal —
@@ -90,10 +91,10 @@ export async function render(container, user) {
                 <option value="outsourcing">Outsourcing</option>
               </select>
             </label>
-            <label>Unit / PT <input name="unit_pt" placeholder="Contoh: PT Sinar Data Abadi"></label>
+            ${searchSelectHtml({ id: "ss-unit-pt", label: "Unit / PT", placeholder: "Pilih PT / vendor…" })}
             ${searchSelectHtml({ id: "ss-lokasi", label: "Lokasi Kerja / Area", placeholder: "Cari lokasi kerja…" })}
           </div>
-          <p class="small field-hint hidden" id="outsourcing-hint">Isi <b>Unit / PT</b> dengan nama PT vendor/penyedia jasa outsourcing, bukan nama PT sendiri.</p>
+          <p class="small field-hint hidden" id="outsourcing-hint">Pilih <b>Unit / PT</b> dari daftar vendor outsourcing. Vendor belum ada? Tambahkan dulu di menu Master PT / Vendor.</p>
           <div class="form-row two-col">
             ${searchSelectHtml({ id: "ss-departemen", label: "Departemen", placeholder: "Cari departemen…" })}
             ${searchSelectHtml({ id: "ss-bagian", label: "Bagian", placeholder: "Pilih departemen dulu…" })}
@@ -141,18 +142,20 @@ export async function render(container, user) {
     document.getElementById("join_date").addEventListener("input", refreshTenure);
     document.getElementById("resign_date").addEventListener("input", refreshTenure);
     document.querySelector('#form-karyawan input[name="is_active"]').addEventListener("change", refreshTenure);
-    document.getElementById("jenis_hubungan_kerja").addEventListener("change", refreshOutsourcingHint);
+    document.getElementById("jenis_hubungan_kerja").addEventListener("change", onJenisChange);
   }
 
   loadTable(canEdit, isFullSuperAdmin);
 }
 
 async function loadMasterData() {
-  const [{ data: depts }, { data: levels }, { data: locs }] = await Promise.all([
+  const [{ data: depts }, { data: levels }, { data: locs }, { data: pts }] = await Promise.all([
     supabase.from("departments").select("*").eq("is_active", true),
     supabase.from("job_levels").select("*").eq("is_active", true),
     supabase.from("office_locations").select("*").eq("is_active", true),
+    supabase.from("master_pt").select("*").eq("is_active", true).order("nama"),
   ]);
+  masterPts = pts || [];
   masterDepartments = depts || [];
   masterLevels = levels || [];
   masterLocations = locs || [];
@@ -191,6 +194,13 @@ function setupSearchSelects() {
       document.querySelector('#form-karyawan input[name="grade"]').value = o.grade;
       document.querySelector('#form-karyawan input[name="level"]').value = o.level;
     },
+  });
+
+  // Pilihan Unit / PT mengikuti Jenis Hubungan Kerja: Outsourcing -> daftar
+  // vendor, selain itu -> daftar PT sendiri (lihat ptOptionsFor()).
+  ssUnitPt = wireSearchSelect("ss-unit-pt", ptOptionsFor(document.getElementById("jenis_hubungan_kerja")?.value), {
+    getLabel: o => o.nama,
+    getValue: o => o.nama,
   });
 
   ssLokasi = wireSearchSelect("ss-lokasi", masterLocations, {
@@ -274,7 +284,7 @@ async function openModal(existing = null) {
 
   form.reset();
   ssDepartemen.clear(); ssBagian.setOptions([]); ssBagian.clear();
-  ssJabatan.setOptions([]); ssJabatan.clear(); ssGrade.clear(); ssLokasi.clear();
+  ssJabatan.setOptions([]); ssJabatan.clear(); ssGrade.clear(); ssLokasi.clear(); ssUnitPt.clear();
   document.getElementById("lama_bekerja").value = "";
   renderRoleDisplay(existing);
 
@@ -289,7 +299,6 @@ async function openModal(existing = null) {
     form.full_name.value = existing.full_name || "";
     form.employee_code.value = existing.employee_code || "";
     form.is_active.checked = existing.is_active;
-    form.unit_pt.value = existing.unit_pt || "";
     form.jenis_hubungan_kerja.value = existing.jenis_hubungan_kerja || "karyawan_tetap";
     form.status_karyawan.value = existing.status_karyawan || "bulanan";
     form.join_date.value = existing.join_date || "";
@@ -317,6 +326,7 @@ async function openModal(existing = null) {
     if (existing.position) ssJabatan.setValue(existing.position);
     if (existing.grade) ssGrade.setValue(existing.grade, `${existing.grade} — ${existing.level || ""}`);
     if (existing.lokasi_kerja) ssLokasi.setValue(existing.lokasi_kerja);
+    if (existing.unit_pt) ssUnitPt.setValue(existing.unit_pt); // tetap tampil walau belum ada di Master PT / Vendor
   } else {
     form.id.value = "";
     form.status_karyawan.value = "bulanan";
@@ -325,6 +335,7 @@ async function openModal(existing = null) {
   fillBiodataForm(form, existing || {}, children);
   refreshTenure();
   refreshOutsourcingHint();
+  ssUnitPt.setOptions(ptOptionsFor(form.jenis_hubungan_kerja.value)); // tanpa mengosongkan nilai yang sedang dimuat
   modal.classList.remove("hidden");
 }
 
@@ -344,7 +355,7 @@ async function onSubmit(e, currentUser, isFullSuperAdmin) {
     position: ssJabatan.value || null,
     grade: fd.get("grade") || null,
     level: fd.get("level") || null,
-    unit_pt: fd.get("unit_pt") || null,
+    unit_pt: ssUnitPt.value || null,
     jenis_hubungan_kerja: fd.get("jenis_hubungan_kerja") || "karyawan_tetap",
     lokasi_kerja: ssLokasi.value || null,
     status_karyawan: fd.get("status_karyawan"),
@@ -424,6 +435,21 @@ function refreshTenure() {
 // Tampilkan pengingat kalau Jenis Hubungan Kerja diset ke Outsourcing, supaya
 // admin ingat mengisi Unit/PT dengan nama PT vendor (bukan PT sendiri).
 function refreshOutsourcingHint() {
-  const isOutsourcing = document.getElementById("jenis_hubungan_kerja").value === "outsourcing";
-  document.getElementById("outsourcing-hint").classList.toggle("hidden", !isOutsourcing);
+  const jenis = document.getElementById("jenis_hubungan_kerja").value;
+  document.getElementById("outsourcing-hint").classList.toggle("hidden", jenis !== "outsourcing");
+}
+
+// Daftar pilihan Unit / PT sesuai jenis hubungan kerja: vendor untuk
+// Outsourcing, PT sendiri (internal) untuk Karyawan Tetap/PKWT.
+function ptOptionsFor(jenis) {
+  return masterPts.filter(p => p.jenis === (jenis === "outsourcing" ? "vendor" : "internal"));
+}
+
+// Dipanggil saat Jenis Hubungan Kerja berubah: ganti daftar pilihan, dan
+// kosongkan pilihan lama kalau sudah tidak cocok dengan jenis yang baru.
+function onJenisChange() {
+  refreshOutsourcingHint();
+  const opts = ptOptionsFor(document.getElementById("jenis_hubungan_kerja").value);
+  ssUnitPt.setOptions(opts);
+  if (ssUnitPt.value && !opts.some(o => o.nama === ssUnitPt.value)) ssUnitPt.clear();
 }
