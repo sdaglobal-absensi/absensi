@@ -5,6 +5,16 @@ import { fetchSpecialLeaveRules, leaveTypeLabel } from "../leaveRules.js";
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
+// Ikon SVG kecil untuk halaman Absensi (gaya sama dengan ikon di sidebar).
+const ABS_SVG = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const ABS_ICONS = {
+  login: ABS_SVG('<path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/>'),
+  logout: ABS_SVG('<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>'),
+  camera: ABS_SVG('<path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/>'),
+  calendar: ABS_SVG('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>'),
+  info: ABS_SVG('<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'),
+};
+
 let stream = null;
 let capturedBlob = null;
 let pendingMode = null; // 'in' | 'out'
@@ -139,48 +149,91 @@ export async function render(container, user) {
   const scheduleInfo = await loadMySchedule(user);
   const leaveLabel = onLeaveToday ? await onLeaveLabel(onLeaveToday) : null;
 
+  const dateLabel = new Date().toLocaleDateString("id-ID", { timeZone: tz || undefined, weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+  // Status ringkas di pojok kartu "Absensi Hari Ini".
+  const statusChip = leaveLabel
+    ? { tone: "info", text: onLeaveToday?.status === "pending" ? "Menunggu Persetujuan" : "Tidak Perlu Absen" }
+    : openShift
+    ? { tone: "live", text: "Sedang Bekerja" }
+    : completedToday
+    ? { tone: "ok", text: "Selesai" }
+    : { tone: "idle", text: "Belum Check-in" };
+
+  // Keterangan tanggal sesi — hanya kalau sesinya bukan dari hari ini (shift lintas hari).
+  const sessionNote = openShift && activeRow
+    ? `<p class="abs-card-sub">Sesi dimulai ${fmtDate(activeRow.date)} · belum check-out</p>`
+    : "";
+
+  const timeBlock = (kind, value, extraHtml) => `
+    <div class="abs-time ${value ? "done" : ""}">
+      <span class="abs-time-label">
+        <span class="abs-time-icon">${kind === "in" ? ABS_ICONS.login : ABS_ICONS.logout}</span>
+        ${kind === "in" ? "Check-in" : "Check-out"}
+      </span>
+      <span class="abs-time-value ${value ? "" : "empty"}">${value || "--.--"}</span>
+      <span class="abs-time-extra">${extraHtml || ""}</span>
+    </div>`;
+
+  const checkInExtra = activeRow?.check_in_status
+    ? `<span class="badge badge-${activeRow.check_in_status === "telat" ? "warn" : "ok"}">${activeRow.check_in_status === "telat" ? "Telat" : "Tepat waktu"}</span>`
+    : `<span class="muted small">${leaveLabel ? "Tidak diperlukan" : "Belum tercatat"}</span>`;
+  const checkOutExtra = activeRow?.check_out
+    ? `<span class="badge badge-ok">Tercatat</span>`
+    : `<span class="muted small">${leaveLabel ? "Tidak diperlukan" : "Belum tercatat"}</span>`;
+
   container.innerHTML = `
-    <div class="page-header">
-      <h1>Absensi</h1>
-      <div style="text-align:right;">
-        <p class="muted" style="margin:0;">${new Date().toLocaleDateString("id-ID", { timeZone: tz || undefined, weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
-        <div class="live-clock" id="live-clock">--:--:--</div>
+    <div class="abs-page">
+      <div class="abs-head">
+        <div>
+          <h1>Absensi</h1>
+          <p class="abs-sub">Catat kehadiran harianmu dengan foto dan lokasi.</p>
+        </div>
+        <div class="abs-clock">
+          <div class="abs-clock-date">${dateLabel}</div>
+          <div class="live-clock" id="live-clock">--:--:--</div>
+        </div>
+      </div>
+
+      ${staleOpen ? reminderBannerHTML(staleRow) : ""}
+      ${misdatedTail ? `<div class="abs-alert">${ABS_ICONS.info}<div>Check-in ${fmtTime(latest.check_in)} – check-out ${fmtTime(latest.check_out)} tadi adalah sisa shift semalam. Kamu tetap bisa check-in untuk shift malam ini.</div></div>` : ""}
+      ${leaveLabel ? `<div class="abs-alert">${ABS_ICONS.calendar}<div>Kamu sedang <strong>${leaveLabel}</strong> (${fmtDate(onLeaveToday.start_date)} – ${fmtDate(onLeaveToday.end_date)})${onLeaveToday.status === "pending" ? "" : ", jadi tidak perlu absen"}.</div></div>` : ""}
+
+      <div class="abs-layout">
+        <section class="abs-card">
+          <div class="abs-card-head">
+            <div>
+              <h2 class="abs-card-title">Absensi Hari Ini</h2>
+              ${sessionNote}
+            </div>
+            <span class="abs-chip abs-chip-${statusChip.tone}">${statusChip.tone === "live" ? `<span class="abs-dot"></span>` : ""}${statusChip.text}</span>
+          </div>
+
+          <div class="abs-times">
+            ${timeBlock("in", activeRow?.check_in ? fmtTime(activeRow.check_in) : "", checkInExtra)}
+            ${timeBlock("out", activeRow?.check_out ? fmtTime(activeRow.check_out) : "", checkOutExtra)}
+          </div>
+
+          <div class="abs-action">
+            ${leaveLabel
+              ? onLeaveToday?.status === "pending"
+                ? `<p class="abs-action-note">Pengajuanmu <strong>${leaveLabel}</strong> untuk hari ini masih menunggu persetujuan, jadi tombol absen untuk sementara tidak ditampilkan. Kalau pengajuan ini ditolak, tombol check-in akan muncul kembali di sini.</p>`
+                : `<p class="abs-action-note">Kamu tercatat ${leaveLabel} hari ini, jadi tombol absen tidak ditampilkan. Kalau ini keliru, hubungi HR/Admin.</p>`
+              : !openShift && !completedToday
+              ? `<button id="btn-open-camera" class="btn-primary btn-lg" data-mode="in">${ABS_ICONS.camera}Check-in Sekarang</button>`
+              : openShift
+              ? `<button id="btn-open-camera" class="btn-primary btn-lg" data-mode="out">${ABS_ICONS.camera}Check-out Sekarang</button>`
+              : `<p class="abs-action-note abs-action-done">Absensi hari ini sudah lengkap. Sampai jumpa besok 👋</p>`
+            }
+          </div>
+        </section>
+
+        <div class="abs-side">
+          ${scheduleCardHtml(scheduleInfo, tz)}
+          <div id="push-opt-in"></div>
+        </div>
       </div>
     </div>
-
-    ${staleOpen ? reminderBannerHTML(staleRow) : ""}
-    ${openShift ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">Sesi kerja dari ${fmtDate(activeRow.date)} masih berjalan (belum check-out).</p>` : ""}
-    ${misdatedTail ? `<p class="small" style="margin-top:-14px; margin-bottom:18px; color:var(--muted);">ℹ️ Check-in ${fmtTime(latest.check_in)} – check-out ${fmtTime(latest.check_out)} tadi adalah sisa shift semalam. Kamu tetap bisa check-in untuk shift malam ini.</p>` : ""}
-    ${leaveLabel ? `<p class="muted small" style="margin-top:-14px; margin-bottom:18px;">🗓️ Kamu sedang <strong>${leaveLabel}</strong> (${fmtDate(onLeaveToday.start_date)} – ${fmtDate(onLeaveToday.end_date)})${onLeaveToday.status === "pending" ? "" : ", jadi tidak perlu absen"}.</p>` : ""}
-
-    ${scheduleCardHtml(scheduleInfo, tz)}
-
-    <div class="status-grid">
-      <div class="status-card ${activeRow?.check_in ? "done" : ""}">
-        <span class="status-label">Check-in</span>
-        <span class="status-value">${activeRow?.check_in ? fmtTime(activeRow.check_in) : leaveLabel ? leaveLabel : "Belum absen"}</span>
-        ${activeRow?.check_in_status ? `<span class="badge badge-${activeRow.check_in_status === "telat" ? "warn" : "ok"}">${activeRow.check_in_status === "telat" ? "Telat" : "Tepat waktu"}</span>` : ""}
-      </div>
-      <div class="status-card ${activeRow?.check_out ? "done" : ""}">
-        <span class="status-label">Check-out</span>
-        <span class="status-value">${activeRow?.check_out ? fmtTime(activeRow.check_out) : leaveLabel ? leaveLabel : "Belum absen"}</span>
-      </div>
-    </div>
-
-    <div class="action-area">
-      ${leaveLabel
-        ? onLeaveToday?.status === "pending"
-          ? `<p class="muted">Pengajuanmu <strong>${leaveLabel}</strong> untuk hari ini masih menunggu persetujuan, jadi tombol absen untuk sementara tidak ditampilkan. Kalau pengajuan ini ditolak, tombol check-in akan muncul kembali di sini.</p>`
-          : `<p class="muted">Kamu tercatat ${leaveLabel} hari ini, jadi tombol absen tidak ditampilkan. Kalau ini keliru, hubungi HR/Admin.</p>`
-        : !openShift && !completedToday
-        ? `<button id="btn-open-camera" class="btn-primary btn-lg" data-mode="in">Check-in Sekarang</button>`
-        : openShift
-        ? `<button id="btn-open-camera" class="btn-primary btn-lg" data-mode="out">Check-out Sekarang</button>`
-        : `<p class="muted">Absensi hari ini sudah lengkap. Sampai jumpa besok 👋</p>`
-      }
-    </div>
-
-    <div id="push-opt-in"></div>
 
     ${cameraModalHtml()}
   `;
@@ -326,45 +379,41 @@ function scheduleCardHtml(info, tz) {
   const todayDow = zonedDayOfWeek(new Date(), tz);
   if (!info) {
     return `
-      <div class="card" style="margin-bottom:24px;">
-        <p class="muted small" style="margin:0;">Jadwal kerja belum diatur oleh admin. Hubungi HR/Admin kalau ini seharusnya sudah ada.</p>
-      </div>
+      <section class="abs-card">
+        <div class="abs-card-head"><h2 class="abs-card-title">Jadwal Kerja</h2></div>
+        <div class="abs-sched-empty">Jadwal kerja belum diatur oleh admin. Hubungi HR/Admin kalau ini seharusnya sudah ada.</div>
+      </section>
     `;
   }
   const { sched, days } = info;
-  const todayRow = days.find(d => d.day_of_week === todayDow);
-  const todayJam = todayRow && todayRow.is_working_day
-    ? `${(todayRow.start_time || "").slice(0, 5)} – ${(todayRow.end_time || "").slice(0, 5)}${todayRow.crosses_midnight ? " (lintas hari)" : ""}`
-    : "Libur";
+  const jamOf = d => d && d.is_working_day
+    ? `${(d.start_time || "").slice(0, 5)} – ${(d.end_time || "").slice(0, 5)}${d.crosses_midnight ? " (lintas hari)" : ""}`
+    : null;
+  const todayJam = jamOf(days.find(d => d.day_of_week === todayDow)) || "Libur";
+
+  // Urutan tampil Senin–Minggu (data pakai 0=Minggu).
+  const weekOrder = [1, 2, 3, 4, 5, 6, 0];
 
   return `
-    <div class="card" style="margin-bottom:24px;">
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+    <section class="abs-card">
+      <div class="abs-card-head">
         <div>
-          <strong>Jadwal Kerja Saya: ${sched.name}</strong>
-          <p style="margin:6px 0 0;">Hari ini (${DAY_NAMES[todayDow]}): <strong>${todayJam}</strong></p>
+          <h2 class="abs-card-title">Jadwal Kerja</h2>
+          <p class="abs-card-sub">${sched.name}</p>
         </div>
-        ${sched.late_tolerance_minutes ? `<span class="small muted">Toleransi telat: ${sched.late_tolerance_minutes} menit</span>` : ""}
+        ${sched.late_tolerance_minutes ? `<span class="abs-chip abs-chip-idle">Toleransi ${sched.late_tolerance_minutes} menit</span>` : ""}
       </div>
-      <details style="margin-top:12px;">
-        <summary class="small" style="cursor:pointer; color:var(--primary); font-weight:600;">Lihat jadwal satu minggu</summary>
-        <div class="table-wrap" style="margin-top:10px;">
-          <table class="table">
-            <thead><tr><th>Hari</th><th>Jam Kerja</th></tr></thead>
-            <tbody>
-              ${DAY_NAMES.map((name, i) => {
-                const d = days.find(x => x.day_of_week === i);
-                const isToday = i === todayDow;
-                const jam = d && d.is_working_day
-                  ? `${(d.start_time || "").slice(0, 5)} – ${(d.end_time || "").slice(0, 5)}${d.crosses_midnight ? " (lintas hari)" : ""}`
-                  : `<span class="muted">Libur</span>`;
-                return `<tr${isToday ? ' style="font-weight:600; background:var(--bg);"' : ""}><td>${name}${isToday ? " · <span class=\"small\" style=\"font-weight:400;\">Hari ini</span>" : ""}</td><td>${jam}</td></tr>`;
-              }).join("")}
-            </tbody>
-          </table>
-        </div>
-      </details>
-    </div>
+      <div class="abs-sched-today">
+        <span class="abs-sched-today-label">Hari ini · ${DAY_NAMES[todayDow]}</span>
+        <span class="abs-sched-today-value">${todayJam}</span>
+      </div>
+      <ul class="abs-week">
+        ${weekOrder.map(i => {
+          const jam = jamOf(days.find(x => x.day_of_week === i));
+          return `<li class="${i === todayDow ? "today" : ""}"><span>${DAY_NAMES[i]}</span><span>${jam || `<span class="muted">Libur</span>`}</span></li>`;
+        }).join("")}
+      </ul>
+    </section>
   `;
 }
 

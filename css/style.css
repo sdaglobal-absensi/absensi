@@ -990,3 +990,84 @@ button { font-family: 'Inter'; cursor: pointer; }
 .shift-toolbar-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .shift-toolbar-label { margin-right: 2px; }
 .shift-toolbar select { padding: 7px 10px; font-size: 0.84rem; }
+
+/* =====================================================================
+   HALAMAN ABSENSI KARYAWAN (redesign) — semua di bawah prefix .abs-
+   supaya tidak memengaruhi .status-card / .reminder-banner yang juga
+   dipakai di Dashboard.
+   ===================================================================== */
+.abs-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+.abs-head h1 { font-size: 1.5rem; margin: 0; }
+.abs-sub { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+.abs-clock {
+  text-align: right; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 10px 16px; box-shadow: var(--shadow-xs);
+}
+.abs-clock-date { font-size: 0.78rem; color: var(--muted); }
+.abs-clock .live-clock { font-size: 1.4rem; margin-top: 0; }
+
+.abs-alert {
+  display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; margin-bottom: 16px;
+  background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--primary-light);
+  border-radius: var(--radius); font-size: 0.86rem; line-height: 1.5; color: var(--ink);
+}
+.abs-alert svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; color: var(--primary-light); }
+
+.abs-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.abs-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+.abs-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); overflow: hidden; }
+.abs-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 22px; border-bottom: 1px solid var(--border); }
+.abs-card-title { font-family: 'Sora', sans-serif; font-size: 0.98rem; font-weight: 600; margin: 0; }
+.abs-card-sub { margin: 3px 0 0; font-size: 0.8rem; color: var(--muted); }
+
+.abs-chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px;
+  font-size: 0.76rem; font-weight: 600; white-space: nowrap;
+}
+.abs-chip-idle { background: #EEEDE7; color: var(--muted); }
+.abs-chip-ok, .abs-chip-live { background: var(--ok-bg); color: var(--ok); }
+.abs-chip-info { background: var(--warn-bg); color: var(--warn); }
+.abs-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); animation: abs-pulse 1.8s ease-out infinite; }
+@keyframes abs-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(46, 125, 79, 0.45); }
+  70% { box-shadow: 0 0 0 7px rgba(46, 125, 79, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(46, 125, 79, 0); }
+}
+
+.abs-times { display: grid; grid-template-columns: 1fr 1fr; }
+.abs-time { padding: 22px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.abs-time + .abs-time { border-left: 1px solid var(--border); }
+.abs-time-label { display: flex; align-items: center; gap: 8px; font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.abs-time-icon { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: #EEEDE7; color: var(--muted); }
+.abs-time-icon svg { width: 15px; height: 15px; }
+.abs-time.done .abs-time-icon { background: var(--ok-bg); color: var(--ok); }
+.abs-time-value { font-family: 'Sora', sans-serif; font-size: 2rem; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--ink); }
+.abs-time-value.empty { color: #C2BFB4; }
+.abs-time-extra { min-height: 22px; display: flex; align-items: center; }
+
+.abs-action { padding: 18px 22px 22px; border-top: 1px solid var(--border); background: var(--surface-2); }
+.abs-action .btn-primary { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+.abs-action .btn-primary svg { width: 20px; height: 20px; }
+.abs-action-note { margin: 0; font-size: 0.88rem; color: var(--muted); line-height: 1.55; }
+.abs-action-done { text-align: center; color: var(--ok); font-weight: 600; }
+
+.abs-sched-today { display: flex; flex-direction: column; gap: 4px; padding: 18px 22px; }
+.abs-sched-today-label { font-size: 0.76rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.abs-sched-today-value { font-family: 'Sora', sans-serif; font-size: 1.55rem; font-weight: 600; color: var(--primary); font-variant-numeric: tabular-nums; }
+.abs-week { list-style: none; margin: 0; padding: 6px 12px 12px; border-top: 1px solid var(--border); }
+.abs-week li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 10px; border-radius: 8px; font-size: 0.86rem; }
+.abs-week li.today { background: var(--ok-bg); color: var(--primary); font-weight: 600; }
+.abs-sched-empty { padding: 18px 22px; font-size: 0.86rem; color: var(--muted); line-height: 1.5; }
+
+@media (max-width: 900px) {
+  .abs-layout { grid-template-columns: 1fr; }
+  .abs-clock { text-align: left; width: 100%; }
+}
+@media (max-width: 480px) {
+  .abs-card-head { padding: 14px 16px; flex-wrap: wrap; }
+  .abs-time { padding: 16px; }
+  .abs-time-value { font-size: 1.6rem; }
+  .abs-action { padding: 16px; }
+  .abs-sched-today { padding: 16px; }
+}
