@@ -1,6 +1,6 @@
 import { supabase } from "../supabaseClient.js";
 import { fmtTime, fmtDate, todayISO, roleLabel, resolveMenu, ICONS, resolveUserTimezone, tzLabel } from "../core.js";
-import { loadAttendanceState, cameraModalHtml, openCamera, reminderBannerHTML, goToKoreksiCheckout, onLeaveLabel } from "./employee-absensi.js";
+import { loadAttendanceState, cameraModalHtml, openCamera, reminderBannerHTML, goToKoreksiCheckout, goToKoreksiMasuk, onLeaveLabel } from "./employee-absensi.js";
 import { countPendingForMe } from "../approvalHelper.js";
 
 // Menu personal yang sudah punya kartu ringkasannya sendiri di dashboard —
@@ -132,7 +132,9 @@ async function loadPersonalStats(user, tz) {
   // (state.onLeaveToday), tombol absen juga disembunyikan — lihat catatan
   // di loadAttendanceState() untuk alasannya.
   const canAbsen = allowedMenu.has("absensi") && !state.onLeaveToday;
-  const canCheckIn = canAbsen && !state.openShift && !state.completedToday;
+  const canCheckIn = canAbsen && !state.openShift && !state.completedToday && !state.checkInClosed;
+  const canCheckOutOnly = canAbsen && state.checkInClosed && !state.openShift && !state.completedToday;
+  const needKoreksiMasuk = canAbsen && ((state.checkInClosed && !state.openShift && !state.completedToday) || (state.completedToday && !att?.check_in));
   const canCheckOut = canAbsen && state.openShift;
   const leaveLabel = state.onLeaveToday ? await onLeaveLabel(state.onLeaveToday) : null;
   // Sesi yang dimulai bukan hari ini (shift lintas hari) diberi keterangan tanggalnya.
@@ -156,6 +158,7 @@ async function loadPersonalStats(user, tz) {
       ${state.misdatedTail ? `<div class="dash-stat-note">ℹ️ ${fmtTime(state.latest.check_in)}–${fmtTime(state.latest.check_out)} tadi = sisa shift semalam.</div>` : ""}
       ${leaveLabel ? `<div class="dash-stat-note">🗓️ ${fmtDate(state.onLeaveToday.start_date)} – ${fmtDate(state.onLeaveToday.end_date)}</div>` : ""}
       ${canCheckIn ? `<button type="button" class="btn-primary btn-card-action" data-mode="in">Check-in Sekarang</button>` : ""}
+      ${needKoreksiMasuk ? `<div class="dash-stat-note">Batas check-in lewat / jam masuk belum ada.</div><button type="button" id="btn-dash-koreksi-masuk" class="btn-secondary btn-card-action-alt">Ajukan Koreksi Check-in</button>` : ""}
     </div>
     <div class="dash-stat ${outVal ? "ok" : ""}">
       <div class="dash-stat-top"><span class="dash-stat-icon">${DASH_ICONS.logout}</span><span class="dash-stat-label">Check-out Hari Ini</span></div>
@@ -164,6 +167,7 @@ async function loadPersonalStats(user, tz) {
         ${outVal ? `<span class="badge badge-ok">Tercatat</span>` : leaveBadge || `<span>Belum check-out</span>`}
       </div>
       ${canCheckOut ? `<button type="button" class="btn-primary btn-card-action" data-mode="out">Check-out Sekarang</button>` : ""}
+      ${canCheckOutOnly ? `<button type="button" class="btn-primary btn-card-action" data-mode="out-only">Check-out Sekarang</button>` : ""}
     </div>
     <div class="dash-stat ${pendingTotal ? "warn" : ""}">
       <div class="dash-stat-top"><span class="dash-stat-icon">${DASH_ICONS.file}</span><span class="dash-stat-label">Pengajuan Pending</span></div>
@@ -175,6 +179,8 @@ async function loadPersonalStats(user, tz) {
   // Alur absen (GPS + selfie + penentuan telat) memakai kode yang sama
   // dengan halaman Absensi. Setelah berhasil, Dashboard dimuat ulang supaya
   // kartu di atas dan ringkasan perusahaan langsung ikut ter-update.
+  el.querySelector("#btn-dash-koreksi-masuk")?.addEventListener("click", () =>
+    goToKoreksiMasuk(att?.date || todayISO(tz)));
   el.querySelectorAll(".btn-card-action").forEach(btn => {
     btn.addEventListener("click", () => {
       openCamera(btn.dataset.mode, user, state.activeRow, tz, () => render(document.getElementById("content"), user));

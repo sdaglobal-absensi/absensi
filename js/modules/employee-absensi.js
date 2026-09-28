@@ -24,6 +24,26 @@ let afterSubmit = null; // dipanggil setelah absen berhasil (lihat openCamera)
 // ada sesi lama yang lupa di-check-out. Dipakai bersama oleh halaman Absensi
 // dan kartu absen di Dashboard supaya keduanya SELALU menampilkan hasil
 // yang sama.
+// Batas check-in: lewat N jam dari jam MULAI shift, check-in lewat tombol
+// ditutup. Karyawan yang belum check-in hanya bisa check-out (tercatat tanpa
+// jam masuk), dan jam masuknya diajukan lewat Koreksi Absen (jenis "masuk").
+export const CHECKIN_WINDOW_HOURS = 5;
+
+export async function getCheckInWindow(user, now, tz) {
+  if (!user.schedule_id) return { closed: false };
+  const ctx = await resolveShiftDate(user, now, tz);
+  const { data: day } = await supabase
+    .from("work_schedule_days")
+    .select("is_working_day, start_time")
+    .eq("schedule_id", user.schedule_id)
+    .eq("day_of_week", ctx.dow)
+    .maybeSingle();
+  if (!day?.is_working_day || !day.start_time) return { closed: false, dateStr: ctx.dateStr };
+  const [h, m] = day.start_time.split(":").map(Number);
+  const closeAt = new Date(zonedTimestamp(ctx.dateStr, h, m, 0, tz) + CHECKIN_WINDOW_HOURS * 3600000);
+  return { closed: now >= closeAt, dateStr: ctx.dateStr, closeAt };
+}
+
 export async function loadAttendanceState(user, tz) {
   // Ambil absensi TERBARU milik user (bukan cuma "hari ini"), supaya shift
   // yang lintas hari (misal masuk jam 22:00, pulang besok jam 06:00) tetap
@@ -32,7 +52,8 @@ export async function loadAttendanceState(user, tz) {
     .from("attendance")
     .select("*")
     .eq("user_id", user.id)
-    .order("check_in", { ascending: false })
+    .order("date", { ascending: false })
+    .order("check_in", { ascending: false, nullsFirst: false })
     .limit(1)
     .maybeSingle();
 
@@ -112,7 +133,14 @@ export async function loadAttendanceState(user, tz) {
     onLeaveToday = (leaves || []).find(l => l.status === "approved") || (leaves || [])[0] || null;
   }
 
-  return { latest, openShift, staleOpen, staleRow, completedToday, activeRow, misdatedTail, onLeaveToday };
+  // Check-in ditutup? Hanya relevan kalau belum ada sesi hari ini & tidak sedang izin/cuti.
+  let checkInClosed = false;
+  if (!activeRow && !onLeaveToday) {
+    const win = await getCheckInWindow(user, new Date(), tz);
+    checkInClosed = win.closed;
+  }
+
+  return { latest, openShift, staleOpen, staleRow, completedToday, activeRow, misdatedTail, onLeaveToday, checkInClosed };
 }
 
 // Label singkat "Sedang Izin/Cuti/Sakit" untuk baris leave_requests, dipakai
@@ -144,7 +172,7 @@ async function hasActiveCheckoutCorrection(user, attendanceDate) {
 
 export async function render(container, user) {
   const tz = await resolveUserTimezone(user);
-  const { latest, openShift, staleOpen, staleRow, completedToday, activeRow, misdatedTail, onLeaveToday } = await loadAttendanceState(user, tz);
+  const { latest, openShift, staleOpen, staleRow, completedToday, activeRow, misdatedTail, onLeaveToday, checkInClosed } = await loadAttendanceState(user, tz);
 
   const scheduleInfo = await loadMySchedule(user);
   const leaveLabel = onLeaveToday ? await onLeaveLabel(onLeaveToday) : null;
@@ -156,6 +184,8 @@ export async function render(container, user) {
     ? { tone: "info", text: onLeaveToday?.status === "pending" ? "Menunggu Persetujuan" : "Tidak Perlu Absen" }
     : openShift
     ? { tone: "live", text: "Sedang Bekerja" }
+    : completedToday && !activeRow?.check_in
+    ? { tone: "info", text: "Perlu Koreksi Check-in" }
     : completedToday
     ? { tone: "ok", text: "Selesai" }
     : { tone: "idle", text: "Belum Check-in" };
@@ -219,10 +249,17 @@ export async function render(container, user) {
               ? onLeaveToday?.status === "pending"
                 ? `<p class="abs-action-note">Pengajuanmu <strong>${leaveLabel}</strong> untuk hari ini masih menunggu persetujuan, jadi tombol absen untuk sementara tidak ditampilkan. Kalau pengajuan ini ditolak, tombol check-in akan muncul kembali di sini.</p>`
                 : `<p class="abs-action-note">Kamu tercatat ${leaveLabel} hari ini, jadi tombol absen tidak ditampilkan. Kalau ini keliru, hubungi HR/Admin.</p>`
+              : !openShift && !completedToday && checkInClosed
+              ? `<p class="abs-action-note">Batas check-in (${CHECKIN_WINDOW_HOURS} jam dari jam mulai shift) sudah lewat, jadi check-in tidak bisa lagi lewat tombol. Ajukan <strong>Koreksi Absen</strong> untuk jam masuk. Kalau masih bekerja atau baru selesai, kamu tetap bisa check-out.</p>
+                 <button id="btn-open-camera" class="btn-primary btn-lg" data-mode="out-only">${ABS_ICONS.camera}Check-out Sekarang</button>
+                 <button type="button" id="btn-koreksi-masuk" class="btn-secondary btn-lg" style="margin-top:10px;">Ajukan Koreksi Check-in</button>`
               : !openShift && !completedToday
               ? `<button id="btn-open-camera" class="btn-primary btn-lg" data-mode="in">${ABS_ICONS.camera}Check-in Sekarang</button>`
               : openShift
               ? `<button id="btn-open-camera" class="btn-primary btn-lg" data-mode="out">${ABS_ICONS.camera}Check-out Sekarang</button>`
+              : !activeRow?.check_in
+              ? `<p class="abs-action-note">Check-out tercatat, tapi jam masuk belum ada. Ajukan Koreksi Absen supaya kehadiranmu lengkap.</p>
+                 <button type="button" id="btn-koreksi-masuk" class="btn-primary btn-lg">Ajukan Koreksi Check-in</button>`
               : `<p class="abs-action-note abs-action-done">Absensi hari ini sudah lengkap. Sampai jumpa besok 👋</p>`
             }
           </div>
@@ -242,6 +279,8 @@ export async function render(container, user) {
   if (btnOpen) btnOpen.addEventListener("click", () => openCamera(btnOpen.dataset.mode, user, activeRow, tz));
 
   document.getElementById("btn-koreksi-checkout")?.addEventListener("click", () => goToKoreksiCheckout(staleRow));
+  document.getElementById("btn-koreksi-masuk")?.addEventListener("click", () =>
+    goToKoreksiMasuk(activeRow?.date || dateOnlyISO(new Date(), tz)));
 
   startLiveClock(tz);
   renderPushOptIn(user);
@@ -283,6 +322,14 @@ export function goToKoreksiCheckout(latestOpenRow) {
   sessionStorage.setItem("koreksi_prefill", JSON.stringify({
     attendance_date: latestOpenRow.date,
     correction_type: "pulang",
+  }));
+  document.querySelector('.nav-item[data-target="koreksi"]')?.click();
+}
+
+export function goToKoreksiMasuk(dateStr) {
+  sessionStorage.setItem("koreksi_prefill", JSON.stringify({
+    attendance_date: dateStr,
+    correction_type: "masuk",
   }));
   document.querySelector('.nav-item[data-target="koreksi"]')?.click();
 }
@@ -449,7 +496,7 @@ async function isOvernightContinuation(user, row, tz) {
 // TIDAK BOLEH dianggap "absensi hari ini sudah lengkap" -- karyawan harus
 // tetap bisa check-in untuk shift malam ini yang sungguhan baru mau mulai.
 async function isMorningTailMisdated(user, row, tz) {
-  if (!user.schedule_id) return false;
+  if (!user.schedule_id || !row.check_in) return false;
   const dow = zonedDayOfWeek(new Date(row.check_in), tz);
   const { data: day } = await supabase
     .from("work_schedule_days")
@@ -654,6 +701,8 @@ async function submitAttendance(user, activeRow, tz) {
     const now = new Date();
 
     if (pendingMode === "in") {
+      const win = await getCheckInWindow(user, now, tz);
+      if (win.closed) throw new Error(`Batas check-in (${CHECKIN_WINDOW_HOURS} jam dari jam mulai shift) sudah lewat. Ajukan Koreksi Absen.`);
       const shiftCtx = await resolveShiftDate(user, now, tz);
       const cutoff = await getLateCutoff(user, now, tz, shiftCtx);
       // cutoff null = tidak ada jadwal kerja yang jadi acuan untuk tanggal ini
@@ -673,6 +722,22 @@ async function submitAttendance(user, activeRow, tz) {
       });
       if (error) throw error;
       toast("Check-in berhasil!", "success");
+    } else if (pendingMode === "out-only") {
+      // Belum ada check-in & batas check-in lewat: catat check-out saja
+      // (check_in kosong). Jam masuk diajukan lewat Koreksi Absen.
+      const shiftCtx = await resolveShiftDate(user, now, tz);
+      const { error } = await supabase.from("attendance").insert({
+        user_id: user.id,
+        date: shiftCtx.dateStr,
+        check_out: now.toISOString(),
+        check_out_lat: pos?.lat ?? null,
+        check_out_lng: pos?.lng ?? null,
+        check_out_distance_m: office ? Math.round(office.distance) : null,
+        check_out_photo_url: photoUrl,
+        notes: "Check-out tanpa check-in (batas check-in lewat). Jam masuk perlu Koreksi Absen.",
+      });
+      if (error) throw error;
+      toast("Check-out tercatat. Ajukan Koreksi Absen untuk jam masuk.", "success");
     } else {
       // Update baris sesi yang masih terbuka (bisa jadi tanggalnya kemarin,
       // untuk shift lintas hari), bukan selalu baris tanggal hari ini.
