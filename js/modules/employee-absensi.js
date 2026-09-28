@@ -106,7 +106,7 @@ export async function loadAttendanceState(user, tz) {
     misdatedTail = await isMorningTailMisdated(user, latest, tz);
     if (misdatedTail) completedToday = false; // izinkan check-in baru utk shift malam ini
   }
-  const activeRow = openShift || completedToday ? latest : null;
+  let activeRow = openShift || completedToday ? latest : null;
 
   // Kalau karyawan sedang izin/cuti/sakit (SUDAH DISETUJUI ATAU MASIH
   // MENUNGGU) untuk hari ini, dia tidak perlu absen — konsisten dengan panel
@@ -137,7 +137,16 @@ export async function loadAttendanceState(user, tz) {
   let checkInClosed = false;
   if (!activeRow && !onLeaveToday) {
     const win = await getCheckInWindow(user, new Date(), tz);
-    checkInClosed = win.closed;
+    // Shift lintas tengah malam: baris absennya bertanggal shift (kemarin)
+    // walau sekarang sudah lewat 00:00. Kalau baris itu sudah ada dan
+    // sudah check-out, anggap shift-nya selesai (jangan tawarkan check-in /
+    // check-out lagi, yang akan bentrok dengan unique user+tanggal).
+    if (win.dateStr && win.dateStr !== today) {
+      const { data: shiftRow } = await supabase.from("attendance").select("*")
+        .eq("user_id", user.id).eq("date", win.dateStr).maybeSingle();
+      if (shiftRow?.check_out) { completedToday = true; activeRow = shiftRow; }
+    }
+    if (!completedToday) checkInClosed = win.closed;
   }
 
   return { latest, openShift, staleOpen, staleRow, completedToday, activeRow, misdatedTail, onLeaveToday, checkInClosed };
@@ -474,17 +483,27 @@ function yesterdayISO(base = new Date(), tz) {
   return dateOnlyISO(d, tz);
 }
 
+// Toleransi check-out untuk shift lintas hari: sesi kemarin dianggap masih
+// berjalan sampai jam PULANG shift + N jam ini. Lewat itu, sesinya dianggap
+// "lupa check-out" (banner Koreksi Absen muncul) dan karyawan bebas check-in
+// untuk shift berikutnya, tidak terkunci di sesi lama.
+export const CHECKOUT_GRACE_HOURS = 8;
+
 async function isOvernightContinuation(user, row, tz) {
   if (!row || row.date !== yesterdayISO(new Date(), tz)) return false;
   if (!user.schedule_id) return false;
   const dow = zonedDayOfWeek(new Date(row.check_in), tz);
   const { data: day } = await supabase
     .from("work_schedule_days")
-    .select("crosses_midnight")
+    .select("crosses_midnight, end_time")
     .eq("schedule_id", user.schedule_id)
     .eq("day_of_week", dow)
     .maybeSingle();
-  return !!day?.crosses_midnight;
+  if (!day?.crosses_midnight) return false;
+  if (!day.end_time) return true;
+  const [h, m] = day.end_time.split(":").map(Number);
+  const endAt = zonedTimestamp(dateOnlyISO(new Date(), tz), h, m, 0, tz) + CHECKOUT_GRACE_HOURS * 3600000;
+  return Date.now() < endAt;
 }
 
 // Kebalikan dari isOvernightContinuation: mendeteksi sesi yang SUDAH check-out,
