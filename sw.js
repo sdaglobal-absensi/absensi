@@ -11,6 +11,10 @@ self.addEventListener("activate", event => {
   event.waitUntil(self.clients.claim());
 });
 
+// Handler fetch kosong: dibutuhkan beberapa versi Chrome Android agar app
+// bisa di-install. Tidak ada caching — semua request tetap langsung ke jaringan.
+self.addEventListener("fetch", () => {});
+
 // Edge Function checkout-reminder (lihat supabase/functions/checkout-reminder)
 // mengirim payload JSON: { title, body, url }
 self.addEventListener("push", event => {
