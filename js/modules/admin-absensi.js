@@ -22,6 +22,7 @@ export async function render(container) {
         <h1>Monitor Absensi</h1>
         <p class="mon-subtitle">Pantau kehadiran karyawan per tanggal, tindak lanjuti yang belum absen atau lupa check-out, lalu export rekapnya ke Excel.</p>
       </div>
+      <button id="btn-open-export" class="btn-secondary">Export Excel</button>
     </div>
 
     <div class="mon-toolbar">
@@ -42,27 +43,33 @@ export async function render(container) {
 
     <div id="absensi-table" class="table-wrap mon-table-wrap"><p class="muted" style="padding:18px 20px;">Memuat…</p></div>
 
-    <h2 class="section-title">Export Excel</h2>
-    <div class="card mon-export-card">
-      <div class="mon-export-head">
-        <div class="mon-export-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS.file}"/></svg>
+    <div id="modal-export" class="modal hidden">
+      <div class="modal-box">
+        <div class="mon-export-head">
+          <div class="mon-export-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS.file}"/></svg>
+          </div>
+          <div>
+            <div class="mon-export-title">Export data absensi</div>
+            <p class="muted small" style="margin:2px 0 0;">Untuk rentang tanggal tertentu (bisa lebih dari satu hari). Kolom pencarian nama di halaman ikut dipakai sebagai filter.</p>
+          </div>
         </div>
-        <div>
-          <div class="mon-export-title">Export data absensi</div>
-          <p class="muted small" style="margin:2px 0 0;">Untuk rentang tanggal tertentu (bisa lebih dari satu hari).</p>
+        <div class="form-row two-col" style="margin-top:18px;">
+          <label>Dari Tanggal <input type="date" id="export-start" value="${firstOfMonth}"></label>
+          <label>Sampai Tanggal <input type="date" id="export-end" value="${today}"></label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="btn-cancel-export" class="btn-secondary">Batal</button>
+          <button type="button" id="btn-export" class="btn-primary">Export Excel</button>
         </div>
       </div>
-      <div class="form-row two-col" style="margin-top:18px;">
-        <label>Dari Tanggal <input type="date" id="export-start" value="${firstOfMonth}"></label>
-        <label>Sampai Tanggal <input type="date" id="export-end" value="${today}"></label>
-      </div>
-      <button id="btn-export" class="btn-secondary">Export Excel</button>
     </div>
   `;
 
   document.getElementById("filter-date").addEventListener("change", onDateOrSearchChange);
   document.getElementById("filter-search").addEventListener("input", onSearchOnlyChange);
+  document.getElementById("btn-open-export").addEventListener("click", () => document.getElementById("modal-export").classList.remove("hidden"));
+  document.getElementById("btn-cancel-export").addEventListener("click", () => document.getElementById("modal-export").classList.add("hidden"));
   document.getElementById("btn-export").addEventListener("click", doExport);
 
   load();
@@ -404,7 +411,7 @@ async function doExport() {
   btn.disabled = false;
   btn.textContent = "Export Excel";
 
-  if (error) { return; }
+  if (error) { toast("Gagal mengambil data: " + error.message, "error"); return; }
 
   const filtered = search
     ? (data || []).filter(r => r.profiles?.full_name?.toLowerCase().includes(search))
@@ -425,6 +432,7 @@ async function doExport() {
   }));
 
   exportXLSX(`absensi-${start}_sampai_${end}.xlsx`, rows, "Absensi");
+  document.getElementById("modal-export").classList.add("hidden");
 }
 
 function locationCell(r) {
