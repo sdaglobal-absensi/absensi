@@ -227,6 +227,7 @@ supabase-role-admin-approval.sql  Migrasi role Admin untuk database yang SUDAH b
 supabase-koreksi-absen.sql  Migrasi Pengajuan Koreksi Absen (lupa absen masuk/pulang) — WAJIB dijalankan sekali (baik project baru maupun yang sudah berjalan) sebelum menu "Koreksi Absen"/"Approval Koreksi Absen" dipakai
 supabase-jenis-hubungan-kerja.sql  Migrasi kolom Jenis Hubungan Kerja (Karyawan Tetap/PKWT/Outsourcing) di Data Karyawan — WAJIB dijalankan sekali
 supabase-master-pt.sql  Migrasi Master PT / Vendor (pilihan Unit / PT di Data Karyawan, tidak perlu ketik manual) — WAJIB dijalankan sekali; menu "Master PT / Vendor"
+supabase-invoice-area.sql  Migrasi Invoice Outsourcing per area (tarif fee/PPN/PPh 23 per vendor di Master PT + tabel invoice per area) — jalankan SETELAH supabase-master-pt.sql dan supabase-invoice-outsourcing.sql
 supabase-invoice-outsourcing.sql  Migrasi tabel Invoice Outsourcing — WAJIB dijalankan sekali sebelum menu "Invoice Outsourcing" dipakai (butuh supabase-jenis-hubungan-kerja.sql lebih dulu)
 ```
 

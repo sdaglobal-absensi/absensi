@@ -26,7 +26,7 @@ export async function render(container) {
     <div id="pt-table" class="table-wrap"><p class="muted">Memuat…</p></div>
 
     <div id="modal-pt" class="modal hidden">
-      <div class="modal-box">
+      <div class="modal-box modal-box-lg">
         <h3 id="modal-title">Tambah PT / Vendor</h3>
         <form id="form-pt">
           <input type="hidden" name="id">
@@ -41,6 +41,21 @@ export async function render(container) {
               </select>
             </label>
           </div>
+          <fieldset id="fs-invoice" class="pt-invoice-fields">
+            <legend>Pengaturan Invoice (khusus Vendor Outsourcing)</legend>
+            <p class="muted small">Isi 0 bila komponen tidak berlaku — barisnya tidak akan muncul di invoice. Management fee dihitung dari total gaji; PPN dan PPh 23 dihitung dari management fee.</p>
+            <div class="form-row pt-rates">
+              <label>Management Fee (%) <input type="number" name="fee_persen" min="0" step="0.01" value="0"></label>
+              <label>PPN (%) <input type="number" name="ppn_persen" min="0" step="0.01" value="0"></label>
+              <label>PPh 23 (%) <input type="number" name="pph23_persen" min="0" step="0.01" value="0"></label>
+            </div>
+            <div class="form-row">
+              <label>Rekening Bank <input name="bank_rekening" placeholder="Contoh: Bank Mandiri KCP Krian - No. Rek: 1410007515265"></label>
+            </div>
+            <div class="form-row">
+              <label>Nama Penandatangan (Mengetahui) <input name="nama_penandatangan" placeholder="Contoh: Totok Supriyono"></label>
+            </div>
+          </fieldset>
           <div class="form-row">
             <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Aktif dipakai</label>
           </div>
@@ -56,6 +71,7 @@ export async function render(container) {
   document.getElementById("btn-new").addEventListener("click", () => openModal());
   document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
   document.getElementById("form-pt").addEventListener("submit", onSubmit);
+  document.querySelector("#form-pt [name=jenis]").addEventListener("change", toggleInvoiceFields);
   loadTable();
 }
 
@@ -74,12 +90,13 @@ async function loadTable() {
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Nama PT</th><th>Jenis</th><th>Karyawan Aktif</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Nama PT</th><th>Jenis</th><th>Fee / PPN / PPh 23</th><th>Karyawan Aktif</th><th>Status</th><th></th></tr></thead>
       <tbody>
         ${rows.map(r => `
           <tr>
             <td>${escapeHtml(r.nama)}</td>
             <td><span class="badge ${r.jenis === "vendor" ? "badge-warn" : "badge-ok"}">${JENIS_LABEL[r.jenis]}</span></td>
+            <td>${r.jenis === "vendor" ? `${fmtPct(r.fee_persen)} / ${fmtPct(r.ppn_persen)} / ${fmtPct(r.pph23_persen)}` : `<span class="muted">-</span>`}</td>
             <td>${countByName[r.nama] || 0}</td>
             <td><span class="badge badge-${r.is_active ? "ok" : "danger"}">${r.is_active ? "Aktif" : "Nonaktif"}</span></td>
             <td><button class="btn-link btn-edit" data-id="${r.id}">Edit</button></td>
@@ -102,11 +119,25 @@ function openModal(existing = null) {
     form.nama.value = existing.nama;
     form.jenis.value = existing.jenis;
     form.is_active.checked = existing.is_active;
+    form.fee_persen.value = existing.fee_persen ?? 0;
+    form.ppn_persen.value = existing.ppn_persen ?? 0;
+    form.pph23_persen.value = existing.pph23_persen ?? 0;
+    form.bank_rekening.value = existing.bank_rekening || "";
+    form.nama_penandatangan.value = existing.nama_penandatangan || "";
   } else {
     form.id.value = "";
   }
+  toggleInvoiceFields();
   document.getElementById("modal-pt").classList.remove("hidden");
 }
+
+// Pengaturan invoice hanya relevan untuk Vendor Outsourcing.
+function toggleInvoiceFields() {
+  const isVendor = document.querySelector("#form-pt [name=jenis]").value === "vendor";
+  document.getElementById("fs-invoice").classList.toggle("hidden", !isVendor);
+}
+
+function fmtPct(n) { return `${String(Number(n) || 0).replace(".", ",")}%`; }
 
 function closeModal() {
   document.getElementById("modal-pt").classList.add("hidden");
@@ -120,7 +151,13 @@ async function onSubmit(e) {
     nama: String(fd.get("nama")).trim(),
     jenis: fd.get("jenis"),
     is_active: fd.get("is_active") === "on",
+    fee_persen: Number(fd.get("fee_persen")) || 0,
+    ppn_persen: Number(fd.get("ppn_persen")) || 0,
+    pph23_persen: Number(fd.get("pph23_persen")) || 0,
+    bank_rekening: String(fd.get("bank_rekening") || "").trim() || null,
+    nama_penandatangan: String(fd.get("nama_penandatangan") || "").trim() || null,
   };
+  if (payload.fee_persen < 0 || payload.ppn_persen < 0 || payload.pph23_persen < 0) { toast("Persentase tidak boleh negatif", "error"); return; }
   if (!payload.nama) { toast("Nama PT wajib diisi", "error"); return; }
 
   try {
