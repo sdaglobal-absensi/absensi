@@ -925,10 +925,18 @@ button { font-family: 'Inter'; cursor: pointer; }
 .mon-subtitle { margin: 6px 0 0; color: var(--muted); font-size: 0.9rem; max-width: 62ch; line-height: 1.55; }
 
 .mon-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 18px 0 22px; }
-.mon-date-field input[type="date"] { padding: 9px 12px; font-size: 0.88rem; min-width: 168px; }
+/* Tanggal & pencarian dibuat sama tinggi dan sejajar (input date bawaan browser lebih tinggi dari input teks). */
+.mon-date-field, .mon-search { display: flex; align-items: center; margin: 0; }
+.mon-date-field input[type="date"],
+.mon-search input { box-sizing: border-box; height: 42px; margin: 0; padding-top: 0; padding-bottom: 0; font-size: 0.88rem; line-height: 1.2; }
+.mon-date-field input[type="date"] { padding-left: 12px; padding-right: 12px; width: 168px; }
 .mon-search { position: relative; }
 .mon-search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--muted); pointer-events: none; }
-.mon-search input { padding: 9px 12px 9px 34px; min-width: 240px; font-size: 0.88rem; }
+.mon-search input { padding-left: 34px; padding-right: 12px; width: 260px; }
+@media (max-width: 520px) {
+  .mon-date-field, .mon-search { width: 100%; }
+  .mon-date-field input[type="date"], .mon-search input { width: 100%; }
+}
 
 .mon-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 22px; }
 .mon-stat {
