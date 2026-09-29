@@ -216,6 +216,8 @@ js/modules/
   admin-struktur-organisasi.js  Pohon unit + anggota + tingkat approval; editor untuk yang punya hak "struktur-kelola"
   admin-kenaikan-upah.js     Riwayat & input kenaikan upah/gaji (menu "kenaikan-upah")
   admin-slip-gaji.js         Hitung & cetak slip gaji, ikut periode cut-off, bisa difinalisasi/dikunci (menu "slip-gaji")
+  excelIO.js                    Helper Excel bersama (baca sheet, parse tanggal/angka, tulis .xlsx) untuk Template/Import/Export
+  modules/karyawan-excel.js     Template, Import (validasi + pratinjau + buat akun) dan Export Excel Data Karyawan
   admin-invoice-outsourcing.js  Cocokkan tagihan PT vendor outsourcing dengan Total Pendapatan Slip Gaji yang sudah final (menu "invoice-outsourcing")
   admin-laporan.js           Laporan bulanan + export (menu "laporan")
   admin-master-*.js          Master data (level, tunjangan, denda, departemen, jadwal, libur, lokasi)

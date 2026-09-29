@@ -1,6 +1,8 @@
 import { supabase, supabaseAdminCreate } from "../supabaseClient.js";
 import { esc } from "../approvalHelper.js";
 import { toast, roleLabel, jenisHubunganKerjaLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper, avatarHTML } from "../core.js";
+import { downloadKaryawanTemplate, exportKaryawan, importKaryawanFile } from "./karyawan-excel.js";
+import { hasXLSX, pickFileThen } from "../excelIO.js";
 import {
   personalFieldsHtml, familySectionHtml, wireFamilyForm, fillBiodataForm,
   readBiodataForm, readChildren, loadChildren, saveChildren, fmtTanggal,
@@ -34,7 +36,14 @@ export async function render(container, user) {
         <h1>Data Karyawan</h1>
         <p class="muted">Kelola data kepegawaian, penempatan, dan status karyawan.</p>
       </div>
-      ${canEdit ? `<button id="btn-new" class="btn-primary">+ Tambah Karyawan</button>` : ""}
+      ${canEdit ? `
+      <div class="filter-row pg-head-actions">
+        <input type="file" id="import-file" accept=".xlsx,.xls" class="hidden">
+        <button id="btn-template" class="btn-secondary">Download Template</button>
+        <button id="btn-import" class="btn-secondary">Import Excel</button>
+        <button id="btn-export" class="btn-secondary">Export Excel</button>
+        <button id="btn-new" class="btn-primary">+ Tambah Karyawan</button>
+      </div>` : ""}
     </div>
     <div class="ap-toolbar kr-toolbar">
       <div class="ap-search">
@@ -170,6 +179,18 @@ export async function render(container, user) {
     setupSearchSelects();
 
     document.getElementById("btn-new").addEventListener("click", () => openModal());
+    const excelCtx = () => ({
+      masterPts, masterLocations, masterDepartments, masterLevels,
+      existingRows: karyawanRows,
+      onDone: () => loadTable(true, isFullSuperAdmin),
+    });
+    document.getElementById("btn-template").addEventListener("click", () => downloadKaryawanTemplate(excelCtx()));
+    document.getElementById("btn-export").addEventListener("click", () => exportKaryawan(getFilteredKaryawan()));
+    document.getElementById("btn-import").addEventListener("click", () => {
+      if (!hasXLSX()) { toast("Library Excel belum termuat, coba refresh halaman.", "error"); return; }
+      document.getElementById("import-file").click();
+    });
+    pickFileThen(document.getElementById("import-file"), file => importKaryawanFile(file, excelCtx()));
     document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
     document.getElementById("form-karyawan").addEventListener("submit", e => onSubmit(e, user, isFullSuperAdmin));
     wireFamilyForm(document.getElementById("form-karyawan"));
@@ -259,20 +280,24 @@ async function loadTable(canEdit, isFullSuperAdmin) {
 
 const normText = s => String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-function renderKaryawanTable() {
-  const el = document.getElementById("karyawan-table");
-  const canEdit = karyawanCanEdit;
+// Daftar karyawan sesuai pencarian & filter yang sedang aktif (dipakai tabel dan Export Excel).
+function getFilteredKaryawan() {
   const tokens = normText(document.getElementById("kr-search").value).split(/\s+/).filter(Boolean);
   const jenis = document.getElementById("kr-filter-jenis").value;
   const status = document.getElementById("kr-filter-status").value;
-
-  const data = karyawanRows.filter(k => {
+  return karyawanRows.filter(k => {
     if (jenis && (k.jenis_hubungan_kerja || "karyawan_tetap") !== jenis) return false;
     if (status && (status === "aktif") !== !!k.is_active) return false;
     if (!tokens.length) return true;
     const hay = normText([k.full_name, k.employee_code, k.email, k.department, k.position].join(" "));
     return tokens.every(t => hay.includes(t));
   });
+}
+
+function renderKaryawanTable() {
+  const el = document.getElementById("karyawan-table");
+  const canEdit = karyawanCanEdit;
+  const data = getFilteredKaryawan();
 
   document.getElementById("kr-meta").textContent = karyawanRows.length
     ? (data.length === karyawanRows.length ? `${karyawanRows.length} karyawan` : `Menampilkan ${data.length} dari ${karyawanRows.length} karyawan`)

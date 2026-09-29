@@ -1,5 +1,6 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtRupiah } from "../core.js";
+import { toast, fmtRupiah, confirmDialog } from "../core.js";
+import { hasXLSX, readFirstSheet, cellText, cellNumber, normKey, writeWorkbook, widthsFor, pickFileThen } from "../excelIO.js";
 
 // =======================================================================
 // MASTER TUNJANGAN
@@ -37,7 +38,14 @@ export async function render(container, user) {
         <h1>Master Tunjangan</h1>
         <p class="muted">Jenis tunjangan bisa dibuat sendiri (Tunjangan Jabatan, Loyalitas, dst), lalu nominalnya diatur per karyawan — otomatis masuk ke Slip Gaji tiap bulan tanpa perlu diisi ulang.</p>
       </div>
-      ${canEdit ? `<button id="btn-new-type" class="btn-primary">+ Jenis Tunjangan</button>` : ""}
+      ${canEdit ? `
+      <div class="filter-row pg-head-actions">
+        <input type="file" id="import-file" accept=".xlsx,.xls" class="hidden">
+        <button id="btn-template" class="btn-secondary">Download Template</button>
+        <button id="btn-import" class="btn-secondary">Import Excel</button>
+        <button id="btn-export" class="btn-secondary">Export Excel</button>
+        <button id="btn-new-type" class="btn-primary">+ Jenis Tunjangan</button>
+      </div>` : ""}
     </div>
 
     <div class="pg-section-head" style="margin-top:8px;">
@@ -81,6 +89,10 @@ export async function render(container, user) {
     document.getElementById("btn-new-type").addEventListener("click", () => openTypeModal());
     document.getElementById("btn-cancel-type").addEventListener("click", closeTypeModal);
     document.getElementById("form-type").addEventListener("submit", onSubmitType);
+    document.getElementById("btn-template").addEventListener("click", () => downloadSheet(true));
+    document.getElementById("btn-export").addEventListener("click", () => downloadSheet(false));
+    document.getElementById("btn-import").addEventListener("click", () => document.getElementById("import-file").click());
+    pickFileThen(document.getElementById("import-file"), onImportFile);
   }
 
   await loadAll();
@@ -282,5 +294,101 @@ async function saveRowAllowances(btn) {
   } catch (err) {
     toast("Gagal menyimpan: " + err.message, "error");
     btn.disabled = false;
+  }
+}
+
+// -----------------------------------------------------------------------
+// TEMPLATE / EXPORT / IMPORT EXCEL
+// Kolom: Kode Karyawan, Nama (info saja), lalu satu kolom per jenis tunjangan
+// (nama kolom = nama jenis tunjangan). Template & Export memakai format yang
+// sama: template = file berisi nominal saat ini, tinggal diubah lalu diimport.
+// Sel nominal KOSONG = tidak diubah. Isi 0 untuk menolkan.
+// Status Aktif per tunjangan tidak diubah lewat Excel (tetap atur di tabel).
+// -----------------------------------------------------------------------
+function downloadSheet(isTemplate) {
+  if (!hasXLSX()) { toast("Library Excel belum termuat, coba refresh halaman.", "error"); return; }
+  if (!allowanceTypes.length) { toast("Buat jenis tunjangan dulu.", "error"); return; }
+  if (!employees.length) { toast("Belum ada karyawan aktif.", "error"); return; }
+
+  const headers = ["Kode Karyawan", "Nama", ...allowanceTypes.map(t => t.nama)];
+  const rows = [headers, ...employees.map(emp => [
+    emp.employee_code || "",
+    emp.full_name,
+    ...allowanceTypes.map(t => {
+      const row = (employeeAllowanceByUser[t.id] || {})[emp.id];
+      return row ? Number(row.nominal) : 0;
+    }),
+  ])];
+  const guide = [
+    ["Petunjuk pengisian"],
+    ["Karyawan dicocokkan lewat Kode Karyawan. Kolom Nama hanya info, tidak dibaca saat import."],
+    ["Isi nominal (angka, tanpa Rp) di kolom tunjangan. Sel kosong = tidak diubah. Isi 0 untuk menolkan."],
+    ["Nama kolom tunjangan harus sama dengan Nama Jenis Tunjangan. Kolom yang tidak dikenali dilewati."],
+    ["Status Aktif/Nonaktif per tunjangan tidak diubah lewat Excel; atur di tabel Master Tunjangan."],
+  ];
+  writeWorkbook(
+    isTemplate ? "Template_Tunjangan_Karyawan.xlsx" : "Tunjangan_Karyawan.xlsx",
+    [{ name: "Data", rows, widths: widthsFor(headers, rows) }, { name: "Petunjuk", rows: guide, widths: [95] }]
+  );
+}
+
+async function onImportFile(file) {
+  if (!hasXLSX()) { toast("Fitur import butuh library XLSX yang belum termuat.", "error"); return; }
+  let rows;
+  try { rows = await readFirstSheet(file); } catch (err) { toast("File tidak bisa dibaca: " + err.message, "error"); return; }
+  if (!rows.length) { toast("File Excel kosong atau format kolom tidak dikenali.", "error"); return; }
+
+  const byCode = new Map(employees.filter(e => e.employee_code).map(e => [cellText(e.employee_code).toLowerCase(), e]));
+  const typeCols = allowanceTypes.map(t => ({ type: t, key: normKey(t.nama) }));
+  const headerKeys = new Set(rows[0].keys.map(normKey));
+  const missingTypes = typeCols.filter(c => !headerKeys.has(c.key)).map(c => c.type.nama);
+  if (missingTypes.length === typeCols.length) {
+    toast("Tidak ada kolom tunjangan yang dikenali. Pakai Download Template agar nama kolom sesuai.", "error");
+    return;
+  }
+
+  const payloads = [];
+  const errors = [];
+  const touchedUsers = new Set();
+
+  rows.forEach(r => {
+    const kode = cellText(r.get("Kode Karyawan"));
+    if (!kode) { errors.push(`Baris ${r._row}: Kode Karyawan kosong`); return; }
+    const emp = byCode.get(kode.toLowerCase());
+    if (!emp) { errors.push(`Baris ${r._row}: kode ${kode} tidak ditemukan di karyawan aktif`); return; }
+
+    typeCols.forEach(({ type }) => {
+      const raw = r.get(type.nama);
+      if (raw === "" || raw == null) return; // kosong = tidak diubah
+      const n = cellNumber(raw);
+      if (!Number.isFinite(n) || n < 0) { errors.push(`Baris ${r._row} (${kode}): nominal "${type.nama}" bukan angka valid`); return; }
+      const old = (employeeAllowanceByUser[type.id] || {})[emp.id];
+      if (old && Number(old.nominal) === n) return; // sama, tidak perlu ditulis
+      payloads.push({ user_id: emp.id, allowance_type_id: type.id, nominal: n, is_active: old ? old.is_active : true });
+      touchedUsers.add(emp.id);
+    });
+  });
+
+  if (!payloads.length) {
+    toast(errors.length ? `Tidak ada yang bisa diimport. ${errors.slice(0, 3).join("; ")}` : "Tidak ada perubahan nominal dibanding data saat ini.", errors.length ? "error" : "success");
+    return;
+  }
+
+  const ok = await confirmDialog({
+    title: "Import Tunjangan",
+    message: `${payloads.length} nominal tunjangan untuk ${touchedUsers.size} karyawan akan disimpan.` +
+      (missingTypes.length ? `\n\nKolom tidak ada di file (tidak diubah): ${missingTypes.join(", ")}` : "") +
+      (errors.length ? `\n\n${errors.length} baris/sel bermasalah (dilewati):\n${errors.slice(0, 5).join("\n")}${errors.length > 5 ? "\n…" : ""}` : ""),
+    confirmLabel: "Proses Import",
+  });
+  if (!ok) return;
+
+  try {
+    const { error } = await supabase.from("employee_allowances").upsert(payloads, { onConflict: "user_id,allowance_type_id" });
+    if (error) throw error;
+    toast(`Import selesai: ${payloads.length} nominal tunjangan tersimpan.`, "success");
+    await loadAll();
+  } catch (err) {
+    toast("Gagal import: " + err.message, "error");
   }
 }
