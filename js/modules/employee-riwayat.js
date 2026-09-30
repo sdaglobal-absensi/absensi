@@ -29,11 +29,14 @@ const hm = t => (t ? String(t).slice(0, 5).replace(":", ".") : null);
 export function buildDays(dates, ctx) {
   return dates.map(date => {
     const dow = dayOfWeekFromDateStr(date);
-    const cfg = ctx.sched[dow] || null;
+    // Jadwal yang berlaku PADA tanggal itu (bukan jadwal sekarang). ctx.scheduleFor
+    // opsional supaya pemanggil lama (ctx.sched / ctx.hasSchedule) tetap jalan.
+    const sc = ctx.scheduleFor ? ctx.scheduleFor(date) : { has: ctx.hasSchedule, sched: ctx.sched };
+    const cfg = sc.sched[dow] || null;
     const row = ctx.att[date] || null;
     const hol = ctx.hol[date] || null;
     const isToday = date === ctx.today;
-    const isWorkingDay = ctx.hasSchedule ? cfg?.is_working_day === true : null; // null = tidak diketahui
+    const isWorkingDay = sc.has ? cfg?.is_working_day === true : null; // null = tidak diketahui
     const jadwal = cfg?.is_working_day && cfg.start_time && cfg.end_time
       ? `${hm(cfg.start_time)}–${hm(cfg.end_time)}${cfg.crosses_midnight ? " (+1)" : ""}`
       : null;
@@ -115,6 +118,24 @@ async function load(user, tz) {
   const end = `${month}-${String(lastDay).padStart(2, "0")}`;
   const today = todayISO(tz);
 
+  // Riwayat penggantian jadwal (supabase-riwayat-jadwal.sql). Kalau tabelnya belum ada,
+  // jatuh balik ke jadwal karyawan saat ini seperti sebelumnya.
+  const histR = await supabase.from("employee_schedule_history")
+    .select("schedule_id, effective_from").eq("user_id", user.id).order("effective_from", { ascending: true });
+  const history = !histR.error && histR.data?.length
+    ? histR.data
+    : (user.schedule_id ? [{ schedule_id: user.schedule_id, effective_from: "1900-01-01" }] : []);
+  const scheduleIdOn = date => {
+    let id = null;
+    for (const h of history) { if (h.effective_from <= date) id = h.schedule_id; else break; }
+    return id;
+  };
+  // Jadwal yang terpakai selama bulan ini (tanggal 1 sampai akhir bulan).
+  const usedIds = new Set();
+  usedIds.add(scheduleIdOn(start));
+  history.forEach(h => { if (h.effective_from > start && h.effective_from <= end) usedIds.add(h.schedule_id); });
+  const idList = [...usedIds].filter(Boolean);
+
   const [attR, holR, leaveR, korR, schedR, nameR, rules] = await Promise.all([
     supabase.from("attendance").select("*").eq("user_id", user.id).gte("date", start).lte("date", end),
     supabase.from("holidays").select("date, name").eq("is_active", true).gte("date", start).lte("date", end),
@@ -124,12 +145,12 @@ async function load(user, tz) {
     supabase.from("attendance_correction_requests")
       .select("attendance_date, correction_type")
       .eq("user_id", user.id).eq("status", "pending").gte("attendance_date", start).lte("attendance_date", end),
-    user.schedule_id
-      ? supabase.from("work_schedule_days").select("day_of_week, is_working_day, start_time, end_time, crosses_midnight").eq("schedule_id", user.schedule_id)
+    idList.length
+      ? supabase.from("work_schedule_days").select("schedule_id, day_of_week, is_working_day, start_time, end_time, crosses_midnight").in("schedule_id", idList)
       : Promise.resolve({ data: [], error: null }),
-    user.schedule_id
-      ? supabase.from("work_schedules").select("name").eq("id", user.schedule_id).maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
+    idList.length
+      ? supabase.from("work_schedules").select("id, name").in("id", idList)
+      : Promise.resolve({ data: [], error: null }),
     fetchSpecialLeaveRules(),
   ]);
 
@@ -140,8 +161,13 @@ async function load(user, tz) {
     return [];
   }
 
-  const sched = {};
-  (schedR.data || []).forEach(d => { sched[d.day_of_week] = d; });
+  const schedById = {};
+  (schedR.data || []).forEach(d => { (schedById[d.schedule_id] ||= {})[d.day_of_week] = d; });
+  const nameById = Object.fromEntries((nameR.data || []).map(n => [n.id, n.name]));
+  const scheduleFor = date => {
+    const id = scheduleIdOn(date);
+    return { has: !!id, sched: (id && schedById[id]) || {} };
+  };
   const att = {};
   (attR.data || []).forEach(r => { att[r.date] = r; });
   const hol = {};
@@ -159,8 +185,8 @@ async function load(user, tz) {
     today,
     yesterday: addDays(today, -1),
     nowMinutes: zonedMinutesOfDay(new Date(), tz),
-    hasSchedule: !!user.schedule_id,
-    sched, att, hol, koreksi,
+    scheduleFor,
+    att, hol, koreksi,
     leaves: leaveR.error ? [] : (leaveR.data || []),
   });
   days.forEach(d => { d.rules = rules; });
@@ -168,12 +194,22 @@ async function load(user, tz) {
   renderSummary(days);
 
   const caption = document.getElementById("riwayat-caption");
-  if (!user.schedule_id) {
+  const hint = "Kolom Jadwal menampilkan jam kerja hari itu; (+1) berarti shift berakhir keesokan harinya.";
+  // Urutan jadwal yang berlaku di bulan ini (tanggal mulai dipotong ke awal bulan).
+  const segments = [];
+  for (const h of history) {
+    if (h.effective_from > end) break;
+    if (h.effective_from <= start) segments.length = 0; // hanya jadwal terakhir sebelum bulan ini yang relevan
+    segments.push({ from: h.effective_from < start ? start : h.effective_from, id: h.schedule_id });
+  }
+  const fmtShort = d => fmtDate(d);
+  if (!segments.some(x => x.id)) {
     caption.textContent = "Kamu belum punya jadwal kerja, jadi hari tanpa absen tidak bisa dikategorikan sebagai libur atau tidak hadir. Hubungi HR untuk mengatur jadwalmu.";
-  } else if (nameR.data?.name) {
-    caption.textContent = `Jadwal kerja: ${nameR.data.name}. Kolom Jadwal menampilkan jam kerja hari itu; (+1) berarti shift berakhir keesokan harinya.`;
+  } else if (segments.length === 1) {
+    caption.textContent = `Jadwal kerja: ${nameById[segments[0].id] || "-"}. ${hint}`;
   } else {
-    caption.textContent = "";
+    const parts = segments.map(x => `${x.id ? (nameById[x.id] || "-") : "Tanpa jadwal"} (mulai ${fmtShort(x.from)})`);
+    caption.textContent = `Jadwal berganti bulan ini: ${parts.join(" → ")}. Tiap hari dinilai sesuai jadwal yang berlaku saat itu. ${hint}`;
   }
   return days;
 }
