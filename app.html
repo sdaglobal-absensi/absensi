@@ -148,7 +148,9 @@ if ("serviceWorker" in navigator) {
       if (title) title.textContent = tabId === "dashboard" ? "KERJORA" : (menuLabels[tabId] || "KERJORA");
     }
 
-    async function loadTab(tabId) {
+    let currentTabId = null;
+
+    async function loadTab(tabId, { silent = false } = {}) {
       if (!isTabAllowed(tabId)) {
         document.getElementById("content").innerHTML =
           `<p class="muted">Kamu tidak punya akses ke halaman ini. Hubungi Super Admin / Super Admin HR kalau merasa ini seharusnya bisa diakses.</p>`;
@@ -156,8 +158,11 @@ if ("serviceWorker" in navigator) {
       }
       const loader = MODULE_MAP[tabId];
       const contentEl = document.getElementById("content");
-      contentEl.innerHTML = `<div class="skeleton-page"><div class="skeleton sk-title"></div><div class="skeleton sk-card"></div><div class="skeleton sk-card"></div></div>`;
-      window.scrollTo(0, 0);
+      currentTabId = tabId;
+      if (!silent) {
+        contentEl.innerHTML = `<div class="skeleton-page"><div class="skeleton sk-title"></div><div class="skeleton sk-card"></div><div class="skeleton sk-card"></div></div>`;
+        window.scrollTo(0, 0);
+      }
       try {
         const mod = await loader();
         document.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.target === tabId));
@@ -238,6 +243,14 @@ if ("serviceWorker" in navigator) {
 
       window.addEventListener("kerjora:navigate", e => {
         if (e.detail?.tab) loadTab(e.detail.tab);
+      });
+      // Notifikasi baru masuk (realtime) -> segarkan halaman baca-saja yang sedang
+      // terbuka, supaya mis. banner "belum check-out" hilang setelah koreksi disetujui.
+      // Halaman berisi formulir sengaja tidak disentuh agar isian tidak hilang.
+      window.addEventListener("kerjora:notification", e => {
+        if (e.detail?.type === "approval_decided" && ["dashboard", "riwayat"].includes(currentTabId)) {
+          loadTab(currentTabId, { silent: true });
+        }
       });
       initNotifications(currentUser);
 

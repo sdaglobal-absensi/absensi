@@ -16,6 +16,7 @@ import { goToKoreksiCheckout, goToKoreksiMasuk } from "./employee-absensi.js";
 // =====================================================================
 
 const DAY_SHORT = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 const hm = t => (t ? String(t).slice(0, 5).replace(":", ".") : null);
 
 // Klasifikasi tiap tanggal. Fungsi murni (tanpa akses DOM/jaringan) supaya
@@ -230,7 +231,7 @@ function renderTable(days, view) {
   const dash = `<span class="muted">-</span>`;
 
   table.innerHTML = `
-    <table class="table table-responsive-stack">
+    <table class="table rw-desktop-table">
       <thead><tr><th>Tanggal</th><th>Jadwal</th><th>Check-in</th><th>Status</th><th>Check-out</th><th>Keterangan</th></tr></thead>
       <tbody>
         ${list.map(d => {
@@ -253,6 +254,7 @@ function renderTable(days, view) {
         }).join("")}
       </tbody>
     </table>
+    <div class="rw-cards">${list.map(cardHTML).join("")}</div>
   `;
 
   table.querySelectorAll(".btn-rw-koreksi").forEach(btn => {
@@ -263,9 +265,9 @@ function renderTable(days, view) {
   });
 }
 
-function koreksiAction(d, type) {
+function koreksiAction(d, type, cls = "org-mini-btn") {
   if (d.koreksiPending) return `<span class="badge badge-warn">Koreksi diajukan</span>`;
-  return `<button type="button" class="org-mini-btn btn-rw-koreksi" data-date="${d.date}" data-type="${type}">Ajukan koreksi</button>`;
+  return `<button type="button" class="${cls} btn-rw-koreksi" data-date="${d.date}" data-type="${type}">Ajukan koreksi</button>`;
 }
 
 function noteHTML(d) {
@@ -295,4 +297,67 @@ function noteHTML(d) {
     default: // nodata
       return `<span class="muted">-</span>`;
   }
+}
+
+// ---------------------------------------------------------------------
+// Tampilan HP: satu kartu per hari (tabel 6 kolom tidak muat di layar kecil).
+// Kiri = tanggal, kanan = jadwal + jam masuk/pulang + status + aksi.
+// Warna garis kiri menunjukkan kondisi hari itu sekilas.
+// ---------------------------------------------------------------------
+const CARD_TONE = {
+  hadir: "ok", ongoing: "info", belum: "info",
+  lupa_in: "warn", lupa_out: "warn", absen: "danger",
+  libur: "off", libur_nasional: "off", nodata: "off",
+};
+
+function cardHTML(d) {
+  const r = d.row;
+  const tone = d.kind === "leave"
+    ? (d.leave?.status === "approved" ? "ok" : "warn")
+    : (d.kind === "hadir" && r?.check_in_status === "telat" ? "warn" : CARD_TONE[d.kind] || "off");
+
+  const showTimes = ["hadir", "ongoing", "lupa_in", "lupa_out"].includes(d.kind);
+  const inVal = r?.check_in ? fmtTime(r.check_in) : "--.--";
+  const outVal = r?.check_out ? fmtTime(r.check_out) : "--.--";
+  const statusBadge = r?.check_in_status
+    ? `<span class="badge badge-${r.check_in_status === "telat" ? "warn" : "ok"}">${r.check_in_status === "telat" ? "Telat" : "Tepat waktu"}</span>`
+    : "";
+
+  const times = showTimes ? `
+    <div class="rw-times">
+      <div class="rw-time">
+        <span class="rw-time-label">Masuk</span>
+        <span class="rw-time-val ${r?.check_in ? "" : "is-empty"}">${inVal}</span>
+        ${statusBadge}
+      </div>
+      <div class="rw-time">
+        <span class="rw-time-label">Pulang</span>
+        <span class="rw-time-val ${r?.check_out ? "" : "is-empty"}">${outVal}</span>
+      </div>
+    </div>` : "";
+
+  // Tombol koreksi dipisah dari badge supaya bisa dibuat selebar kartu.
+  const actionKinds = { lupa_out: "pulang", lupa_in: "masuk", absen: "masuk" };
+  const actionType = actionKinds[d.kind];
+  const label = noteHTML(d).replace(/<button[\s\S]*?<\/button>/, "");
+  const action = actionType ? koreksiAction({ ...d, koreksiPending: false }, actionType, "rw-card-btn") : "";
+  const actionHTML = actionType ? (d.koreksiPending ? "" : action) : "";
+
+  return `
+    <article class="rw-card rw-t-${tone} ${d.isToday ? "is-today" : ""}">
+      <div class="rw-card-date" aria-hidden="true">
+        <span class="rw-cd-dow">${DAY_SHORT[d.dow]}</span>
+        <span class="rw-cd-day">${d.date.slice(8, 10).replace(/^0/, "")}</span>
+        <span class="rw-cd-mon">${MONTH_SHORT[Number(d.date.slice(5, 7)) - 1]}</span>
+      </div>
+      <div class="rw-card-body">
+        <div class="rw-card-head">
+          <span class="rw-card-title">${fmtDate(d.date)}${d.isToday ? ` <span class="badge badge-muted">Hari ini</span>` : ""}</span>
+          ${d.jadwal ? `<span class="rw-card-sched"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>${d.jadwal}</span>` : ""}
+        </div>
+        ${times}
+        ${d.kind === "hadir" && !d.hol ? "" : `<div class="rw-card-note">${label}</div>`}
+        ${actionHTML}
+      </div>
+    </article>`;
 }

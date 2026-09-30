@@ -1641,13 +1641,63 @@ button, a, select, label, .nav-item, .tab-item { touch-action: manipulation; }
   .rw-controls { width: 100%; }
   .rw-controls .inline-field { flex: 1; }
   .rw-controls .inline-field input, .rw-controls .inline-field select { width: 100%; min-width: 0; }
-  /* Hari libur / tanpa data: sembunyikan sel kosong supaya kartunya ringkas */
-  .riwayat-table td.rw-empty { display: none; }
-  .riwayat-table .table-responsive-stack td[data-label="Tanggal"] { font-size: 0.95rem; padding-bottom: 8px; }
-  .riwayat-table .table-responsive-stack td[data-label="Keterangan"] { justify-content: flex-start; text-align: left; }
-  .riwayat-table .table-responsive-stack td[data-label="Keterangan"]::before { display: none; }
-  .riwayat-table .table-responsive-stack td[data-label="Tanggal"]::before { display: none; }
 }
+
+/* ---- Riwayat versi HP: kartu per hari ---- */
+.rw-cards { display: none; }
+@media (max-width: 760px) {
+  .riwayat-table.table-wrap { background: transparent; border: none; box-shadow: none; overflow: visible; }
+  .riwayat-table .rw-desktop-table { display: none; }
+  .rw-cards { display: flex; flex-direction: column; gap: 10px; }
+  .rw-caption { font-size: 0.78rem; }
+}
+.rw-card {
+  --tone: var(--border); --tone-bg: var(--surface-2); --tone-ink: var(--muted);
+  display: flex; gap: 14px; padding: 12px 14px 12px 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs); position: relative; overflow: hidden;
+}
+.rw-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--tone); }
+.rw-t-ok     { --tone: var(--ok);      --tone-bg: var(--ok-bg);     --tone-ink: var(--ok); }
+.rw-t-warn   { --tone: var(--warn);    --tone-bg: var(--warn-bg);   --tone-ink: var(--warn); }
+.rw-t-danger { --tone: var(--danger);  --tone-bg: var(--danger-bg); --tone-ink: var(--danger); }
+.rw-t-info   { --tone: var(--primary-light); --tone-bg: var(--ok-bg); --tone-ink: var(--primary); }
+.rw-t-off    { --tone: #CFCBC0; background: var(--surface-2); box-shadow: none; }
+.rw-card.is-today { border-color: var(--primary-light); box-shadow: 0 0 0 1px var(--primary-light), var(--shadow-xs); }
+
+.rw-card-date {
+  flex-shrink: 0; width: 52px; align-self: flex-start; padding: 7px 0 6px; margin-left: 4px;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  background: var(--tone-bg); border-radius: 10px; color: var(--tone-ink);
+}
+.rw-cd-dow, .rw-cd-mon { font-size: 0.64rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.2; }
+.rw-cd-day { font-family: 'Sora', sans-serif; font-size: 1.35rem; font-weight: 600; line-height: 1.1; color: var(--ink); }
+.rw-t-off .rw-cd-day { color: var(--muted); }
+
+.rw-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 9px; }
+.rw-card-head { display: flex; flex-direction: column; gap: 2px; }
+.rw-card-title { font-weight: 600; font-size: 0.92rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rw-card-sched { display: inline-flex; align-items: center; gap: 5px; font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rw-card-sched svg { width: 13px; height: 13px; }
+
+.rw-times { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rw-time {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 8px 10px; background: var(--bg); border-radius: 8px; min-width: 0;
+}
+.rw-time-label { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.rw-time-val { font-size: 1.1rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.25; }
+.rw-time-val.is-empty { color: #B9B5A9; }
+.rw-time .badge { margin-top: 2px; padding: 1px 8px; font-size: 0.68rem; }
+
+.rw-card-note { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rw-card-btn {
+  width: 100%; min-height: 40px; padding: 8px 14px; cursor: pointer;
+  background: var(--surface); color: var(--primary); border: 1px solid var(--primary-light);
+  border-radius: 8px; font: inherit; font-size: 0.86rem; font-weight: 600;
+  transition: background 0.15s var(--ease);
+}
+.rw-card-btn:active { background: var(--ok-bg); }
 
 .rw-stats { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 @media (max-width: 760px) {

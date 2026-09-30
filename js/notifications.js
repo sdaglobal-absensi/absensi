@@ -16,7 +16,9 @@ import { esc } from "./approvalHelper.js";
 // =======================================================================
 
 const LIST_LIMIT = 30;
-let state = { items: [], unread: 0, user: null, channel: null };
+const POLL_MS = 20000;          // cadangan kalau Realtime putus / belum aktif di database
+const RESUBSCRIBE_MAX_MS = 30000;
+let state = { items: [], unread: 0, user: null, channel: null, pollTimer: null, retryTimer: null, retries: 0, syncing: false, ready: false };
 
 function timeAgo(iso) {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -139,23 +141,85 @@ function onEscape(e) {
   if (e.key === "Escape") closePanel();
 }
 
-async function loadInitial() {
-  const [{ data: items }, { count }] = await Promise.all([
-    supabase.from("notifications").select("*").eq("user_id", state.user.id).order("created_at", { ascending: false }).limit(LIST_LIMIT),
-    supabase.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", state.user.id).eq("is_read", false),
-  ]);
-  state.items = items || [];
-  state.unread = count ?? 0;
-  renderBadges();
-  renderPanel();
+// Ambil data terbaru dari server. Dipakai saat pertama load DAN sebagai
+// sinkronisasi ulang (polling / tab dibuka lagi / koneksi kembali), jadi
+// notifikasi tetap masuk walau koneksi Realtime sempat putus.
+// silent=false hanya untuk load pertama; sinkronisasi berikutnya memunculkan
+// toast untuk notifikasi yang benar-benar baru.
+async function sync({ announce = true } = {}) {
+  if (!state.user || state.syncing) return;
+  state.syncing = true;
+  try {
+    const [{ data: items, error }, { count, error: cErr }] = await Promise.all([
+      supabase.from("notifications").select("*").eq("user_id", state.user.id).order("created_at", { ascending: false }).limit(LIST_LIMIT),
+      supabase.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", state.user.id).eq("is_read", false),
+    ]);
+    if (error || cErr) return; // jangan timpa tampilan yang ada kalau gagal (mis. sedang offline)
+
+    const known = new Set(state.items.map(n => n.id));
+    const fresh = (items || []).filter(n => !known.has(n.id) && !n.is_read);
+
+    state.items = items || [];
+    state.unread = count ?? 0;
+    renderBadges();
+    renderPanel(); // selalu dirender supaya isi panel terbaru saat dibuka
+
+    if (announce && state.ready) fresh.slice(0, 3).forEach(announceNew);
+  } finally {
+    state.syncing = false;
+    state.ready = true;
+  }
+}
+
+function announceNew(n) {
+  toast(n.title, "info");
+  // Beri tahu halaman yang sedang terbuka (mis. Dashboard) supaya ikut menyegarkan diri.
+  window.dispatchEvent(new CustomEvent("kerjora:notification", { detail: n }));
 }
 
 function onRealtimeInsert(row) {
+  if (state.items.some(n => n.id === row.id)) return; // sudah ada (mis. lebih dulu tertangkap polling)
   state.items = [row, ...state.items].slice(0, LIST_LIMIT);
-  state.unread += 1;
+  if (!row.is_read) state.unread += 1;
   renderBadges();
-  if (isPanelOpen()) renderPanel();
-  toast(row.title, "info");
+  renderPanel();
+  announceNew(row);
+}
+
+function subscribe() {
+  if (state.channel) {
+    supabase.removeChannel(state.channel);
+    state.channel = null;
+  }
+  const ch = supabase
+    .channel(`notifications-${state.user.id}-${Date.now()}`)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${state.user.id}` },
+      payload => onRealtimeInsert(payload.new))
+    .subscribe(status => {
+      if (status === "SUBSCRIBED") {
+        state.retries = 0;
+        sync(); // kejar notifikasi yang mungkin lewat selama koneksi putus
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        scheduleResubscribe();
+      }
+    });
+  state.channel = ch;
+}
+
+function scheduleResubscribe() {
+  if (state.retryTimer) return;
+  const delay = Math.min(RESUBSCRIBE_MAX_MS, 1000 * 2 ** state.retries++);
+  state.retryTimer = setTimeout(() => {
+    state.retryTimer = null;
+    if (state.user) subscribe();
+  }, delay);
+}
+
+function startPolling() {
+  clearInterval(state.pollTimer);
+  state.pollTimer = setInterval(() => {
+    if (document.visibilityState === "visible") sync();
+  }, POLL_MS);
 }
 
 export async function initNotifications(user) {
@@ -164,12 +228,17 @@ export async function initNotifications(user) {
   document.getElementById("btn-notif-mobile")?.addEventListener("click", e => { e.stopPropagation(); togglePanel(); });
   document.getElementById("btn-notif-desktop")?.addEventListener("click", e => { e.stopPropagation(); togglePanel(); });
 
-  await loadInitial();
+  await sync({ announce: false });
 
-  // Realtime: notifikasi baru untuk user ini muncul langsung tanpa refresh.
-  state.channel = supabase
-    .channel(`notifications-${user.id}`)
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
-      payload => onRealtimeInsert(payload.new))
-    .subscribe();
+  // 1) Realtime: notifikasi baru muncul seketika, tanpa refresh.
+  subscribe();
+  // 2) Cadangan: cek berkala + saat aplikasi dibuka lagi / internet kembali.
+  //    Penting di HP (PWA): koneksi websocket sering dimatikan OS saat layar
+  //    terkunci atau aplikasi di background.
+  startPolling();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") { sync(); if (state.channel?.state !== "joined") subscribe(); }
+  });
+  window.addEventListener("focus", () => sync());
+  window.addEventListener("online", () => { sync(); subscribe(); });
 }
