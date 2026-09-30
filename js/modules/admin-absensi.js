@@ -109,7 +109,9 @@ function empCell(person) {
 // dimuat; belumAbsen = null berarti panel belum-absen belum selesai
 // dimuat. Kartu baru dirender begitu attendance sudah ada.
 // =====================================================================
-let statsState = { attendance: null, belumAbsen: null };
+// lupaCheckin: jumlah hari-lupa-check-in dalam 7 hari terakhir (dari panel di bawah;
+// TIDAK ikut tanggal yang difilter). null = belum selesai dimuat / gagal dimuat.
+let statsState = { attendance: null, belumAbsen: null, lupaCheckin: null };
 
 function computeAttendanceStats(rows, isPastDate) {
   const total = rows.length;
@@ -126,6 +128,11 @@ function renderStats() {
 
   const { total, telat, tepatWaktu, belumCheckout } = statsState.attendance;
   const belumAbsen = statsState.belumAbsen ?? 0;
+  const lupaIn = statsState.lupaCheckin;
+  const lupaInBody = `
+      <span class="mon-stat-label">Lupa Check-in</span>
+      <span class="mon-stat-value">${lupaIn ?? "–"}</span>
+      <span class="mon-stat-sub">${lupaIn ? "7 hari terakhir · lihat daftar" : "7 hari terakhir"}</span>`;
 
   el.innerHTML = `
     <div class="mon-stat mon-stat-hadir">
@@ -144,11 +151,19 @@ function renderStats() {
       <span class="mon-stat-label">Belum Absen</span>
       <span class="mon-stat-value">${belumAbsen}</span>
     </div>
+    ${lupaIn
+      ? `<button type="button" class="mon-stat mon-stat-lupain mon-stat-link" id="mon-stat-lupain" aria-label="Lupa check-in ${lupaIn} hari dalam 7 hari terakhir. Buka daftar">${lupaInBody}</button>`
+      : `<div class="mon-stat mon-stat-lupain">${lupaInBody}</div>`}
     <div class="mon-stat mon-stat-checkout">
       <span class="mon-stat-label">Lupa Check-out</span>
       <span class="mon-stat-value">${belumCheckout}</span>
     </div>
   `;
+
+  const link = document.getElementById("mon-stat-lupain");
+  if (link) link.addEventListener("click", () => {
+    document.getElementById("lupa-checkin-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 }
 
 // =====================================================================
@@ -330,7 +345,7 @@ async function loadLupaCheckin() {
   ]);
 
   // Data inti gagal dimuat -> jangan tampilkan apa pun (lebih baik kosong daripada menyesatkan).
-  if (emps.error || att.error || sched.error || hol.error) { el.innerHTML = ""; return; }
+  if (emps.error || att.error || sched.error || hol.error) { el.innerHTML = ""; statsState.lupaCheckin = null; renderStats(); return; }
   // leaves / koreksi bersifat pelengkap (bisa ditolak RLS untuk sebagian role).
   const leaveRows = leaves.error ? [] : (leaves.data || []);
   const koreksiRows = koreksi.error ? [] : (koreksi.data || []);
@@ -356,6 +371,8 @@ async function loadLupaCheckin() {
     }
   }
 
+  statsState.lupaCheckin = rows.length;
+  renderStats();
   if (!rows.length) { el.innerHTML = ""; return; }
   const tanpaKoreksi = rows.filter(r => !r.koreksiPending).length;
 
