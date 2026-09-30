@@ -505,3 +505,13 @@ Outsourcing). Pilihannya otomatis mengikuti Jenis Hubungan Kerja: Outsourcing me
 vendor, Karyawan Tetap/PKWT menampilkan daftar PT sendiri. Jalankan `supabase-master-pt.sql` sekali —
 nama Unit/PT yang sudah pernah diketik otomatis dimasukkan ke daftar. Kalau nama PT diedit di master,
 nama di Data Karyawan ikut diperbarui.
+
+
+## Tampilan aplikasi HP (PWA)
+
+- **Tab bar bawah** (Beranda · Izin · **Absen** · Riwayat · Menu) dibentuk otomatis dari menu yang diizinkan untuk role masing-masing; tab "Menu" membuka drawer berisi seluruh menu. Lihat `buildTabbar()` di `app.html`.
+- **Safe area** (notch / gesture bar) lewat `viewport-fit=cover` + `env(safe-area-inset-*)`; status bar iOS `black-translucent`, `theme-color` hijau.
+- **Dialog jadi bottom sheet** di layar ≤ 760px, toast naik di atas tab bar, skeleton loading + animasi masuk halaman.
+- **Manifest**: ikon *maskable* khusus (`assets/icon-maskable-*.png`, ada padding agar tidak terpotong di Android), orientasi portrait, dan shortcut (Absensi, Izin, Slip Gaji) saat ikon aplikasi ditekan lama.
+- Semua gaya ada di blok "TAMPILAN APLIKASI HP (PWA)" di bagian akhir `css/style.css`.
+- Agar perubahan ikon/manifest terbaca, aplikasi yang sudah terpasang sebaiknya dihapus lalu dipasang ulang dari browser.

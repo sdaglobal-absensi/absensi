@@ -2,15 +2,16 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Dashboard — KERJORA</title>
 <link rel="icon" type="image/png" href="assets/icon-96.png">
+<meta name="theme-color" content="#1F4D3A">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="KERJORA">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script>
 // Daftarkan service worker sejak halaman dimuat (syarat PWA bisa di-install).
 if ("serviceWorker" in navigator) {
@@ -28,7 +29,7 @@ if ("serviceWorker" in navigator) {
     <button id="btn-hamburger" class="btn-hamburger" aria-label="Buka menu">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
     </button>
-    <span class="brand"><img src="assets/kerjora-icon.png" alt="KERJORA" class="brand-logo">KERJORA</span>
+    <span class="brand"><img src="assets/kerjora-icon.png" alt="" class="brand-logo"><span id="mobile-title">KERJORA</span></span>
     <button id="btn-notif-mobile" class="btn-notif" aria-label="Notifikasi">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9z"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
       <span id="notif-badge-mobile" class="notif-badge hidden"></span>
@@ -65,9 +66,11 @@ if ("serviceWorker" in navigator) {
     </main>
   </div>
 
+  <nav class="tabbar" id="tabbar" aria-label="Navigasi utama"></nav>
+
   <script type="module">
     import { requireAuth, logout } from "./js/auth.js";
-    import { renderSidebar, isSuper, toast } from "./js/core.js";
+    import { renderSidebar, isSuper, toast, ICONS } from "./js/core.js";
     import { initNotifications } from "./js/notifications.js";
 
     const MODULE_MAP = {
@@ -111,6 +114,40 @@ if ("serviceWorker" in navigator) {
       return allowedTabIds.has(tabId);
     }
 
+    let menuLabels = {};
+    const TAB_ORDER = [
+      { id: "dashboard", label: "Beranda", icon: "home" },
+      { id: "izin", label: "Izin", icon: "file" },
+      { id: "absensi", label: "Absen", icon: "clock", primary: true },
+      { id: "riwayat", label: "Riwayat", icon: "history" },
+    ];
+    let tabbarIds = [];
+
+    function buildTabbar(menu) {
+      const ids = new Set(menu.map(m => m.id));
+      const tabs = TAB_ORDER.filter(t => ids.has(t.id));
+      tabbarIds = tabs.map(t => t.id);
+      const svg = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${p}"/></svg>`;
+      const html = tabs.map(t => `
+        <button class="tab-item ${t.primary ? "tab-primary" : ""}" data-tab="${t.id}">
+          <span class="tab-icon">${svg(ICONS[t.icon])}</span><span class="tab-label">${t.label}</span>
+        </button>`).join("") + `
+        <button class="tab-item" data-tab="__menu">
+          <span class="tab-icon">${svg(ICONS.grid)}</span><span class="tab-label">Menu</span>
+        </button>`;
+      document.getElementById("tabbar").innerHTML = html;
+    }
+
+    function updateTabbarActive(tabId) {
+      const inBar = tabbarIds.includes(tabId);
+      document.querySelectorAll("#tabbar .tab-item").forEach(b => {
+        const t = b.dataset.tab;
+        b.classList.toggle("active", t === tabId || (t === "__menu" && !inBar));
+      });
+      const title = document.getElementById("mobile-title");
+      if (title) title.textContent = tabId === "dashboard" ? "KERJORA" : (menuLabels[tabId] || "KERJORA");
+    }
+
     async function loadTab(tabId) {
       if (!isTabAllowed(tabId)) {
         document.getElementById("content").innerHTML =
@@ -118,10 +155,17 @@ if ("serviceWorker" in navigator) {
         return;
       }
       const loader = MODULE_MAP[tabId];
+      const contentEl = document.getElementById("content");
+      contentEl.innerHTML = `<div class="skeleton-page"><div class="skeleton sk-title"></div><div class="skeleton sk-card"></div><div class="skeleton sk-card"></div></div>`;
+      window.scrollTo(0, 0);
       try {
         const mod = await loader();
         document.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.target === tabId));
-        await mod.render(document.getElementById("content"), currentUser);
+        updateTabbarActive(tabId);
+        await mod.render(contentEl, currentUser);
+        contentEl.classList.remove("page-enter");
+        void contentEl.offsetWidth; // restart animasi
+        contentEl.classList.add("page-enter");
         history.replaceState(null, "", `#${tabId}`);
       } catch (err) {
         console.error("Gagal memuat halaman:", err);
@@ -152,6 +196,8 @@ if ("serviceWorker" in navigator) {
       // muncul di sidebar-nya, hasil dari resolveMenu() (yang sudah menyaring
       // lewat toggle Pengaturan Sistem masing-masing role).
       allowedTabIds = isSuper(currentUser.role) ? null : new Set(menu.map(m => m.id));
+      menuLabels = Object.fromEntries(menu.map(m => [m.id, m.label]));
+      buildTabbar(menu);
 
       const fallbackTab = "dashboard";
       const hashTab = location.hash.replace("#", "");
@@ -168,6 +214,18 @@ if ("serviceWorker" in navigator) {
         backdrop.classList.add("show");
       });
       backdrop.addEventListener("click", closeMobileMenu);
+
+      document.getElementById("tabbar").addEventListener("click", e => {
+        const btn = e.target.closest(".tab-item");
+        if (!btn) return;
+        if (navigator.vibrate) navigator.vibrate(8); // getar halus (Android)
+        if (btn.dataset.tab === "__menu") {
+          sidebar.classList.add("mobile-open");
+          backdrop.classList.add("show");
+        } else {
+          loadTab(btn.dataset.tab);
+        }
+      });
 
       document.getElementById("sidebar-nav").addEventListener("click", e => {
         const btn = e.target.closest(".nav-item");

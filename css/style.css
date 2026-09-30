@@ -356,9 +356,9 @@ button { font-family: 'Inter'; cursor: pointer; }
   .sidebar {
     position: fixed; top: 0; left: 0; height: 100dvh; width: 82%; max-width: 300px;
     z-index: 60; transform: translateX(-105%); transition: transform 0.28s ease;
-    box-shadow: 6px 0 28px rgba(0,0,0,0.28);
+    box-shadow: none;
   }
-  .sidebar.mobile-open { transform: translateX(0); }
+  .sidebar.mobile-open { transform: translateX(0); box-shadow: 6px 0 28px rgba(0,0,0,0.28); }
 
   .sidebar-backdrop {
     position: fixed; inset: 0; background: rgba(15,20,17,0.5); z-index: 55;
@@ -725,7 +725,6 @@ button { font-family: 'Inter'; cursor: pointer; }
   #print-root * { break-inside: avoid; }
 }
 #print-root { display: none; }
-}
 
 /* ---------------- Toasts ---------------- */
 #toast-box { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 100; }
@@ -1506,3 +1505,122 @@ button { font-family: 'Inter'; cursor: pointer; }
   #print-root .invoice-doc { font-size: 10.5pt; }
   #print-root .invoice-table, #print-root .invoice-table * { border-color: #222 !important; }
 }
+
+
+/* =====================================================================
+   TAMPILAN APLIKASI HP (PWA) — tab bar bawah, safe-area, bottom sheet
+   ===================================================================== */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+body { overscroll-behavior-x: none; }
+button, a, select, label, .nav-item, .tab-item { touch-action: manipulation; }
+
+/* Skeleton loading & animasi masuk halaman (semua ukuran layar) */
+.skeleton-page { display: flex; flex-direction: column; gap: 14px; }
+.skeleton {
+  border-radius: var(--radius-lg);
+  background: linear-gradient(90deg, #ECEAE3 25%, #F5F3EE 50%, #ECEAE3 75%);
+  background-size: 200% 100%; animation: sk-shimmer 1.3s linear infinite;
+}
+.sk-title { height: 28px; width: 55%; border-radius: 8px; }
+.sk-card { height: 120px; }
+@keyframes sk-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.page-enter { animation: page-in 0.22s var(--ease); }
+
+.tabbar { display: none; }
+
+@media (max-width: 760px) {
+  /* Cegah zoom otomatis iOS saat fokus ke input */
+  input, select, textarea { font-size: 16px; }
+
+  /* Target sentuh minimal ±44px */
+  .btn-primary, .btn-secondary, .btn-danger, .btn-outline-danger { min-height: 44px; }
+  .nav-item { padding: 12px 10px; }
+
+  /* Bagian chrome aplikasi tidak bisa terseleksi teksnya saat ditekan lama */
+  .mobile-topbar, .tabbar, .nav-item, button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+
+  /* Top bar: ikut area aman (notch / status bar) */
+  .mobile-topbar {
+    padding: calc(12px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) 12px calc(16px + env(safe-area-inset-left, 0px));
+    box-shadow: 0 1px 0 rgba(255,255,255,0.06), 0 4px 14px -6px rgba(0,0,0,0.35);
+  }
+  .btn-hamburger { display: none; } /* akses menu lewat tab "Menu" di bawah */
+  .mobile-topbar .brand { font-size: 1.02rem; min-width: 0; }
+  #mobile-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 62vw; }
+  .notif-panel { top: calc(56px + env(safe-area-inset-top, 0px)); }
+
+  /* Ruang untuk tab bar di bawah */
+  .app-shell { padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  .main { padding-left: calc(16px + env(safe-area-inset-left, 0px)); padding-right: calc(16px + env(safe-area-inset-right, 0px)); }
+
+  /* Drawer menu penuh: ikut area aman */
+  .sidebar {
+    padding-top: calc(20px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    height: 100dvh; overscroll-behavior: contain;
+  }
+  #sidebar-nav { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+
+  /* Tab bar bawah */
+  .tabbar {
+    display: flex; align-items: stretch; justify-content: space-around;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    background: rgba(255,255,255,0.96); -webkit-backdrop-filter: saturate(180%) blur(12px); backdrop-filter: saturate(180%) blur(12px);
+    border-top: 1px solid var(--border); box-shadow: 0 -6px 20px -12px rgba(27,31,29,0.25);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+  .tab-item {
+    flex: 1; min-width: 0; background: none; border: none; color: var(--muted);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    padding: 6px 2px; border-radius: 10px; position: relative;
+    transition: color 0.15s var(--ease), transform 0.1s var(--ease);
+  }
+  .tab-item:active { transform: scale(0.94); }
+  .tab-icon { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; }
+  .tab-icon svg { width: 22px; height: 22px; }
+  .tab-label { font-size: 0.66rem; font-weight: 600; line-height: 1; letter-spacing: 0.01em; }
+  .tab-item.active { color: var(--primary); }
+  .tab-item.active:not(.tab-primary)::before {
+    content: ""; position: absolute; top: -7px; width: 22px; height: 3px; border-radius: 0 0 3px 3px; background: var(--accent);
+  }
+
+  /* Tombol Absen di tengah: menonjol seperti aplikasi absensi profesional */
+  .tab-primary .tab-icon {
+    width: 50px; height: 50px; margin-top: -24px; border-radius: 50%;
+    background: var(--primary); color: #fff; border: 4px solid var(--bg);
+    box-shadow: 0 6px 14px -4px rgba(31,77,58,0.55);
+  }
+  .tab-primary .tab-icon svg { width: 24px; height: 24px; }
+  .tab-primary.active .tab-icon { background: var(--primary-dark); box-shadow: 0 0 0 3px rgba(201,138,62,0.45), 0 6px 14px -4px rgba(31,77,58,0.55); }
+  .tab-primary .tab-label { margin-top: 1px; }
+
+  /* Dialog jadi bottom sheet (muncul dari bawah, mudah dijangkau ibu jari) */
+  .modal { align-items: flex-end; padding: 0; }
+  .modal-box, .modal-box-lg {
+    max-width: none; width: 100%; max-height: 90dvh;
+    border-radius: 18px 18px 0 0; padding: 22px 18px calc(20px + env(safe-area-inset-bottom, 0px));
+    animation: sheet-up 0.24s var(--ease);
+  }
+  .modal-box::before {
+    content: ""; display: block; width: 40px; height: 4px; border-radius: 4px; background: var(--border); margin: -8px auto 14px;
+  }
+  .modal-actions { flex-direction: column-reverse; }
+  .modal-actions > button { width: 100%; }
+
+  /* Toast di atas tab bar, lebar penuh */
+  #toast-box { left: 14px; right: 14px; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); align-items: stretch; }
+  .toast { max-width: none; text-align: center; }
+}
+@keyframes sheet-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Saat berjalan sebagai aplikasi terpasang (tanpa bilah browser) */
+@media (display-mode: standalone) {
+  body { -webkit-user-select: none; user-select: none; }
+  input, textarea, select, [contenteditable], .selectable, td, .table td { -webkit-user-select: text; user-select: text; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter, .skeleton, .modal-box, .modal-box-lg { animation: none; }
+}
+@media print { .tabbar { display: none !important; } .app-shell { padding-bottom: 0 !important; } }

@@ -6,8 +6,8 @@
   "start_url": "./app.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#0f2e22",
-  "theme_color": "#0f2e22",
+  "background_color": "#F6F5F1",
+  "theme_color": "#1F4D3A",
   "icons": [
     {
       "src": "assets/icon-48.png",
@@ -45,10 +45,57 @@
       "type": "image/png"
     },
     {
-      "src": "assets/icon-512.png",
+      "src": "assets/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "assets/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "orientation": "portrait",
+  "categories": [
+    "business",
+    "productivity"
+  ],
+  "description": "Absensi, izin, lembur, dan slip gaji karyawan.",
+  "shortcuts": [
+    {
+      "name": "Absensi",
+      "short_name": "Absen",
+      "url": "./app.html#absensi",
+      "icons": [
+        {
+          "src": "assets/icon-96.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Pengajuan Izin",
+      "short_name": "Izin",
+      "url": "./app.html#izin",
+      "icons": [
+        {
+          "src": "assets/icon-96.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Slip Gaji Saya",
+      "short_name": "Slip Gaji",
+      "url": "./app.html#slip-gaji-saya",
+      "icons": [
+        {
+          "src": "assets/icon-96.png",
+          "sizes": "96x96"
+        }
+      ]
     }
   ]
 }
