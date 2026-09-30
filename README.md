@@ -523,3 +523,23 @@ nama di Data Karyawan ikut diperbarui.
 - Yang TIDAK dihitung: hari libur nasional, hari libur menurut Master Jadwal Kerja, tanggal sebelum `join_date` / sesudah `resign_date`, tanggal yang tercakup izin/cuti/sakit (pending/approved), dan karyawan yang belum punya jadwal kerja.
 - Koreksi Absen "masuk" berstatus pending ditandai kuning; yang sudah disetujui otomatis hilang dari daftar. Butuh akses baca ke `attendance_correction_requests` untuk penandaan ini — kalau ditolak RLS, panel tetap jalan tanpa penanda.
 - Dashboard: kartu **"Belum Check-in Hari Ini"** (khusus hari ini, aturan sama dengan panel "Belum Absen").
+
+## Riwayat Saya — semua hari
+
+`js/modules/employee-riwayat.js` sekarang menampilkan SEMUA hari dalam sebulan (sampai hari ini), bukan hanya hari yang punya data absen. Klasifikasi tiap hari ada di `buildDays()` (fungsi murni, mudah diuji):
+
+| Status | Kapan |
+|---|---|
+| Hadir (Tepat waktu / Telat) | ada check-in & check-out |
+| Sedang bekerja | check-in hari ini belum check-out, atau shift lintas hari kemarin yang belum melewati jam selesainya |
+| Lupa check-out / Lupa check-in | hari lampau: hanya ada check-in / hanya ada check-out |
+| Izin / Cuti / Sakit | tercakup pengajuan approved (atau pending, diberi tanda "menunggu approval") |
+| Libur nasional | ada di Master Hari Libur (aktif) |
+| Libur (sesuai jadwal) | `is_working_day = false` di Master Jadwal Kerja karyawan |
+| Belum absen | hari ini, hari kerja, belum check-in |
+| Tidak ada absen | hari kerja lampau tanpa data absen, tanpa izin |
+
+- Kolom **Jadwal** menampilkan jam kerja/shift hari itu (mis. `22.00–06.00 (+1)` untuk shift lintas hari).
+- Tombol **Ajukan koreksi** membuka Koreksi Absen dengan tanggal & jenis terisi otomatis; kalau sudah ada koreksi pending, tampil "Koreksi diajukan".
+- Filter **Tampilkan**: Semua hari / Hari kerja saja / Perlu tindak lanjut.
+- Karyawan tanpa jadwal kerja: hari tanpa absen tidak ditandai "tidak ada absen" (hari kerjanya tidak bisa dipastikan) dan muncul catatan agar menghubungi HR.

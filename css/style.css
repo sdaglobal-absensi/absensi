@@ -1624,3 +1624,37 @@ button, a, select, label, .nav-item, .tab-item { touch-action: manipulation; }
   .page-enter, .skeleton, .modal-box, .modal-box-lg { animation: none; }
 }
 @media print { .tabbar { display: none !important; } .app-shell { padding-bottom: 0 !important; } }
+
+
+/* ---------------- Riwayat Saya: semua hari (hadir, libur, izin, tanpa absen) ---------------- */
+.rw-controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.rw-caption { margin: 10px 2px 12px; line-height: 1.5; }
+.riwayat-table .table tr.rw-off { background: var(--surface-2); }
+.riwayat-table .table tr.rw-off td { color: var(--muted); }
+.riwayat-table .table tr.rw-warn { background: color-mix(in srgb, var(--warn) 7%, transparent); }
+.riwayat-table .table tr.rw-bad { background: color-mix(in srgb, var(--danger) 6%, transparent); }
+.riwayat-table .table tr.rw-today td:first-child { font-weight: 700; }
+.rw-date-day { display: inline-block; min-width: 2.6em; color: var(--muted); font-weight: 600; font-size: 0.78rem; }
+.rw-jadwal { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rw-note { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+@media (max-width: 760px) {
+  .rw-controls { width: 100%; }
+  .rw-controls .inline-field { flex: 1; }
+  .rw-controls .inline-field input, .rw-controls .inline-field select { width: 100%; min-width: 0; }
+  /* Hari libur / tanpa data: sembunyikan sel kosong supaya kartunya ringkas */
+  .riwayat-table td.rw-empty { display: none; }
+  .riwayat-table .table-responsive-stack td[data-label="Tanggal"] { font-size: 0.95rem; padding-bottom: 8px; }
+  .riwayat-table .table-responsive-stack td[data-label="Keterangan"] { justify-content: flex-start; text-align: left; }
+  .riwayat-table .table-responsive-stack td[data-label="Keterangan"]::before { display: none; }
+  .riwayat-table .table-responsive-stack td[data-label="Tanggal"]::before { display: none; }
+}
+
+.rw-stats { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+@media (max-width: 760px) {
+  /* Ringkasan bulanan: 2 kolom kompak, bukan 5 kartu bertumpuk */
+  .rw-stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .rw-stats .dash-stat { padding: 12px 14px; }
+  .rw-stats .dash-stat:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .rw-stats .dash-stat-label { font-size: 0.68rem; }
+  .rw-stats .dash-stat-value { font-size: 1.5rem; }
+}
