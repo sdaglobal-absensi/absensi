@@ -30,6 +30,8 @@ const ICON_DEPT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_BAGIAN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L11 3.83A2 2 0 009.83 3H4a1 1 0 00-1 1v5.83a2 2 0 00.59 1.41l9.58 9.58a2 2 0 002.83 0l4.59-4.59a2 2 0 000-2.83z"/><circle cx="7.2" cy="7.2" r="1.4" fill="currentColor" stroke="none"/></svg>`;
 const ICON_LAINNYA = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>`;
 const ICON_CHEVRON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>`;
+const ICON_MORE = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>`;
+const ICON_USERS = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M21 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>`;
 const ICON_SEARCH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>`;
 
 // Tampilan (ikon & warna) mengikuti TIPE unit yang sebenarnya, bukan
@@ -143,10 +145,13 @@ function assignableRoles() {
   return ["karyawan", "admin_approval"];
 }
 
-function roleBtn(p) {
-  if (!S.canManage || p.id === S.user.id) return "";
+function canChangeRole(p) {
   // Role target harus termasuk yang boleh diatur oleh yang login.
-  if (!assignableRoles().includes(p.role)) return "";
+  return S.canManage && p.id !== S.user.id && assignableRoles().includes(p.role);
+}
+
+function roleBtn(p) {
+  if (!canChangeRole(p)) return "";
   return `<button class="org-mini-btn" data-act="change-role" data-user="${p.id}">Ubah Role</button>`;
 }
 
@@ -203,15 +208,15 @@ function renderPage() {
       </div>` : ""}
     </div>
 
-    <div class="status-grid">
+    <div class="status-grid org-stats">
       <div class="status-card"><span class="status-label">Kantor &amp; Cabang</span><span class="status-value">${S.units.filter(u => u.tipe === "pusat" || u.tipe === "cabang").length}</span></div>
       <div class="status-card done"><span class="status-label">Karyawan Aktif</span><span class="status-value">${S.profiles.length}</span></div>
-      <div class="status-card ${unplaced.length ? "" : "done"}"><span class="status-label">Belum Punya Unit Utama</span><span class="status-value">${unplaced.length}</span></div>
+      <div class="status-card ${unplaced.length ? "org-stat-warn" : "done"}"><span class="status-label">Belum Punya <span class="org-l-long">Unit Utama</span><span class="org-l-short">Unit</span></span><span class="status-value">${unplaced.length}</span></div>
     </div>
 
     ${S.canManage ? levelsCardHTML() : ""}
 
-    <div class="filter-row no-print" style="margin:16px 0;">
+    <div class="filter-row org-filter no-print" style="margin:16px 0;">
       <div class="org-search-wrap">
         ${ICON_SEARCH}
         <input type="text" id="org-search" placeholder="Cari nama karyawan, kode, atau unit…">
@@ -235,9 +240,12 @@ function renderPage() {
               <span class="org-emp-name">${esc(p.full_name)}</span>
               <span class="org-emp-meta">${esc(p.position || "Jabatan belum diatur")}${p.employee_code ? ` · ${esc(p.employee_code)}` : ""}</span>
             </span>
-            ${roleBadge(p.role)}
-            ${roleBtn(p)}
-            ${S.canManage && S.units.length ? `<button class="org-mini-btn" data-act="place" data-user="${p.id}">Tempatkan</button>` : ""}
+            <span class="org-emp-tags">${roleBadge(p.role)}</span>
+            ${S.canManage ? `<span class="org-actions no-print">
+              ${roleBtn(p)}
+              ${S.units.length ? `<button class="org-mini-btn" data-act="place" data-user="${p.id}">Tempatkan</button>` : ""}
+            </span>
+            <button class="org-more no-print" data-act="person-menu" data-user="${p.id}" aria-label="Aksi untuk ${esc(p.full_name)}">${ICON_MORE}</button>` : ""}
           </div>`).join("")}
       </div>` : ""}
   `;
@@ -260,18 +268,26 @@ function legendHTML() {
 }
 
 function levelsCardHTML() {
+  // Di HP kartu ini dilipat (jarang diubah) supaya pohon struktur tidak terdorong jauh ke bawah.
+  const open = window.matchMedia("(min-width: 761px)").matches ? "open" : "";
   return `
-    <div class="card org-levels-card">
-      <h3>Jumlah Tingkat Approval</h3>
+    <details class="card org-levels-card" ${open}>
+      <summary>
+        <span class="org-levels-head">
+          <h3>Jumlah Tingkat Approval</h3>
+          <span class="org-levels-sum">${["izin", "sakit", "cuti", "lembur"].map(k => `<span class="org-lv-chip">${REQ_LABEL[k]} <b>${S.settings[k] ?? 1}</b></span>`).join("")}</span>
+        </span>
+        <span class="org-levels-chev">${ICON_CHEVRON}</span>
+      </summary>
       <p class="muted small">Berapa Admin berbeda yang harus menyetujui, dihitung naik dari unit karyawan. Unit yang tidak punya Admin dilewati. Kalau jenjang yang tersedia lebih sedikit dari angka ini, dipakai yang ada. Berlaku untuk pengajuan baru.</p>
       <div class="org-levels-grid">
         ${["izin", "sakit", "cuti", "lembur"].map(k => `
           <label>${REQ_LABEL[k]}
-            <input type="number" min="1" max="5" step="1" data-level="${k}" value="${S.settings[k] ?? 1}">
+            <input type="number" inputmode="numeric" min="1" max="5" step="1" data-level="${k}" value="${S.settings[k] ?? 1}">
           </label>`).join("")}
         <button class="btn-primary" data-act="save-levels">Simpan</button>
       </div>
-    </div>`;
+    </details>`;
 }
 
 function nodeHTML(u, depth) {
@@ -293,6 +309,10 @@ function nodeHTML(u, depth) {
           ${icon}
           <span class="org-node-title">${esc(u.nama)}</span>
           <span class="org-tag org-tag-${meta.cls}">${TIPE_LABEL[u.tipe] || u.tipe}</span>
+          <span class="org-meta-m">
+            <span class="org-tag org-tag-${meta.cls}">${TIPE_LABEL[u.tipe] || u.tipe}</span>
+            <span class="org-count">${ICON_USERS}${mem.length} anggota</span>
+          </span>
         </span>
         <span class="org-summary-right">
           <span class="org-pill">${mem.length} anggota</span>
@@ -303,7 +323,8 @@ function nodeHTML(u, depth) {
               <button class="org-mini-btn" data-act="edit-unit" data-id="${u.id}">Ubah</button>
               <button class="org-mini-btn" data-act="copy-unit" data-id="${u.id}">Salin Struktur</button>
               <button class="org-mini-btn org-mini-danger" data-act="del-unit" data-id="${u.id}">Hapus</button>
-            </span>` : ""}
+            </span>
+            <button class="org-more no-print" data-act="unit-menu" data-id="${u.id}" aria-label="Aksi untuk ${esc(u.nama)}">${ICON_MORE}</button>` : ""}
         </span>
       </summary>
       <div class="org-approver-line ${admins.length ? "" : "org-approver-none"}">
@@ -326,14 +347,17 @@ function memberRowHTML(m, u) {
         <span class="org-emp-name">${esc(p.full_name)}</span>
         <span class="org-emp-meta">${esc(p.position || "Jabatan belum diatur")}${p.employee_code ? ` · ${esc(p.employee_code)}` : ""}${otherUnits ? ` · juga di ${otherUnits} unit lain` : ""}</span>
       </span>
-      ${m.is_primary ? `<span class="badge badge-ok" title="Unit ini menentukan rantai approval karyawan">Unit Utama</span>` : ""}
-      ${roleBadge(p.role)}
+      <span class="org-emp-tags">
+        ${m.is_primary ? `<span class="badge badge-ok" title="Unit ini menentukan rantai approval karyawan">Unit Utama</span>` : ""}
+        ${roleBadge(p.role)}
+      </span>
       ${S.canManage ? `
         <span class="org-actions no-print">
           ${roleBtn(p)}
           ${m.is_primary ? "" : `<button class="org-mini-btn" data-act="set-primary" data-user="${p.id}" data-unit="${u.id}">Jadikan Utama</button>`}
           <button class="org-mini-btn org-mini-danger" data-act="rm-member" data-id="${m.id}">Keluarkan</button>
-        </span>` : ""}
+        </span>
+        <button class="org-more no-print" data-act="person-menu" data-user="${p.id}" data-unit="${u.id}" data-mid="${m.id}" data-primary="${m.is_primary ? 1 : 0}" aria-label="Aksi untuk ${esc(p.full_name)}">${ICON_MORE}</button>` : ""}
     </div>`;
 }
 
@@ -377,8 +401,13 @@ async function onClick(e) {
   if (!btn || !S.canManage) return;
   e.preventDefault();
   e.stopPropagation(); // tombol di dalam <summary> jangan ikut membuka/menutup node
-  const { act, id, user, unit } = btn.dataset;
+  await dispatch(btn.dataset);
+}
+
+async function dispatch({ act, id, user, unit, mid, primary }) {
   try {
+    if (act === "unit-menu") return openUnitSheet(id);
+    if (act === "person-menu") return openPersonSheet({ userId: user, unitId: unit, memberId: mid, isPrimary: primary === "1" });
     if (act === "add-unit") return openUnitModal({ parentId: id || null });
     if (act === "edit-unit") return openUnitModal({ editId: id });
     if (act === "del-unit") return await deleteUnit(id);
@@ -394,6 +423,56 @@ async function onClick(e) {
     console.error(err);
     toast("Terjadi kesalahan: " + err.message, "error");
   }
+}
+
+// Lembar aksi (bottom sheet) untuk HP: menggantikan deretan tombol kecil di tiap baris.
+function openActionSheet(title, subtitle, items) {
+  const { modal, close } = openModal(esc(title), `
+    ${subtitle ? `<p class="org-sheet-sub">${esc(subtitle)}</p>` : ""}
+    <div class="org-sheet-list">
+      ${items.map(it => `
+        <button type="button" class="org-sheet-item ${it.danger ? "is-danger" : ""}" data-sheet-act="${it.act}">
+          <span class="org-sheet-label">${it.label}</span>
+          ${it.hint ? `<span class="org-sheet-hint">${it.hint}</span>` : ""}
+        </button>`).join("")}
+    </div>
+    <div class="modal-actions"><button type="button" class="btn-secondary" data-x="cancel">Tutup</button></div>`);
+  modal.classList.add("org-sheet");
+  modal.addEventListener("click", e => {
+    const b = e.target.closest("[data-sheet-act]");
+    if (!b) return;
+    const it = items[Number(items.findIndex(x => x.act === b.dataset.sheetAct))];
+    close();
+    if (it) dispatch(it.data);
+  });
+}
+
+function openUnitSheet(unitId) {
+  const u = S.unitMap[unitId];
+  if (!u) return;
+  const n = membersOf(unitId).length;
+  openActionSheet(u.nama, `${TIPE_LABEL[u.tipe] || u.tipe} · ${n} anggota`, [
+    { act: "add-member", label: "Tambah anggota", hint: "Tempatkan karyawan di unit ini", data: { act: "add-member", id: unitId } },
+    { act: "add-unit", label: "Tambah sub-unit", hint: "Buat unit di bawah unit ini", data: { act: "add-unit", id: unitId } },
+    { act: "edit-unit", label: "Ubah unit", hint: "Nama, jenis, dan unit induk", data: { act: "edit-unit", id: unitId } },
+    { act: "copy-unit", label: "Salin struktur", hint: "Salin sub-unit dari unit lain", data: { act: "copy-unit", id: unitId } },
+    { act: "del-unit", label: "Hapus unit", danger: true, data: { act: "del-unit", id: unitId } },
+  ]);
+}
+
+function openPersonSheet({ userId, unitId, memberId, isPrimary }) {
+  const p = S.profileMap[userId];
+  if (!p) return;
+  const items = [];
+  if (canChangeRole(p)) items.push({ act: "change-role", label: "Ubah role", hint: `Saat ini ${esc(roleLabel(p.role))}`, data: { act: "change-role", user: userId } });
+  if (memberId) {
+    if (!isPrimary) items.push({ act: "set-primary", label: "Jadikan unit utama", hint: "Menentukan rantai approval karyawan", data: { act: "set-primary", user: userId, unit: unitId } });
+    items.push({ act: "rm-member", label: "Keluarkan dari unit", danger: true, data: { act: "rm-member", id: memberId } });
+  } else if (S.units.length) {
+    items.unshift({ act: "place", label: "Tempatkan di unit", hint: "Pilih unit utama untuk karyawan ini", data: { act: "place", user: userId } });
+  }
+  if (!items.length) { toast("Tidak ada aksi yang tersedia untuk karyawan ini", "info"); return; }
+  openActionSheet(p.full_name, p.position || "Jabatan belum diatur", items);
 }
 
 // -----------------------------------------------------------------------

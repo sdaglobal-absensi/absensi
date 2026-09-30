@@ -1767,3 +1767,170 @@ button, a, select, label, .nav-item, .tab-item { touch-action: manipulation; }
   .prof-req-table.table-responsive-stack td:nth-child(6) { justify-content: flex-end; padding-top: 8px; }
   .prof-req-table.table-responsive-stack td:nth-child(6)::before { display: none; }
 }
+
+
+/* =====================================================================
+   Struktur Organisasi — penyempurnaan tampilan HP
+   Desktop tidak berubah; elemen khusus HP disembunyikan di layar lebar.
+   ===================================================================== */
+.org-more, .org-meta-m, .org-l-short, .org-levels-sum, .org-levels-chev { display: none; }
+.org-emp-tags { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
+.org-levels-card > summary { list-style: none; display: block; }
+.org-levels-card > summary::-webkit-details-marker { display: none; }
+.org-levels-head { display: block; }
+@media (min-width: 761px) {
+  .org-levels-card > summary { pointer-events: none; cursor: default; }
+}
+
+/* Lembar aksi (bottom sheet) */
+.org-sheet-sub { margin: -2px 0 12px; font-size: 0.84rem; color: var(--muted); }
+.org-sheet-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 14px; }
+.org-sheet-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%;
+  padding: 13px 16px; background: var(--surface); border: 0; border-bottom: 1px solid var(--border);
+  text-align: left; font: inherit; color: var(--ink); min-height: 52px; justify-content: center;
+}
+.org-sheet-item:last-child { border-bottom: 0; }
+.org-sheet-item:active { background: var(--surface-2); }
+.org-sheet-label { font-weight: 600; font-size: 0.95rem; }
+.org-sheet-hint { font-size: 0.78rem; color: var(--muted); }
+.org-sheet-item.is-danger .org-sheet-label { color: var(--danger); }
+
+@media (max-width: 760px) {
+  /* ---- Header halaman ---- */
+  #org-root .page-header { gap: 14px; margin-bottom: 16px; }
+  #org-root .page-header p.muted { font-size: 0.86rem; line-height: 1.55; margin-top: 6px; }
+  #org-root .org-toolbar { width: 100%; }
+  #org-root .org-toolbar > button { flex: 1; }
+
+  /* ---- Ringkasan: satu kartu, tiga kolom ----- */
+  .org-stats {
+    grid-template-columns: repeat(3, 1fr); gap: 0; margin-bottom: 16px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xs); overflow: hidden;
+  }
+  .org-stats .status-card {
+    background: transparent; border: 0; border-radius: 0; box-shadow: none;
+    padding: 12px 12px 13px; gap: 3px; justify-content: space-between;
+  }
+  .org-stats .status-card + .status-card { border-left: 1px solid var(--border); }
+  .org-stats .status-card.done { border-left: 1px solid var(--border); }
+  .org-stats .status-label { text-transform: none; letter-spacing: 0; font-size: 0.72rem; line-height: 1.3; font-weight: 500; }
+  .org-stats .status-value { font-size: 1.4rem; line-height: 1.1; }
+  .org-stats .org-stat-warn .status-value { color: var(--warn); }
+  .org-l-long { display: none; }
+  .org-l-short { display: inline; }
+
+  /* ---- Kartu tingkat approval: dilipat ---- */
+  .org-levels-card { padding: 0; margin-top: 0; overflow: hidden; }
+  .org-levels-card > summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 16px; min-height: 56px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  .org-levels-card h3 { font-size: 0.95rem; margin: 0; }
+  .org-levels-sum { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+  .org-lv-chip { font-size: 0.72rem; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; }
+  .org-lv-chip b { color: var(--ink); font-weight: 600; margin-left: 2px; }
+  .org-levels-chev { display: flex; color: var(--muted); flex-shrink: 0; transition: transform 0.18s var(--ease); }
+  .org-levels-chev svg { width: 16px; height: 16px; }
+  .org-levels-card[open] > summary .org-levels-chev { transform: rotate(90deg); }
+  .org-levels-card[open] > summary .org-levels-sum { display: none; }
+  .org-levels-card > p { margin: 0; padding: 0 16px; line-height: 1.55; }
+  .org-levels-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: end;
+    padding: 14px 16px 16px; margin-top: 0;
+  }
+  .org-levels-grid label { font-size: 0.78rem; text-align: center; align-items: stretch; }
+  .org-levels-grid input { width: 100%; text-align: center; padding: 10px 4px; }
+  .org-levels-grid .btn-primary { grid-column: 1 / -1; width: 100%; }
+
+  /* ---- Pencarian & legenda ---- */
+  #org-root .org-filter {
+    position: sticky; top: calc(46px + env(safe-area-inset-top, 0px)); z-index: 30;
+    margin: 0 -4px 0 !important; padding: 10px 4px 8px; background: var(--bg);
+  }
+  .org-search-wrap { max-width: none; }
+  .org-search-wrap input { height: 46px; border-radius: 12px; }
+  .org-legend {
+    flex-wrap: nowrap; overflow-x: auto; gap: 16px; margin: 4px 0 12px; padding-bottom: 2px;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .org-legend::-webkit-scrollbar { display: none; }
+  .org-legend-item { flex-shrink: 0; }
+
+  /* ---- Pohon ---- */
+  .org-tree { gap: 10px; }
+  .org-node { border-radius: 14px; }
+  .org-node[data-tipe="pusat"], .org-node[data-tipe="cabang"], .org-node[data-tipe="departemen"] { border-left-width: 3px; }
+
+  /* Header unit: [chevron][ikon] nama / jenis + jumlah [⋯] */
+  .org-node > summary,
+  .org-node-dept > summary,
+  .org-node-bagian > summary {
+    display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; grid-template-rows: auto auto;
+    column-gap: 10px; row-gap: 3px; align-items: center; padding: 12px 8px 12px 14px; min-height: 60px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .org-node > summary:active { background: var(--surface-2); }
+  .org-summary-left, .org-summary-right { display: contents; }
+  .org-chevron { grid-column: 1; grid-row: 1 / span 2; }
+  .org-icon { grid-column: 2; grid-row: 1 / span 2; }
+  .org-node-title { grid-column: 3; grid-row: 1; max-width: none; font-size: 0.95rem; align-self: end; }
+  .org-node-dept .org-node-title { font-size: 0.9rem; }
+  .org-node-bagian .org-node-title { font-size: 0.88rem; }
+  .org-summary-left > .org-tag, .org-pill, .org-summary-right .org-actions { display: none; }
+  .org-meta-m { grid-column: 3; grid-row: 2; display: flex; align-items: center; gap: 8px; min-width: 0; align-self: start; }
+  .org-count { display: inline-flex; align-items: center; gap: 4px; font-size: 0.74rem; color: var(--muted); white-space: nowrap; }
+  .org-count svg { width: 13px; height: 13px; }
+
+  .org-more {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; color: var(--muted);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .org-more svg { width: 18px; height: 18px; }
+  .org-more:active { background: var(--bg); color: var(--ink); }
+  .org-node > summary .org-more { grid-column: 4; grid-row: 1 / span 2; }
+
+  /* Indentasi dirapatkan: lebar layar dipakai untuk isi, bukan ruang kosong */
+  .org-children { margin: 0 8px 12px 16px; padding: 10px 0 0 12px; border-left-width: 2px; gap: 10px; }
+  .org-node-dept .org-children { margin: 0 6px 10px 10px; padding: 8px 0 0 10px; }
+  .org-node-bagian .org-children { margin: 0 6px 10px 8px; padding: 8px 0 0 8px; }
+
+  /* Info approver */
+  .org-approver-line,
+  .org-node-dept > .org-approver-line,
+  .org-node-bagian > .org-approver-line {
+    margin: 0 12px 10px; padding: 8px 11px; font-size: 0.78rem; line-height: 1.45; font-style: normal;
+    color: var(--ink); background: var(--ok-bg); border-radius: 9px; border: 1px solid transparent;
+  }
+  .org-approver-none,
+  .org-node-dept > .org-approver-none,
+  .org-node-bagian > .org-approver-none { background: var(--surface-2); border: 1px dashed var(--border); color: var(--muted); }
+
+  /* Daftar anggota: satu daftar rapi dengan garis pemisah, bukan kotak-kotak */
+  .org-emp-list { gap: 0; padding: 0; border-top: 1px solid var(--border); }
+  .org-emp-row {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 12px; row-gap: 6px; align-items: center;
+    padding: 11px 6px 11px 14px; background: transparent; border: 0; border-radius: 0; border-bottom: 1px solid var(--border);
+  }
+  .org-emp-row:last-child { border-bottom: 0; }
+  .org-emp-row:hover { box-shadow: none; border-color: var(--border); }
+  .org-avatar { width: 38px; height: 38px; grid-column: 1; grid-row: 1; }
+  .org-emp-info { grid-column: 2; grid-row: 1; }
+  .org-emp-name { font-size: 0.9rem; }
+  .org-emp-meta { white-space: normal; line-height: 1.35; }
+  .org-emp-tags { grid-column: 2; grid-row: 2; gap: 6px; }
+  .org-emp-tags:empty { display: none; }
+  .org-emp-tags .badge { font-size: 0.7rem; padding: 2px 9px; }
+  .org-emp-row .org-actions { display: none; }
+  .org-emp-row .org-more { grid-column: 3; grid-row: 1 / span 2; }
+
+  /* Belum punya unit utama: satu kartu berisi daftar */
+  .org-unplaced { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-xs); }
+  .org-unplaced.org-emp-list { border-top: 1px solid var(--border); }
+
+  /* Lembar aksi */
+  .org-sheet .modal-box h3 { font-size: 1.05rem; margin-bottom: 4px; }
+  .org-sheet .modal-actions { margin-top: 0; }
+}
