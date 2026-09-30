@@ -3,7 +3,7 @@ import { toast, fmtDate, fmtTime, resolveUserTimezone, zonedTimestamp, todayISO 
 import {
   esc, fetchSteps, stepsHTML, rejectionReason, openRevisionModal, submitErrorMessage,
 } from "../approvalHelper.js";
-import { chainOf, employeeActionsHTML, employeeStatusTag, openChainModal } from "../requestHistory.js";
+import { chainOf, employeeActionsHTML, employeeStatusTag, openChainModal, detailListHTML } from "../requestHistory.js";
 
 // Pengajuan Koreksi Absen karyawan — dipakai kalau lupa absen MASUK atau
 // PULANG. Lewat alur approval bertingkat yang sama dengan Izin/Lembur;
@@ -199,8 +199,19 @@ async function loadList(user) {
   el.querySelectorAll(".btn-revisi").forEach(b => b.addEventListener("click", () => startRevision(b.dataset.id, user)));
   el.querySelectorAll(".btn-hist").forEach(b => b.addEventListener("click", () => {
     const r = data.find(x => x.id === b.dataset.id);
-    if (r) openChainModal("Riwayat Pengajuan Koreksi Absen", data, r, steps, describe);
+    if (r) openChainModal("Riwayat Pengajuan Koreksi Absen", data, r, steps, describe, detail(r, user));
   }));
+}
+
+// Isi formulir pengajuan koreksi absen.
+function detail(r, user) {
+  return detailListHTML([
+    ["Karyawan", esc(user.full_name || "-")],
+    ["Jenis koreksi", esc(typeLabel(r.correction_type))],
+    ["Tanggal absen", fmtDate(r.attendance_date)],
+    ["Jam yang diajukan", fmtTime(r.corrected_time)],
+    ["Alasan", esc(r.reason || "-")],
+  ]);
 }
 
 // Ringkasan satu pengajuan koreksi untuk daftar riwayat.

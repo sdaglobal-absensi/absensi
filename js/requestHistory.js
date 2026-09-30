@@ -83,10 +83,17 @@ export function historyButton(req) {
     : "";
 }
 
-// Kolom aksi di riwayat karyawan: "Riwayat" (kalau ada revisi) + "Ajukan Ulang" (kalau ditolak).
+// Ringkasan isi formulir satu pengajuan (Karyawan, Jenis, Periode, Alasan, dst.)
+// dalam kartu yang sama dengan popup Setujui/Tolak. rows = [[label, nilaiHTML], ...]
+export function detailListHTML(rows) {
+  return `<dl class="ap-detail">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl>`;
+}
+
+// Kolom aksi di riwayat karyawan: "Riwayat" (kalau ada revisi) atau "Detail" (pengajuan
+// pertama, belum pernah diajukan ulang) + "Ajukan Ulang" (kalau ditolak).
 export function employeeActionsHTML(req, chainLen) {
   const btns = [];
-  if (chainLen) btns.push(`<button type="button" class="btn-secondary btn-sm btn-hist" data-id="${esc(req.id)}">Riwayat</button>`);
+  btns.push(`<button type="button" class="btn-secondary btn-sm btn-hist" data-id="${esc(req.id)}">${chainLen ? "Riwayat" : "Detail"}</button>`);
   if (req.status === "rejected") btns.push(`<button type="button" class="btn-secondary btn-sm btn-revisi" data-id="${esc(req.id)}">Ajukan Ulang</button>`);
   return btns.length ? `<div class="row-actions">${btns.join("")}</div>` : `<span class="small muted">-</span>`;
 }
@@ -96,7 +103,7 @@ export function employeeStatusTag(chainLen) {
 }
 
 // Popup baca-saja berisi riwayat.
-export function openHistoryModal({ title, subtitle, bodyHTML }) {
+export function openHistoryModal({ title, subtitle, bodyHTML, detailHTML = "" }) {
   const modal = document.createElement("div");
   modal.className = "modal";
   modal.setAttribute("role", "dialog");
@@ -105,7 +112,11 @@ export function openHistoryModal({ title, subtitle, bodyHTML }) {
     <div class="modal-box ap-modal hist-modal">
       <h3>${esc(title)}</h3>
       ${subtitle ? `<p class="muted small" style="margin:4px 0 0;">${esc(subtitle)}</p>` : ""}
-      <div class="hist-block" style="margin-top:14px;">${bodyHTML}</div>
+      ${detailHTML}
+      <div class="hist-block" style="margin-top:14px;">
+        ${detailHTML ? `<div class="hist-block-title">Riwayat pengajuan dan persetujuan</div>` : ""}
+        ${bodyHTML}
+      </div>
       <div class="modal-actions" style="margin-top:14px;">
         <button type="button" class="btn-secondary" data-x="close">Tutup</button>
       </div>
@@ -119,12 +130,15 @@ export function openHistoryModal({ title, subtitle, bodyHTML }) {
 }
 
 // Riwayat lengkap satu rantai (pengajuan terbaru + semua sebelumnya) untuk karyawan.
-export function openChainModal(title, all, req, steps, describe) {
+export function openChainModal(title, all, req, steps, describe, detailHTML = "") {
   const chain = [...chainOf(all, req), req];
+  const multi = chain.length > 1;
   openHistoryModal({
-    title,
-    subtitle: `${chain.length} kali diajukan · riwayat lengkap, termasuk yang ditolak`,
-    bodyHTML: timelineHTML(chain, steps, describe, { latestLabel: true }),
+    // Pengajuan pertama (tanpa revisi) judulnya "Detail ...", bukan "Riwayat ...".
+    title: multi ? title : title.replace(/^Riwayat/, "Detail"),
+    subtitle: multi ? `${chain.length} kali diajukan · riwayat lengkap, termasuk yang ditolak` : "Isi pengajuan dan tahap persetujuannya",
+    detailHTML,
+    bodyHTML: timelineHTML(chain, steps, describe, { latestLabel: multi }),
   });
 }
 

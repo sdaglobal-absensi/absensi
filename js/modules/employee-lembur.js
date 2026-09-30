@@ -3,7 +3,7 @@ import { toast, fmtDate, roundOvertimeHours, fmtJam, dayOfWeekFromDateStr } from
 import {
   esc, fetchSteps, stepsHTML, rejectionReason, openRevisionModal, submitErrorMessage,
 } from "../approvalHelper.js";
-import { chainOf, employeeActionsHTML, employeeStatusTag, openChainModal } from "../requestHistory.js";
+import { chainOf, employeeActionsHTML, employeeStatusTag, openChainModal, detailListHTML } from "../requestHistory.js";
 
 // Pengajuan Lembur karyawan. Pengajuan yang DITOLAK punya tombol "Ajukan
 // Ulang" yang membuka popup berisi form terisi data lama. Hasilnya terkirim
@@ -166,8 +166,20 @@ async function loadList(user) {
   el.querySelectorAll(".btn-revisi").forEach(b => b.addEventListener("click", () => startRevision(b.dataset.id, user)));
   el.querySelectorAll(".btn-hist").forEach(b => b.addEventListener("click", () => {
     const r = data.find(x => x.id === b.dataset.id);
-    if (r) openChainModal("Riwayat Pengajuan Lembur", data, r, steps, describe);
+    if (r) openChainModal("Riwayat Pengajuan Lembur", data, r, steps, describe, detail(r, user));
   }));
+}
+
+// Isi formulir pengajuan lembur.
+function detail(r, user) {
+  return detailListHTML([
+    ["Karyawan", esc(user.full_name || "-")],
+    ["Tanggal", fmtDate(r.date)],
+    ["Jam", `${esc(r.start_time?.slice(0, 5))} – ${esc(r.end_time?.slice(0, 5))}`],
+    ["Total jam", fmtJam(r.total_jam ?? roundOvertimeHours(r.start_time, r.end_time))],
+    ["Jenis hari", r.is_hari_libur ? "Hari Libur" : "Hari Biasa"],
+    ["Keterangan", esc(r.reason || "-")],
+  ]);
 }
 
 // Ringkasan satu pengajuan lembur untuk daftar riwayat.

@@ -3,7 +3,7 @@ import { toast, fmtDate } from "../core.js";
 import {
   esc, fetchSteps, stepsHTML, rejectionReason, openRevisionModal, submitErrorMessage,
 } from "../approvalHelper.js";
-import { chainOf, employeeActionsHTML, employeeStatusTag, openChainModal } from "../requestHistory.js";
+import { chainOf, employeeActionsHTML, employeeStatusTag, openChainModal, detailListHTML } from "../requestHistory.js";
 import { fetchSpecialLeaveRules, fetchMyLeaveBalance, addDays, leaveTypeLabel } from "../leaveRules.js";
 
 // Pengajuan Izin karyawan. Pengajuan yang DITOLAK punya tombol "Ajukan Ulang"
@@ -280,8 +280,18 @@ async function loadList(user) {
   el.querySelectorAll(".btn-revisi").forEach(b => b.addEventListener("click", () => startRevision(b.dataset.id, user)));
   el.querySelectorAll(".btn-hist").forEach(b => b.addEventListener("click", () => {
     const r = data.find(x => x.id === b.dataset.id);
-    if (r) openChainModal("Riwayat Pengajuan Izin", data, r, steps, describe);
+    if (r) openChainModal("Riwayat Pengajuan Izin", data, r, steps, describe, detail(r, user));
   }));
+}
+
+// Isi formulir pengajuan izin/sakit/cuti (sama dengan yang dilihat approver).
+function detail(r, user) {
+  return detailListHTML([
+    ["Karyawan", esc(user.full_name || "-")],
+    ["Jenis", esc(leaveTypeLabel(r, current.rules))],
+    ["Periode", `${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}`],
+    ["Alasan", esc(r.reason || "-")],
+  ]);
 }
 
 // Ringkasan satu pengajuan izin untuk daftar riwayat.
