@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { fmtTime, fmtDate, todayISO, roleLabel, resolveMenu, ICONS, resolveUserTimezone, tzLabel } from "../core.js";
+import { fmtTime, fmtDate, todayISO, roleLabel, resolveMenu, ICONS, resolveUserTimezone, tzLabel, dayOfWeekFromDateStr } from "../core.js";
 import { loadAttendanceState, cameraModalHtml, openCamera, reminderBannerHTML, goToKoreksiCheckout, goToKoreksiMasuk, onLeaveLabel } from "./employee-absensi.js";
 import { countPendingForMe } from "../approvalHelper.js";
 
@@ -193,6 +193,36 @@ async function loadPersonalStats(user, tz) {
 // memang diizinkan buat user ini (lewat allowedTabIds), supaya tidak query
 // tabel yang RLS-nya bakal menolak dia.
 // =====================================================================
+// Hitung karyawan aktif yang belum check-in pada tanggal `date`. Mengembalikan
+// null kalau gagal (mis. RLS menolak) supaya kartu lain di dashboard tetap tampil.
+async function countBelumCheckinHariIni(date) {
+  try {
+    const { data: holiday } = await supabase
+      .from("holidays").select("name").eq("date", date).eq("is_active", true).maybeSingle();
+    if (holiday) return 0; // hari libur nasional — tidak ada yang "belum absen"
+
+    const dow = dayOfWeekFromDateStr(date);
+    const [emps, att, days] = await Promise.all([
+      supabase.from("profiles").select("id, schedule_id").eq("is_active", true),
+      supabase.from("attendance").select("user_id").eq("date", date),
+      supabase.from("work_schedule_days").select("schedule_id, is_working_day").eq("day_of_week", dow),
+    ]);
+    if (emps.error || att.error || days.error) return null;
+
+    const attended = new Set((att.data || []).map(r => r.user_id));
+    const workingBySchedule = {};
+    (days.data || []).forEach(d => { workingBySchedule[d.schedule_id] = d.is_working_day; });
+
+    return (emps.data || []).filter(e => {
+      if (attended.has(e.id)) return false;
+      if (e.schedule_id && workingBySchedule[e.schedule_id] === false) return false;
+      return true;
+    }).length;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function loadOrgStats(user) {
   const allowed = await resolveMenu(user).then(menu => new Set(menu.map(m => m.id)));
   const canKaryawan = allowed.has("karyawan");
@@ -217,6 +247,15 @@ async function loadOrgStats(user) {
       const telat = (attToday || []).filter(a => a.check_in_status === "telat").length;
       cards.push({ label: "Hadir Hari Ini", value: hadir, tone: "ok" });
       cards.push({ label: "Telat Hari Ini", value: telat, tone: telat > 0 ? "warn" : "ok" });
+
+      // Karyawan aktif yang seharusnya masuk hari ini tapi belum punya data
+      // absen sama sekali. Aturannya sama persis dengan panel "Belum Absen"
+      // di Monitor Absensi (hari libur nasional & hari libur menurut Master
+      // Jadwal Kerja tidak dihitung), jadi angkanya cocok dengan halaman itu.
+      const belumCheckin = await countBelumCheckinHariIni(today);
+      if (belumCheckin !== null) {
+        cards.push({ label: "Belum Check-in Hari Ini", value: belumCheckin, tone: belumCheckin ? "warn" : "ok", target: "absensi-monitor" });
+      }
 
       // Sesi lama (bukan hari ini) yang sudah check-in tapi belum check-out —
       // biasanya karyawan lupa absen pulang. Dihitung terpisah dari "Hadir

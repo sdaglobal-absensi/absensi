@@ -515,3 +515,11 @@ nama di Data Karyawan ikut diperbarui.
 - **Manifest**: ikon *maskable* khusus (`assets/icon-maskable-*.png`, ada padding agar tidak terpotong di Android), orientasi portrait, dan shortcut (Absensi, Izin, Slip Gaji) saat ikon aplikasi ditekan lama.
 - Semua gaya ada di blok "TAMPILAN APLIKASI HP (PWA)" di bagian akhir `css/style.css`.
 - Agar perubahan ikon/manifest terbaca, aplikasi yang sudah terpasang sebaiknya dihapus lalu dipasang ulang dari browser.
+
+## Monitor Absensi — panel Lupa Check-in
+
+- Panel **"N hari lupa check-in dalam 7 hari terakhir"** (`loadLupaCheckin()` di `js/modules/admin-absensi.js`) berada di atas panel lupa check-out.
+- Yang dihitung: hari kerja lampau (kemarin sampai 7 hari ke belakang) di mana karyawan aktif tidak punya `check_in`. Baris attendance yang hanya berisi check-out juga dihitung.
+- Yang TIDAK dihitung: hari libur nasional, hari libur menurut Master Jadwal Kerja, tanggal sebelum `join_date` / sesudah `resign_date`, tanggal yang tercakup izin/cuti/sakit (pending/approved), dan karyawan yang belum punya jadwal kerja.
+- Koreksi Absen "masuk" berstatus pending ditandai kuning; yang sudah disetujui otomatis hilang dari daftar. Butuh akses baca ke `attendance_correction_requests` untuk penandaan ini — kalau ditolak RLS, panel tetap jalan tanpa penanda.
+- Dashboard: kartu **"Belum Check-in Hari Ini"** (khusus hari ini, aturan sama dengan panel "Belum Absen").

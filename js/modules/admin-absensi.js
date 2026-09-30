@@ -20,7 +20,7 @@ export async function render(container) {
     <div class="page-header mon-header">
       <div>
         <h1>Monitor Absensi</h1>
-        <p class="mon-subtitle">Pantau kehadiran karyawan per tanggal, tindak lanjuti yang belum absen atau lupa check-out, lalu export rekapnya ke Excel.</p>
+        <p class="mon-subtitle">Pantau kehadiran karyawan per tanggal, tindak lanjuti yang belum absen, lupa check-in, atau lupa check-out, lalu export rekapnya ke Excel.</p>
       </div>
       <button id="btn-open-export" class="btn-secondary">Export Excel</button>
     </div>
@@ -38,6 +38,8 @@ export async function render(container) {
     <div id="mon-stats" class="mon-stats"></div>
 
     <div id="belum-absen-panel"></div>
+
+    <div id="lupa-checkin-panel"></div>
 
     <div id="belum-checkout-panel"></div>
 
@@ -75,6 +77,7 @@ export async function render(container) {
   load();
   loadBelumAbsen(document.getElementById("filter-date").value);
   loadBelumCheckout();
+  loadLupaCheckin();
 }
 
 function onDateOrSearchChange() {
@@ -281,6 +284,116 @@ function keteranganCell(leave) {
   const label = leaveTypeLabel(leave, rules);
   const pendingSuffix = leave.status === "pending" ? " (pending)" : "";
   return `<span class="badge badge-${leave.status === "approved" ? "ok" : "warn"}">${esc(label)}${pendingSuffix}</span>`;
+}
+
+// =====================================================================
+// PANEL "LUPA CHECK-IN" — padanan panel lupa check-out untuk sisi masuk.
+// Menampilkan HARI KERJA LAMPAU (maks. 7 hari terakhir, tidak termasuk hari
+// ini karena karyawan masih bisa datang) di mana karyawan aktif tidak punya
+// check-in sama sekali: entah tidak ada baris attendance, atau ada baris
+// tapi hanya berisi check-out (mis. hasil koreksi pulang tanpa jam masuk).
+// TIDAK dihitung: hari libur nasional, hari libur menurut Master Jadwal
+// Kerja, tanggal sebelum join_date / sesudah resign_date, tanggal yang
+// tercakup pengajuan Izin/Cuti/Sakit (pending/approved), dan karyawan yang
+// belum punya jadwal kerja (hari kerjanya tidak bisa dipastikan).
+// Kalau sudah ada Koreksi Absen "masuk" berstatus pending, ditandai supaya
+// admin tidak perlu menagih lagi; yang approved otomatis hilang dari daftar
+// karena koreksi yang disetujui menulis check_in ke tabel attendance.
+// =====================================================================
+const LUPA_CHECKIN_DAYS = 7;
+
+function addDaysISO(dateStr, delta) {
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+async function loadLupaCheckin() {
+  const el = document.getElementById("lupa-checkin-panel");
+  if (!el) return;
+
+  const today = todayISO();
+  const start = addDaysISO(today, -LUPA_CHECKIN_DAYS);
+  const end = addDaysISO(today, -1);
+
+  const [emps, att, sched, hol, leaves, koreksi] = await Promise.all([
+    supabase.from("profiles")
+      .select("id, full_name, department, employee_code, photo_url, schedule_id, join_date, resign_date")
+      .eq("is_active", true).not("schedule_id", "is", null),
+    supabase.from("attendance").select("user_id, date, check_in").gte("date", start).lte("date", end),
+    supabase.from("work_schedule_days").select("schedule_id, day_of_week, is_working_day"),
+    supabase.from("holidays").select("date").eq("is_active", true).gte("date", start).lte("date", end),
+    supabase.from("leave_requests").select("user_id, start_date, end_date")
+      .in("status", ["pending", "approved"]).lte("start_date", end).gte("end_date", start),
+    supabase.from("attendance_correction_requests").select("user_id, attendance_date")
+      .eq("correction_type", "masuk").eq("status", "pending").gte("attendance_date", start).lte("attendance_date", end),
+  ]);
+
+  // Data inti gagal dimuat -> jangan tampilkan apa pun (lebih baik kosong daripada menyesatkan).
+  if (emps.error || att.error || sched.error || hol.error) { el.innerHTML = ""; return; }
+  // leaves / koreksi bersifat pelengkap (bisa ditolak RLS untuk sebagian role).
+  const leaveRows = leaves.error ? [] : (leaves.data || []);
+  const koreksiRows = koreksi.error ? [] : (koreksi.data || []);
+
+  const holidays = new Set((hol.data || []).map(h => h.date));
+  const checkedIn = new Set((att.data || []).filter(a => a.check_in).map(a => `${a.user_id}|${a.date}`));
+  const working = {};
+  (sched.data || []).forEach(d => { working[`${d.schedule_id}|${d.day_of_week}`] = d.is_working_day; });
+  const pendingKoreksi = new Set(koreksiRows.map(k => `${k.user_id}|${k.attendance_date}`));
+
+  const rows = [];
+  for (let i = LUPA_CHECKIN_DAYS; i >= 1; i--) {
+    const date = addDaysISO(today, -i);
+    if (holidays.has(date)) continue;
+    const dow = dayOfWeekFromDateStr(date);
+    for (const emp of emps.data || []) {
+      if (working[`${emp.schedule_id}|${dow}`] !== true) continue; // libur / jadwal hari itu tidak terdaftar
+      if (emp.join_date && date < emp.join_date) continue;
+      if (emp.resign_date && date > emp.resign_date) continue;
+      if (checkedIn.has(`${emp.id}|${date}`)) continue;
+      if (leaveRows.some(l => l.user_id === emp.id && l.start_date <= date && l.end_date >= date)) continue;
+      rows.push({ emp, date, koreksiPending: pendingKoreksi.has(`${emp.id}|${date}`) });
+    }
+  }
+
+  if (!rows.length) { el.innerHTML = ""; return; }
+  const tanpaKoreksi = rows.filter(r => !r.koreksiPending).length;
+
+  el.innerHTML = `
+    <div class="mon-alert">
+      <div class="mon-alert-head">
+        <span class="mon-alert-icon">${ICON_WARN}</span>
+        <p class="mon-alert-title">${rows.length} hari lupa check-in dalam ${LUPA_CHECKIN_DAYS} hari terakhir${tanpaKoreksi !== rows.length ? ` — ${tanpaKoreksi} belum ada pengajuan koreksi` : ""}</p>
+      </div>
+      <div class="mon-alert-body mon-scroll">
+        <table class="table">
+          <thead><tr><th>Karyawan</th><th>Departemen</th><th>Tanggal</th><th>Keterangan</th><th></th></tr></thead>
+          <tbody>
+            ${rows.map(r => `
+              <tr>
+                <td>${empCell(r.emp)}</td>
+                <td>${esc(r.emp.department || "-")}</td>
+                <td>${fmtDate(r.date)}</td>
+                <td>${r.koreksiPending
+                  ? `<span class="badge badge-warn">Koreksi masuk diajukan (pending)</span>`
+                  : `<span class="badge badge-danger">Belum ada keterangan</span>`}</td>
+                <td><button type="button" class="btn-link btn-lihat-tanggal" data-date="${r.date}">Lihat tanggal ini</button></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+      <p class="mon-alert-note">Minta karyawan mengajukan lewat menu <strong>Koreksi Absen</strong> (jenis "Lupa Absen Masuk"). Hari libur, izin/cuti, dan karyawan tanpa jadwal kerja tidak dihitung.</p>
+    </div>
+  `;
+
+  el.querySelectorAll(".btn-lihat-tanggal").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.getElementById("filter-date").value = btn.dataset.date;
+      onDateOrSearchChange();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  });
 }
 
 // =====================================================================
