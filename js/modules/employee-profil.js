@@ -64,6 +64,7 @@ export async function render(container, user) {
 
   const joinLabel = currentProfile.join_date ? new Date(currentProfile.join_date).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-";
   const jabatanDept = [currentProfile.position, currentProfile.department].filter(Boolean).join(" • ");
+  const chips = [currentProfile.unit_pt, currentProfile.lokasi_kerja, currentProfile.status_karyawan].filter(Boolean);
 
   container.innerHTML = `
     <div class="prof-head">
@@ -90,6 +91,7 @@ export async function render(container, user) {
             <span class="badge badge-ok">${roleLabel(currentProfile.role)}</span>
           </div>
           ${jabatanDept ? `<p class="prof-subtitle">${escapeHtml(jabatanDept)}</p>` : ""}
+          ${chips.length ? `<div class="prof-chips">${chips.map(c => `<span class="prof-chip">${escapeHtml(c)}</span>`).join("")}</div>` : ""}
         </div>
       </div>
       <dl class="prof-facts">
@@ -104,10 +106,13 @@ export async function render(container, user) {
       <p>Perubahan tersimpan setelah kamu klik <strong>Simpan Perubahan</strong>.</p>
     </div>
     <form id="form-quick" class="prof-card">
+      <div class="form-section-label">Kontak &amp; Domisili</div>
       <div class="form-row two-col">
-        <label>No. HP <input name="phone" value="${escapeAttr(currentProfile.phone || "")}"></label>
-        <label>Alamat Domisili <input name="alamat" value="${escapeAttr(currentProfile.alamat || "")}"></label>
+        <label>No. HP <input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Contoh: 081234567890" value="${escapeAttr(currentProfile.phone || "")}"></label>
+        <span class="prof-spacer" aria-hidden="true"></span>
       </div>
+      <label>Alamat Domisili <textarea name="alamat" rows="2" autocomplete="street-address" placeholder="Alamat tempat tinggal saat ini">${escapeHtml(currentProfile.alamat || "")}</textarea></label>
+      <div class="form-section-label">Pendidikan &amp; Agama</div>
       ${personalFieldsHtml({ includeIdentity: false })}
       ${familySectionHtml({ includeStatus: false })}
       <div class="prof-form-actions">
@@ -120,27 +125,27 @@ export async function render(container, user) {
       <p>Terkait payroll, BPJS, dan dokumen resmi, jadi tidak bisa diubah langsung. Klik <strong>Ajukan Perubahan</strong> — perubahan baru berlaku setelah disetujui admin.</p>
     </div>
     <div class="table-wrap">
-      <table class="table table-responsive-stack">
+      <table class="table table-responsive-stack prof-table">
         <thead><tr><th>Field</th><th>Nilai Saat Ini</th><th>Aksi</th></tr></thead>
         <tbody>
           ${REQUESTABLE_FIELDS.map(f => `
             <tr>
               <td data-label="Field">${f.label}</td>
-              <td data-label="Nilai Saat Ini">${escapeHtml(f.display ? f.display(currentProfile) : displayProfileValue(f.key, currentProfile[f.key]))}</td>
-              <td data-label="Aksi">${!f.staffOnly
+              <td data-label="Nilai Saat Ini" class="prof-val">${escapeHtml(f.display ? f.display(currentProfile) : displayProfileValue(f.key, currentProfile[f.key]))}</td>
+              <td data-label="Aksi" class="prof-act">${!f.staffOnly
                 ? `<button type="button" class="btn-link btn-ajukan" data-key="${f.key}" data-label="${escapeAttr(f.label)}">Ajukan Perubahan</button>`
                 : `<span class="muted small">Hubungi Admin/HR</span>`}</td>
             </tr>
           `).join("")}
           <tr>
             <td data-label="Field">PTKP</td>
-            <td data-label="Nilai Saat Ini" id="profil-ptkp">${escapeHtml(ptkpText(currentProfile.ptkp))}</td>
-            <td data-label="Aksi" class="muted small">Otomatis dari status pernikahan &amp; jumlah anak</td>
+            <td data-label="Nilai Saat Ini" class="prof-val" id="profil-ptkp">${escapeHtml(ptkpText(currentProfile.ptkp))}</td>
+            <td data-label="Aksi" class="prof-act-note muted small">Otomatis dari status pernikahan &amp; jumlah anak</td>
           </tr>
           <tr>
             <td data-label="Field">Kode Karyawan / Role / Status Karyawan</td>
-            <td data-label="Nilai Saat Ini" class="muted small">${escapeHtml(currentProfile.employee_code || "-")} • ${roleLabel(currentProfile.role)} • ${escapeHtml(currentProfile.status_karyawan || "-")}</td>
-            <td data-label="Aksi" class="muted small">Hubungi Admin/HR</td>
+            <td data-label="Nilai Saat Ini" class="prof-val">${escapeHtml(currentProfile.employee_code || "-")} • ${roleLabel(currentProfile.role)} • ${escapeHtml(currentProfile.status_karyawan || "-")}</td>
+            <td data-label="Aksi" class="prof-act-note muted small">Hubungi Admin/HR</td>
           </tr>
         </tbody>
       </table>
@@ -150,7 +155,7 @@ export async function render(container, user) {
       <h2>Riwayat Pengajuan Perubahan Data</h2>
       <p>Status pengajuan perubahan data yang pernah kamu kirim.</p>
     </div>
-    <div id="pcr-table" class="table-wrap"><p class="muted">Memuat…</p></div>
+    <div id="pcr-table" class="table-wrap"><p class="muted prof-empty">Memuat…</p></div>
 
     <div id="modal-ajukan" class="modal hidden">
       <div class="modal-box">
@@ -316,11 +321,11 @@ async function loadRequests() {
     .order("created_at", { ascending: false });
 
   const el = document.getElementById("pcr-table");
-  if (error) { el.innerHTML = `<p class="muted">Gagal memuat riwayat.</p>`; return; }
-  if (!data || !data.length) { el.innerHTML = `<p class="muted">Belum ada pengajuan perubahan data.</p>`; return; }
+  if (error) { el.innerHTML = `<p class="muted prof-empty">Gagal memuat riwayat.</p>`; return; }
+  if (!data || !data.length) { el.innerHTML = `<p class="muted prof-empty">Belum ada pengajuan perubahan data.</p>`; return; }
 
   el.innerHTML = `
-    <table class="table table-responsive-stack">
+    <table class="table table-responsive-stack prof-req-table">
       <thead><tr><th>Field</th><th>Dari</th><th>Menjadi</th><th>Status</th><th>Diajukan</th><th>Aksi</th></tr></thead>
       <tbody>
         ${data.map(r => `
