@@ -111,7 +111,6 @@ const membersOf = id => (S.membersByUnit[id] || []).slice().sort((a, b) => S.pro
 function depthOf(id) { let d = 0, cur = S.unitMap[id]; while (cur && cur.parent_id) { d++; cur = S.unitMap[cur.parent_id]; } return d; }
 function unitPath(id) { const out = []; let cur = S.unitMap[id]; while (cur) { out.unshift(cur.nama); cur = S.unitMap[cur.parent_id]; } return out.join(" › "); }
 function descendantIds(id) { const out = new Set(); const walk = x => children(x).forEach(c => { out.add(c.id); walk(c.id); }); walk(id); return out; }
-function ancestorIds(id) { const out = new Set(); let cur = S.unitMap[id]; while (cur && cur.parent_id) { out.add(cur.parent_id); cur = S.unitMap[cur.parent_id]; } return out; }
 
 const isAdminRole = role => APPROVER_ROLES.includes(role);
 
@@ -322,7 +321,6 @@ function nodeHTML(u, depth) {
               <button class="org-mini-btn" data-act="add-member" data-id="${u.id}">+ Anggota</button>
               <button class="org-mini-btn" data-act="add-unit" data-id="${u.id}">+ Sub-unit</button>
               <button class="org-mini-btn" data-act="edit-unit" data-id="${u.id}">Ubah</button>
-              <button class="org-mini-btn" data-act="copy-unit" data-id="${u.id}">Salin Struktur</button>
               <button class="org-mini-btn org-mini-danger" data-act="del-unit" data-id="${u.id}">Hapus</button>
             </span>
             <button class="org-more no-print" data-act="unit-menu" data-id="${u.id}" aria-label="Aksi untuk ${esc(u.nama)}">${ICON_MORE}</button>` : ""}
@@ -417,7 +415,6 @@ async function dispatch({ act, id, user, unit, mid, primary }) {
     if (act === "change-role") return openRoleModal(user);
     if (act === "set-primary") return await setPrimary(user, unit);
     if (act === "rm-member") return await removeMember(id);
-    if (act === "copy-unit") return openCopyModal(id);
     if (act === "import-legacy") return await openImportModal();
     if (act === "save-levels") return await saveLevels();
   } catch (err) {
@@ -456,7 +453,6 @@ function openUnitSheet(unitId) {
     { act: "add-member", label: "Tambah anggota", hint: "Tempatkan karyawan di unit ini", data: { act: "add-member", id: unitId } },
     { act: "add-unit", label: "Tambah sub-unit", hint: "Buat unit di bawah unit ini", data: { act: "add-unit", id: unitId } },
     { act: "edit-unit", label: "Ubah unit", hint: "Nama, jenis, dan unit induk", data: { act: "edit-unit", id: unitId } },
-    { act: "copy-unit", label: "Salin struktur", hint: "Salin sub-unit dari unit lain", data: { act: "copy-unit", id: unitId } },
     { act: "del-unit", label: "Hapus unit", danger: true, data: { act: "del-unit", id: unitId } },
   ]);
 }
@@ -634,63 +630,6 @@ async function removeMember(memberId) {
   if (error) return fail(error, "Gagal mengeluarkan");
   toast("Anggota dikeluarkan", "success");
   await reload();
-}
-
-// --- Salin struktur (mis. cabang baru meniru kantor pusat) ---------------
-function openCopyModal(targetId) {
-  const target = S.unitMap[targetId];
-  // Sub-unit yang boleh disalin: yang TIDAK mengandung tujuan (yaitu bukan target
-  // itu sendiri dan bukan leluhurnya) — kalau tidak, salinan akan menyalin dirinya.
-  // Unit sumbernya sendiri boleh leluhur target (mis. cabang baru meniru Kantor Pusat).
-  const bad = new Set([targetId, ...ancestorIds(targetId)]);
-  const copyable = id => children(id).filter(k => !bad.has(k.id));
-  const sources = S.units.filter(u => u.id !== targetId && copyable(u.id).length);
-  if (!sources.length) { toast("Belum ada unit lain yang punya sub-unit untuk disalin.", "error"); return; }
-
-  const { close, $ } = openModal(`Salin struktur ke “${esc(target.nama)}”`, `
-    <p class="muted small">Menyalin sub-unit (beserta turunannya) dari unit lain ke dalam “${esc(target.nama)}”. Hanya <strong>susunan unit</strong> yang disalin — anggota tidak ikut.</p>
-    <form id="copy-form">
-      <div class="form-row"><label>Salin dari <select id="copy-src">${unitOptionsHTML(sources)}</select></label></div>
-      <div id="copy-kids" class="org-copy-kids"></div>
-      <div class="modal-actions">
-        <button type="button" class="btn-secondary" data-x="cancel">Batal</button>
-        <button type="submit" class="btn-primary">Salin</button>
-      </div>
-    </form>`);
-
-  const kidsEl = $("#copy-kids");
-  const drawKids = () => {
-    const src = $("#copy-src").value;
-    kidsEl.innerHTML = `<div class="small muted" style="margin-bottom:6px;">Pilih sub-unit yang disalin (cabang tidak dicentang otomatis):</div>` +
-      copyable(src).map(k => `<label class="check-row"><input type="checkbox" value="${k.id}" ${k.tipe === "cabang" ? "" : "checked"}> ${esc(k.nama)} <span class="org-tag">${TIPE_LABEL[k.tipe] || k.tipe}</span></label>`).join("");
-  };
-  $("#copy-src").addEventListener("change", drawKids);
-  drawKids();
-
-  $("#copy-form").addEventListener("submit", async e => {
-    e.preventDefault();
-    const picked = [...kidsEl.querySelectorAll("input:checked")].map(i => i.value);
-    if (!picked.length) { toast("Pilih minimal satu sub-unit", "error"); return; }
-    try {
-      let total = 0;
-      for (const id of picked) total += await cloneSubtree(id, targetId);
-      S.openIds.add(targetId);
-      toast(`${total} unit disalin`, "success");
-      close();
-      await reload();
-    } catch (err) { fail(err, "Gagal menyalin"); }
-  });
-}
-
-async function cloneSubtree(srcId, newParentId) {
-  const src = S.unitMap[srcId];
-  const { data, error } = await supabase.from("org_units")
-    .insert({ parent_id: newParentId, nama: src.nama, tipe: src.tipe, sort_order: src.sort_order })
-    .select("id").single();
-  if (error) throw error;
-  let n = 1;
-  for (const k of children(srcId)) n += await cloneSubtree(k.id, data.id);
-  return n;
 }
 
 // --- Impor dari data lama (Cabang > Departemen > Bagian di profiles) -----
