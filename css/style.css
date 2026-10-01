@@ -1837,7 +1837,7 @@ button, a, select, label, .nav-item, .tab-item { touch-action: manipulation; }
   .org-levels-card[open] > summary .org-levels-sum { display: none; }
   .org-levels-card > p { margin: 0; padding: 0 16px; line-height: 1.55; }
   .org-levels-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: end;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-items: end;
     padding: 14px 16px 16px; margin-top: 0;
   }
   .org-levels-grid label { font-size: 0.78rem; text-align: center; align-items: stretch; }
