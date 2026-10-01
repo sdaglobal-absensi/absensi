@@ -616,7 +616,6 @@ button { font-family: 'Inter'; cursor: pointer; }
 .org-levels-grid { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px; }
 .org-levels-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; font-weight: 600; }
 .org-levels-grid input { width: 84px; }
-.org-copy-kids { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 12px; }
 .check-row { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; font-weight: 500; cursor: pointer; }
 .check-row input { width: auto; }
 @media (max-width: 760px) {
