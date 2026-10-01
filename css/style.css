@@ -1953,3 +1953,130 @@ button.mon-stat-link:focus-visible { outline: 2px solid var(--primary-light); ou
   #lupa-checkin-panel { scroll-margin-top: calc(64px + env(safe-area-inset-top, 0px)); }
   .mon-stat-sub { font-size: 0.66rem; }
 }
+
+/* =====================================================================
+   STRUKTUR ORGANISASI — penyempurnaan tampilan DESKTOP / PC
+   Hanya aktif di layar >= 761px (tampilan HP tidak diubah).
+   Prinsip: header ringkas, kartu pengaturan rapi (kolom sama lebar),
+   aksi yang tidak utama dibuat "ghost" supaya header unit tidak ramai,
+   daftar anggota berbentuk tabel dengan pemisah tipis.
+   ===================================================================== */
+@media (min-width: 761px) {
+  #org-root { max-width: 1240px; margin: 0 auto; }
+
+  /* ---- Header halaman ---- */
+  #org-root .page-header { align-items: center; margin-bottom: 22px; gap: 24px; }
+  #org-root .page-header h1 { letter-spacing: -0.01em; }
+  #org-root .page-header p.muted { max-width: 780px; margin-top: 6px; font-size: 0.9rem; line-height: 1.65; }
+  #org-root .page-header p.muted strong { color: var(--ink); font-weight: 600; }
+  #org-root .org-toolbar { flex-shrink: 0; align-items: center; }
+  #org-root .org-toolbar .btn-primary,
+  #org-root .org-toolbar .btn-secondary { padding: 11px 20px; white-space: nowrap; }
+
+  /* ---- Ringkasan ---- */
+  .org-stats { grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+  .org-stats .status-card,
+  .org-stats .status-card.done {
+    position: relative; overflow: hidden; border: 1px solid var(--border);
+    padding: 18px 24px 18px 26px; gap: 8px; box-shadow: var(--shadow-xs);
+  }
+  .org-stats .status-card::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--border);
+  }
+  .org-stats .status-card.done::before { background: var(--ok); }
+  .org-stats .status-card.org-stat-warn::before { background: var(--warn); }
+  .org-stats .status-label { font-size: 0.74rem; font-weight: 600; letter-spacing: 0.06em; }
+  .org-stats .status-value { font-size: 1.85rem; line-height: 1.1; }
+  .org-stats .org-stat-warn .status-value { color: var(--warn); }
+
+  /* ---- Kartu Jumlah Tingkat Approval ---- */
+  .org-levels-card { margin: 0 0 22px; padding: 24px 28px 26px; }
+  .org-levels-card h3 { font-size: 1.05rem; margin: 0 0 6px; }
+  .org-levels-card > p.muted { max-width: 780px; margin: 0 0 20px; font-size: 0.86rem; line-height: 1.65; }
+  .org-levels-grid {
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+    gap: 16px; align-items: end; margin: 0; padding-top: 20px; border-top: 1px solid var(--border);
+  }
+  .org-levels-grid label { gap: 8px; font-size: 0.8rem; font-weight: 600; color: var(--ink); }
+  .org-levels-grid input {
+    width: 100%; height: 44px; padding: 0 12px; text-align: center;
+    font-family: 'Sora', sans-serif; font-size: 1rem; font-weight: 600; color: var(--ink);
+  }
+  .org-levels-grid .btn-primary { height: 44px; padding: 0 30px; white-space: nowrap; }
+
+  /* ---- Pencarian & legenda ---- */
+  #org-root .org-filter { margin: 4px 0 14px !important; }
+  .org-search-wrap { max-width: 460px; }
+  .org-search-wrap input { height: 44px; border-radius: 10px; background: var(--surface); }
+  .org-legend { margin: 0 0 18px; padding: 0 2px; gap: 22px; }
+
+  /* ---- Pohon unit ---- */
+  .org-tree { gap: 18px; }
+  .org-node-cabang { border-radius: 14px; box-shadow: var(--shadow-sm); }
+  .org-node-cabang > summary { padding: 16px 20px; }
+  .org-node-cabang .org-node-title { font-size: 1.02rem; }
+  .org-node > summary { transition: background 0.15s var(--ease); }
+  .org-node > summary:hover { background: var(--surface-2); }
+  .org-node[open] > summary { border-bottom: 1px solid var(--border); }
+  .org-pill { border: 1px solid var(--border); background: var(--surface-2); }
+
+  /* Garis info "Admin di unit ini" jadi strip tipis di bawah header */
+  .org-node > .org-approver-line {
+    margin: 0; padding: 9px 20px; background: var(--bg); font-size: 0.8rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .org-node > .org-approver-line:last-child { border-bottom: 0; }
+  .org-node-dept > .org-approver-line, .org-node-bagian > .org-approver-line { padding: 8px 14px; }
+
+  /* ---- Tombol aksi: yang utama outline, sisanya ghost ---- */
+  .org-actions { gap: 4px; }
+  .org-mini-btn {
+    background: transparent; border-color: transparent; color: var(--muted);
+    padding: 6px 11px; font-size: 0.78rem; border-radius: 8px;
+    transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
+  }
+  .org-mini-btn:hover { background: var(--surface); border-color: var(--border); color: var(--primary); }
+  .org-mini-btn[data-act="add-member"], .org-mini-btn[data-act="add-unit"], .org-mini-btn[data-act="place"] {
+    background: var(--surface); border-color: var(--border); color: var(--primary);
+  }
+  .org-mini-btn[data-act="add-member"]:hover, .org-mini-btn[data-act="add-unit"]:hover, .org-mini-btn[data-act="place"]:hover {
+    border-color: var(--primary); background: var(--ok-bg);
+  }
+  .org-mini-danger { color: var(--danger); opacity: 0.85; }
+  .org-mini-danger:hover { background: var(--danger-bg); border-color: #EBC9C1; color: var(--danger); opacity: 1; }
+
+  /* ---- Daftar anggota: tabel dengan pemisah tipis ---- */
+  .org-emp-list {
+    gap: 0; padding: 0; margin: 16px 20px 18px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  }
+  .org-node-dept > .org-emp-list, .org-node-bagian > .org-emp-list { margin: 12px 14px 14px; }
+  .org-emp-row,
+  .org-emp-row:hover {
+    background: transparent; border: 0; border-bottom: 1px solid var(--border);
+    border-radius: 0; padding: 12px 16px; box-shadow: none;
+  }
+  .org-emp-row:last-child { border-bottom: 0; }
+  .org-emp-row:hover { background: var(--surface-2); }
+  .org-emp-row .org-actions .org-mini-btn:not([data-act="rm-member"]):not([data-act="place"]) { opacity: 0.75; }
+  .org-emp-row:hover .org-actions .org-mini-btn { opacity: 1; }
+  .org-avatar { width: 38px; height: 38px; }
+  .org-emp-name { font-size: 0.9rem; }
+  .org-emp-meta { font-size: 0.78rem; }
+  .org-emp-list.org-unplaced { margin: 0 0 24px; }
+
+  /* ---- Sub-unit ---- */
+  .org-children { margin: 0 20px 20px 38px; padding: 16px 0 0 26px; gap: 14px; }
+  .org-node-dept .org-children { margin: 0 14px 14px 28px; padding: 12px 0 0 20px; }
+}
+
+/* Layar sempit (laptop kecil / tablet): kolom tingkat approval jadi 3 per baris */
+@media (min-width: 761px) and (max-width: 1040px) {
+  .org-levels-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .org-levels-grid .btn-primary { grid-column: 1 / -1; justify-self: start; }
+  .org-node > summary { flex-wrap: wrap; }
+  .org-summary-right { width: 100%; justify-content: flex-start; }
+}
+@media (min-width: 761px) and (max-width: 860px) {
+  .org-levels-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
