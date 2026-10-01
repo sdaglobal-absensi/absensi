@@ -22,7 +22,8 @@ import { esc } from "../approvalHelper.js";
 // =======================================================================
 
 const TIPE_LABEL = { pusat: "Kantor Pusat", cabang: "Cabang", departemen: "Departemen", bagian: "Bagian", lainnya: "Lainnya" };
-const REQ_LABEL = { izin: "Izin", sakit: "Sakit", cuti: "Cuti", lembur: "Lembur" };
+const REQ_LABEL = { izin: "Izin", sakit: "Sakit", cuti: "Cuti", lembur: "Lembur", koreksi: "Koreksi Absen" };
+const REQ_KEYS = ["izin", "sakit", "cuti", "lembur", "koreksi"];
 
 const ICON_PUSAT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V8l8-5 8 5v13"/><path d="M4 21h16"/><path d="M9 21v-6h6v6"/><path d="M9 11h.01M15 11h.01M9 15h.01M15 15h.01"/></svg>`;
 const ICON_CABANG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-7.5-7-12a7 7 0 1114 0c0 4.5-7 12-7 12z"/><circle cx="12" cy="9" r="2.3"/></svg>`;
@@ -200,7 +201,7 @@ function renderPage() {
     <div class="page-header">
       <div>
         <h1>Struktur Organisasi</h1>
-        <p class="muted">Susunan unit (kantor pusat, cabang, departemen) beserta anggotanya. Struktur ini jadi acuan <strong>approval izin &amp; lembur</strong>: pengajuan diteruskan ke Admin di unit utama karyawan, lalu naik ke unit induknya bila unit itu tidak punya Admin.</p>
+        <p class="muted">Susunan unit (kantor pusat, cabang, departemen) beserta anggotanya. Struktur ini jadi acuan <strong>approval izin, lembur &amp; koreksi absen</strong>: pengajuan diteruskan ke Admin di unit utama karyawan, lalu naik ke unit induknya bila unit itu tidak punya Admin.</p>
       </div>
       ${S.canManage ? `<div class="org-toolbar no-print">
         <button class="btn-primary" data-act="add-unit" data-id="">+ Unit Puncak</button>
@@ -275,13 +276,13 @@ function levelsCardHTML() {
       <summary>
         <span class="org-levels-head">
           <h3>Jumlah Tingkat Approval</h3>
-          <span class="org-levels-sum">${["izin", "sakit", "cuti", "lembur"].map(k => `<span class="org-lv-chip">${REQ_LABEL[k]} <b>${S.settings[k] ?? 1}</b></span>`).join("")}</span>
+          <span class="org-levels-sum">${REQ_KEYS.map(k => `<span class="org-lv-chip">${REQ_LABEL[k]} <b>${S.settings[k] ?? 1}</b></span>`).join("")}</span>
         </span>
         <span class="org-levels-chev">${ICON_CHEVRON}</span>
       </summary>
       <p class="muted small">Berapa Admin berbeda yang harus menyetujui, dihitung naik dari unit karyawan. Unit yang tidak punya Admin dilewati. Kalau jenjang yang tersedia lebih sedikit dari angka ini, dipakai yang ada. Berlaku untuk pengajuan baru.</p>
       <div class="org-levels-grid">
-        ${["izin", "sakit", "cuti", "lembur"].map(k => `
+        ${REQ_KEYS.map(k => `
           <label>${REQ_LABEL[k]}
             <input type="number" inputmode="numeric" min="1" max="5" step="1" data-level="${k}" value="${S.settings[k] ?? 1}">
           </label>`).join("")}
