@@ -124,8 +124,7 @@ unit**.
 
 **Unit & anggota** (menu **Struktur Organisasi**)
 - Unit membentuk pohon bebas kedalaman: Kantor Pusat → Cabang → Departemen →
-  Bagian (atau bentuk lain). Cabang bisa dibuat di bawah Kantor Pusat dan
-  isinya bisa **disalin** dari unit lain (tombol *Salin Struktur*).
+  Bagian (atau bentuk lain). Cabang bisa dibuat di bawah Kantor Pusat.
 - Satu karyawan boleh menjadi anggota **banyak unit**, tapi hanya satu yang
   ditandai **Unit Utama** — unit inilah yang menentukan rantai approval
   pengajuannya. Keanggotaan lain hanya untuk kolaborasi/tampilan.
