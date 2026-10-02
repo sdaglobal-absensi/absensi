@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { createEmployeeAccount, resetEmployeePin, inviteText } from "../accountApi.js";
+import { createEmployeeAccount, resetEmployeePin, inviteText, callFunction } from "../accountApi.js";
 import { esc } from "../approvalHelper.js";
 import { toast, roleLabel, jenisHubunganKerjaLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper, avatarHTML } from "../core.js";
 import { downloadKaryawanTemplate, exportKaryawan, importKaryawanFile } from "./karyawan-excel.js";
@@ -72,7 +72,10 @@ export async function render(container, user) {
     ${canEdit ? `
     <div id="modal-karyawan" class="modal hidden">
       <div class="modal-box modal-box-lg">
-        <h3 id="modal-title">Tambah Karyawan</h3>
+        <div style="position:sticky; top:-24px; z-index:5; display:flex; align-items:center; justify-content:space-between; gap:12px; margin:-24px -24px 12px; padding:18px 24px 12px; background:var(--surface); border-bottom:1px solid var(--border);">
+          <h3 id="modal-title" style="margin:0;">Tambah Karyawan</h3>
+          <button type="button" id="btn-close-x" aria-label="Tutup" title="Tutup" style="flex-shrink:0; width:36px; height:36px; display:flex; align-items:center; justify-content:center; border:1px solid var(--border); border-radius:50%; background:var(--surface); color:var(--ink); font-size:1.4rem; line-height:1; cursor:pointer;">&times;</button>
+        </div>
         <form id="form-karyawan">
           <input type="hidden" name="id">
           <input type="hidden" name="grade">
@@ -106,9 +109,26 @@ export async function render(container, user) {
             <label>Email <input type="email" id="email-readonly" disabled></label>
             <label class="small muted" style="align-self:end; padding-bottom:10px;">Karyawan lupa email? Ini alamat yang terdaftar untuk akun ini.</label>
           </div>
-          <div class="form-row two-col hidden" id="pin-manage-row">
-            <label>Cara Login <input value="Kode usaha + kode karyawan + PIN" disabled></label>
-            <div style="align-self:end; padding-bottom:6px;"><button type="button" class="btn-secondary" id="btn-reset-pin">Reset PIN</button></div>
+          <div class="form-row two-col hidden" id="pin-manage-row" style="align-items:end;">
+            <label>Cara Login <input value="Kode usaha + kode karyawan + PIN" disabled style="height:44px; box-sizing:border-box;"></label>
+            <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:16px;">
+              <span style="font-size:0.85rem;">&nbsp;</span>
+              <button type="button" class="btn-secondary" id="btn-reset-pin" style="height:44px; box-sizing:border-box;">Reset PIN</button>
+            </div>
+          </div>
+          <div class="hidden" id="pin-convert-wrap" style="margin-bottom:16px;">
+            <button type="button" class="btn-link" id="btn-show-convert">Ganti ke login Email + Password</button>
+            <div class="hidden" id="convert-box" style="margin-top:12px; padding:14px; border:1px solid var(--border); border-radius:var(--radius);">
+              <div class="form-row two-col">
+                <label>Email <input type="email" id="conv-email" placeholder="nama@email.com" autocomplete="off"></label>
+                <label>Password Baru <input type="text" id="conv-password" placeholder="min. 6 karakter" autocomplete="off"></label>
+              </div>
+              <p class="small muted" style="margin:0 0 10px;">Setelah diubah, karyawan masuk lewat tab "Email" dan PIN lama tidak berlaku lagi.</p>
+              <div class="modal-actions">
+                <button type="button" class="btn-secondary" id="btn-cancel-convert">Batal</button>
+                <button type="button" class="btn-primary" id="btn-do-convert">Ubah ke Email + Password</button>
+              </div>
+            </div>
           </div>
           <div class="form-row">
             <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Akun aktif</label>
@@ -214,6 +234,20 @@ export async function render(container, user) {
     document.getElementById("form-karyawan").addEventListener("submit", e => onSubmit(e, user, isFullSuperAdmin));
     document.getElementById("login_type").addEventListener("change", refreshLoginType);
     document.getElementById("btn-reset-pin").addEventListener("click", () => onResetPin(user));
+    document.getElementById("btn-close-x").addEventListener("click", closeModal);
+    document.getElementById("btn-show-convert").addEventListener("click", () => {
+      document.getElementById("convert-box").classList.toggle("hidden");
+    });
+    document.getElementById("btn-cancel-convert").addEventListener("click", () => {
+      document.getElementById("convert-box").classList.add("hidden");
+    });
+    document.getElementById("btn-do-convert").addEventListener("click", () => onConvertToEmail(user, isFullSuperAdmin));
+    // Tombol Esc menutup formulir
+    document.addEventListener("keydown", ev => {
+      if (ev.key !== "Escape") return;
+      const m = document.getElementById("modal-karyawan");
+      if (m && !m.classList.contains("hidden")) closeModal();
+    });
     wireFamilyForm(document.getElementById("form-karyawan"));
     document.getElementById("join_date").addEventListener("input", refreshTenure);
     document.getElementById("resign_date").addEventListener("input", refreshTenure);
@@ -417,6 +451,10 @@ async function openModal(existing = null) {
   refreshLoginType();
   document.getElementById("email-readonly-row").classList.toggle("hidden", !existing || isPinAcc);
   document.getElementById("pin-manage-row").classList.toggle("hidden", !isPinAcc);
+  document.getElementById("pin-convert-wrap").classList.toggle("hidden", !isPinAcc);
+  document.getElementById("convert-box").classList.add("hidden");
+  document.getElementById("conv-email").value = "";
+  document.getElementById("conv-password").value = "";
   document.getElementById("email-readonly").value = existing?.email || "(tidak diketahui)";
   editingUserId = existing?.id || null;
   if (existing) { document.getElementById("email-row").classList.add("hidden"); form.email.required = false; document.getElementById("pin-row").classList.add("hidden"); }
@@ -516,7 +554,10 @@ async function onSubmit(e, currentUser, isFullSuperAdmin) {
         ...(loginType === "email" ? { email, password } : { pin: String(fd.get("pin") || "").trim() }),
       });
 
-      const newUserId = created.user_id;
+      const newUserId = created?.user_id;
+      if (!newUserId) {
+        throw new Error("Server tidak mengembalikan user_id. Edge Function account-admin yang ter-deploy kemungkinan bukan versi yang benar — deploy ulang.");
+      }
       const { error: updErr } = await supabase.from("profiles")
         .update(loginType === "email" ? { ...payload, email } : payload).eq("id", newUserId);
       if (updErr) throw updErr;
@@ -615,6 +656,34 @@ async function onResetPin(currentUser) {
     });
   } catch (err) {
     toast("Gagal reset PIN: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Ubah akun PIN menjadi akun Email + Password (dikerjakan server).
+async function onConvertToEmail(currentUser, isFullSuperAdmin) {
+  if (!editingUserId) return;
+  const email = document.getElementById("conv-email").value.trim().toLowerCase();
+  const password = document.getElementById("conv-password").value;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast("Format email tidak valid", "error"); return; }
+  if (password.length < 6) { toast("Password minimal 6 karakter", "error"); return; }
+  if (!confirm("Ubah login karyawan ini ke Email + Password? PIN lama langsung tidak berlaku.")) return;
+  const form = document.getElementById("form-karyawan");
+  const btn = document.getElementById("btn-do-convert");
+  btn.disabled = true;
+  try {
+    await callFunction("account-admin", { action: "convert-to-email", user_id: editingUserId, email, password });
+    const nama = form.full_name.value, kode = form.employee_code.value;
+    closeModal();
+    loadTable(true, isFullSuperAdmin);
+    await showCredentials(currentUser, {
+      title: "Login diubah ke Email + Password",
+      namaKaryawan: nama, kodeKaryawan: kode,
+      loginType: "email", email, secretLabel: "Password", secret: password,
+    });
+  } catch (err) {
+    toast("Gagal mengubah login: " + err.message, "error");
   } finally {
     btn.disabled = false;
   }
