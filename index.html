@@ -44,7 +44,7 @@ if ("serviceWorker" in navigator) {
 .login-box label{margin-bottom:14px;font-weight:600;font-size:.84rem}
 .login-box input{width:100%;padding:12px 14px;font-size:1rem;border-radius:10px}
 .login-box .password-field input{padding-right:46px}
-.login-box .pin-input{text-align:center;letter-spacing:.55em;font-family:'Sora',monospace;font-size:1.25rem;font-weight:600}
+.login-box .pin-input{padding-left:46px;text-align:center;letter-spacing:.55em;font-family:'Sora',monospace;font-size:1.25rem;font-weight:600}
 .captcha-box{display:flex;justify-content:center;overflow:hidden}
 .captcha-box>*{max-width:100%}
 .login-box .btn-block{width:100%;margin-top:4px;padding:13px 16px;font-size:1rem;border-radius:10px}
@@ -142,7 +142,15 @@ if ("serviceWorker" in navigator) {
           <form id="form-login-pin" class="hidden">
             <label>Kode Usaha <input name="kode_usaha" required autocomplete="organization" autocapitalize="none" spellcheck="false" placeholder="mis. tokomaju"></label>
             <label>Kode Karyawan <input name="kode_karyawan" required autocomplete="username" autocapitalize="characters" spellcheck="false"></label>
-            <label>PIN (6 digit) <input name="pin" type="password" inputmode="numeric" maxlength="6" pattern="\d{6}" required autocomplete="current-password" class="pin-input"></label>
+            <label>PIN (6 digit)
+              <div class="password-field">
+                <input id="login-pin" name="pin" type="password" inputmode="numeric" maxlength="6" pattern="\d{6}" required autocomplete="current-password" class="pin-input">
+                <button type="button" class="btn-toggle-pw" data-target="login-pin" aria-label="Tampilkan/sembunyikan PIN">
+                  <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg class="icon-eye-off hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0112 20c-7 0-11-8-11-8a21.86 21.86 0 015.06-6.06M9.9 4.24A10.94 10.94 0 0112 4c7 0 11 8 11 8a21.86 21.86 0 01-2.16 3.19M14.12 14.12a3 3 0 11-4.24-4.24M1 1l22 22"/></svg>
+                </button>
+              </div>
+            </label>
             <div class="captcha-box" id="captcha-pin" style="margin:12px 0; min-height:65px;"></div>
             <div class="error-msg" id="pin-error"></div>
             <button type="submit" class="btn-primary btn-block">Masuk</button>
