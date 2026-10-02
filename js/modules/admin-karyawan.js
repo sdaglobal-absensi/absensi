@@ -36,6 +36,7 @@ export async function render(container, user) {
       <div>
         <h1>Data Karyawan</h1>
         <p class="muted">Kelola data kepegawaian, penempatan, dan status karyawan.</p>
+        <p class="small muted" id="kode-usaha-info"></p>
       </div>
       ${canEdit ? `
       <div class="filter-row pg-head-actions">
@@ -209,6 +210,7 @@ export async function render(container, user) {
     });
     pickFileThen(document.getElementById("import-file"), file => importKaryawanFile(file, excelCtx()));
     document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
+    showKodeUsaha(user);
     document.getElementById("form-karyawan").addEventListener("submit", e => onSubmit(e, user, isFullSuperAdmin));
     document.getElementById("login_type").addEventListener("change", refreshLoginType);
     document.getElementById("btn-reset-pin").addEventListener("click", () => onResetPin(user));
@@ -651,4 +653,21 @@ async function showCredentials(currentUser, info) {
     try { await navigator.clipboard.writeText(text); toast("Pesan disalin", "success"); }
     catch { el.querySelector("textarea").select(); toast("Pilih teks lalu salin manual", "info"); }
   });
+}
+
+
+// Kode usaha ditampilkan tetap di header Data Karyawan (dipakai karyawan
+// tanpa email untuk login), lengkap dengan tombol salin.
+async function showKodeUsaha(currentUser) {
+  const el = document.getElementById("kode-usaha-info");
+  if (!el) return;
+  try {
+    const { data } = await supabase.from("tenants").select("kode").eq("id", currentUser.tenant_id).maybeSingle();
+    if (!data?.kode) return;
+    el.innerHTML = `Kode usaha: <b>${esc(data.kode)}</b> <button type="button" class="btn-link" id="btn-copy-kode">Salin</button>`;
+    document.getElementById("btn-copy-kode").addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(data.kode); toast("Kode usaha disalin", "success"); }
+      catch { toast("Kode usaha: " + data.kode, "info"); }
+    });
+  } catch { /* abaikan: hanya informasi tambahan */ }
 }
