@@ -65,6 +65,36 @@ if ("serviceWorker" in navigator) {
   .login-box h2{font-size:1.4rem}
 }
 @media (max-width:360px){.login-box{padding:22px 14px}.login-tab{font-size:.8rem}}
+/* --- ringkas: seluruh form muat dalam satu layar, tanpa scroll --- */
+.login-box h2{font-size:1.45rem;margin-bottom:4px}
+.login-box>div>.muted{margin-bottom:16px;font-size:.88rem}
+.login-tabs{margin-bottom:16px}
+.login-tab{padding:10px 8px;white-space:nowrap;display:flex;align-items:center;justify-content:center}
+.login-box label{margin-bottom:10px;gap:5px}
+.login-box input{padding:10px 14px}
+.login-box .captcha-box{margin:6px 0 8px!important}
+.login-box form .small{margin-top:10px!important;font-size:.78rem}
+.login-box .forgot-link{margin-top:12px}
+.login-box #link-daftar{margin-top:12px;padding-top:12px}
+@media (min-width:861px){
+  html,body{height:100%;overflow:hidden}
+  .login-wrap{height:100vh;height:100dvh;min-height:0;overflow:hidden}
+  .login-hero{padding:40px clamp(32px,5vw,72px)}
+  .login-panel{padding:20px;overflow-y:auto}
+  .login-box{margin:auto;padding:26px 32px}
+}
+@media (min-width:861px) and (max-height:720px){
+  .login-hero{padding:28px clamp(32px,5vw,64px);gap:16px}
+  .login-hero h1{font-size:clamp(1.6rem,2.2vw,2.2rem)}
+  .login-box{padding:20px 28px}
+  .login-box h2{font-size:1.3rem}
+  .login-box>div>.muted{margin-bottom:12px}
+  .login-tabs{margin-bottom:12px}
+  .login-box label{margin-bottom:8px}
+  .login-box input{padding:8px 12px}
+  .login-box .btn-block{padding:11px 16px}
+  .login-box form .small{display:none}
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -92,7 +122,7 @@ if ("serviceWorker" in navigator) {
           <span class="muted">Masuk dengan akun yang diberikan perusahaan</span>
           <div class="login-tabs" role="tablist">
             <button type="button" class="login-tab active" id="tab-email" role="tab" aria-selected="true">Email</button>
-            <button type="button" class="login-tab" id="tab-pin" role="tab" aria-selected="false">Karyawan (tanpa email)</button>
+            <button type="button" class="login-tab" id="tab-pin" role="tab" aria-selected="false">Kode Karyawan</button>
           </div>
           <form id="form-login">
             <label>Email <input type="email" name="email" required autocomplete="username"></label>
