@@ -39,6 +39,7 @@
             <label>Nama Lengkap Kamu <input name="full_name" required maxlength="80" autocomplete="name"></label>
             <label>Email <input type="email" name="email" required autocomplete="username"></label>
             <label>Password <input type="password" name="password" required minlength="8" autocomplete="new-password" placeholder="min. 8 karakter"></label>
+            <div class="captcha-box" id="captcha-daftar" style="margin:12px 0; min-height:65px;"></div>
             <div class="error-msg" id="akun-error"></div>
             <button type="submit" class="btn-primary btn-block">Daftar</button>
           </form>
@@ -77,9 +78,17 @@
 
   <script type="module">
     import { supabase } from "./js/supabaseClient.js";
+    import { setupCaptcha } from "./js/captcha.js";
+
+    // CAPTCHA (Turnstile): widget dipasang saat form pendaftaran tampil.
+    let capCtl = null;
+    const cap = () => (capCtl ||= setupCaptcha(document.getElementById("captcha-daftar")));
 
     const PANELS = ["loading", "closed", "akun", "cek-email", "usaha", "selesai"];
-    const show = name => PANELS.forEach(p => document.getElementById("panel-" + p).classList.toggle("hidden", p !== name));
+    const show = name => {
+      PANELS.forEach(p => document.getElementById("panel-" + p).classList.toggle("hidden", p !== name));
+      if (name === "akun") cap();
+    };
     const DRAFT_KEY = "kerjora-daftar-draft";
     const readDraft = () => { try { return JSON.parse(sessionStorage.getItem(DRAFT_KEY) || "{}"); } catch { return {}; } };
     const clearDraft = () => { try { sessionStorage.removeItem(DRAFT_KEY); } catch {} };
@@ -91,6 +100,7 @@
       if (/password/i.test(m) && /(least|short|weak)/i.test(m)) return "Password terlalu pendek atau mudah ditebak.";
       if (/rate limit|too many|security purposes/i.test(m)) return "Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.";
       if (/belum dibuka/i.test(m)) return "Pendaftaran usaha belum dibuka.";
+      if (/captcha/i.test(m)) return "Verifikasi CAPTCHA gagal. Coba lagi.";
       if (/sudah terdaftar di sebuah usaha/i.test(m)) return "Akun ini sudah punya usaha. Silakan masuk.";
       return m;
     }
@@ -133,9 +143,10 @@
       const email = String(fd.get("email")).trim();
       try {
         try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ nama_usaha: namaUsaha, full_name: fullName })); } catch {}
+        const captchaToken = await cap().getToken();
         const { data, error } = await supabase.auth.signUp({
           email, password: String(fd.get("password")),
-          options: { emailRedirectTo: new URL("daftar.html?lanjut=1", location.href).href },
+          options: { emailRedirectTo: new URL("daftar.html?lanjut=1", location.href).href, captchaToken },
         });
         if (error) throw error;
         // Email yang sudah terdaftar: Supabase mengembalikan user tanpa identities
@@ -151,6 +162,7 @@
       } catch (err) {
         errEl.textContent = friendly(err);
         btn.disabled = false;
+        cap().reset();
       }
     });
 
