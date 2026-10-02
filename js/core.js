@@ -131,6 +131,8 @@ const MENUS = {
     { id: "master-libur", label: "Master Hari Libur", icon: "file", section: "Master Data" },
     { id: "master-lokasi", label: "Master Lokasi Kantor", icon: "grid", section: "Master Data" },
     { id: "kuota-cuti", label: "Kuota Cuti Tahunan", icon: "chart", section: "Master Data" },
+    { id: "audit-log", label: "Audit Log", icon: "history", section: "Super Admin" },
+    { id: "ekspor-backup", label: "Ekspor & Backup", icon: "file", section: "Super Admin" },
     { id: "pengaturan-sistem", label: "Pengaturan Sistem", icon: "gear", section: "Super Admin" },
   ],
 };
@@ -183,9 +185,16 @@ export const PERSON_ICON_SVG = `<svg viewBox="0 0 24 24" fill="currentColor" cla
 // Mengembalikan HTML avatar untuk satu orang: foto kalau ada photo_url,
 // kalau tidak selalu tampilkan ikon siluet orang (BUKAN inisial) —
 // berlaku sama untuk semua orang tanpa kecuali.
+// TAHAP 3: photo_url kini berisi PATH file di storage privat (data lama
+// berisi URL publik — keduanya dikenali). Gambarnya diberi atribut
+// data-photo dan URL bertanda tangan (berlaku 1 jam) dipasang otomatis oleh
+// pengamat DOM di bagian "FOTO PRIVAT" di bawah.
 export function avatarHTML(person, alt) {
+  const altText = escapeAttr(alt || "Foto profil");
   if (person && person.photo_url) {
-    return `<img src="${person.photo_url}" alt="${alt || "Foto profil"}">`;
+    const path = photoPathFromValue(person.photo_url);
+    if (path) return `<img data-photo="${escapeAttr(path)}" alt="${altText}">`;
+    return `<img src="${escapeAttr(person.photo_url)}" alt="${altText}">`; // URL luar, bukan bucket kita
   }
   return PERSON_ICON_SVG;
 }
@@ -319,17 +328,173 @@ export async function getNearestOffice(lat, lng) {
 }
 
 // =====================================================================
-// UPLOAD FOTO ke Supabase Storage, return public URL
+// FOTO PRIVAT (Tahap 3)
+// Bucket `attendance-photos` privat. Database menyimpan PATH file:
+//   <tenant_id>/<user_id>/<profile|in|out>/<waktu>.jpg
+// (data lama berisi URL publik / path lama — tetap dikenali & tetap terbaca).
+// Untuk ditampilkan dipakai URL bertanda tangan berumur 1 jam.
 // =====================================================================
-export async function uploadPhoto(fileOrBlob, pathPrefix) {
-  const ext = "jpg";
-  const fileName = `${pathPrefix}/${Date.now()}.${ext}`;
+const PHOTO_BUCKET = "attendance-photos";
+const PHOTO_URL_TTL = 3600;            // detik, untuk tampilan di layar
+export const PHOTO_EXPORT_TTL = 7 * 24 * 3600; // detik, untuk kolom foto di file Excel
+
+// Nilai di database (path / URL publik lama) -> path di bucket.
+// null = bukan foto bucket kita (mis. URL luar) atau kosong.
+export function photoPathFromValue(v) {
+  if (!v) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  if (!/^https?:\/\//i.test(s)) return s.replace(/^\/+/, "");
+  const m = s.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/attendance-photos\/([^?#]+)/);
+  if (!m) return null;
+  try { return decodeURIComponent(m[1]); } catch { return m[1]; }
+}
+
+const signedCache = new Map(); // path -> { url, exp }
+
+// Minta URL bertanda tangan untuk banyak path sekaligus (maks 100 per request).
+// Return Map(path -> url). Path yang gagal (tidak ada / tidak berhak) tidak ikut.
+export async function getSignedPhotoUrls(paths, ttl = PHOTO_URL_TTL, { fresh = false } = {}) {
+  const out = new Map();
+  const need = [];
+  for (const p of new Set((paths || []).filter(Boolean))) {
+    const c = ttl === PHOTO_URL_TTL && !fresh ? signedCache.get(p) : null;
+    if (c && c.exp > Date.now() + 60000) out.set(p, c.url);
+    else need.push(p);
+  }
+  const chunks = [];
+  for (let i = 0; i < need.length; i += 100) chunks.push(need.slice(i, i + 100));
+  // maks. 4 request paralel
+  for (let i = 0; i < chunks.length; i += 4) {
+    await Promise.all(chunks.slice(i, i + 4).map(async chunk => {
+      const { data, error } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(chunk, ttl);
+      if (error) { console.warn("createSignedUrls gagal:", error.message); return; }
+      for (const row of data || []) {
+        if (!row.signedUrl) continue;
+        out.set(row.path, row.signedUrl);
+        if (ttl === PHOTO_URL_TTL) signedCache.set(row.path, { url: row.signedUrl, exp: Date.now() + ttl * 1000 });
+      }
+    }));
+  }
+  return out;
+}
+
+// HTML thumbnail foto absensi (klik = buka ukuran penuh di tab baru).
+export function photoThumbHTML(value) {
+  if (!value) return "-";
+  const path = photoPathFromValue(value);
+  if (!path) return `<a href="${escapeAttr(value)}" target="_blank" rel="noopener"><img src="${escapeAttr(value)}" class="thumb" alt="Foto"></a>`;
+  return `<a data-photo="${escapeAttr(path)}" target="_blank" rel="noopener"><img data-photo="${escapeAttr(path)}" class="thumb" alt="Foto"></a>`;
+}
+
+// ---- pengamat DOM: pasang src/href untuk setiap elemen [data-photo] ----
+const photoQueue = new Set();
+let photoTimer = null;
+
+function queuePhotoEls(root) {
+  if (!root || (root.nodeType !== 1 && root.nodeType !== 9 && root.nodeType !== 11)) return;
+  const sel = "[data-photo]:not([data-photo-state])";
+  const found = [];
+  if (root.nodeType === 1 && root.matches(sel)) found.push(root);
+  if (root.querySelectorAll) root.querySelectorAll(sel).forEach(e => found.push(e));
+  if (!found.length) return;
+  found.forEach(e => { e.setAttribute("data-photo-state", "loading"); photoQueue.add(e); });
+  if (!photoTimer) photoTimer = setTimeout(flushPhotoQueue, 30);
+}
+
+async function flushPhotoQueue() {
+  photoTimer = null;
+  const els = [...photoQueue];
+  photoQueue.clear();
+  if (!els.length) return;
+  const urls = await getSignedPhotoUrls(els.map(e => e.getAttribute("data-photo")));
+  for (const el of els) {
+    const url = urls.get(el.getAttribute("data-photo"));
+    if (!url) { el.setAttribute("data-photo-state", "err"); el.classList.add("photo-missing"); continue; }
+    if (el.tagName === "IMG") el.src = url; else if (el.tagName === "A") el.href = url;
+    el.setAttribute("data-photo-state", "ok");
+  }
+}
+
+// Kalau URL kedaluwarsa (halaman dibiarkan terbuka > 1 jam), minta ulang sekali.
+async function retryPhoto(img) {
+  if (img.getAttribute("data-photo-retry")) { img.classList.add("photo-missing"); return; }
+  img.setAttribute("data-photo-retry", "1");
+  const path = img.getAttribute("data-photo");
+  const urls = await getSignedPhotoUrls([path], PHOTO_URL_TTL, { fresh: true });
+  const url = urls.get(path);
+  if (url) { img.src = url; img.parentElement?.matches?.("a[data-photo]") && img.parentElement.setAttribute("href", url); }
+  else img.classList.add("photo-missing");
+}
+
+if (typeof document !== "undefined" && typeof MutationObserver !== "undefined") {
+  const start = () => {
+    queuePhotoEls(document);
+    new MutationObserver(muts => {
+      for (const m of muts) m.addedNodes.forEach(n => queuePhotoEls(n));
+    }).observe(document.documentElement, { childList: true, subtree: true });
+    document.addEventListener("error", e => {
+      const t = e.target;
+      if (t && t.tagName === "IMG" && t.hasAttribute("data-photo") && t.getAttribute("data-photo-state") === "ok") retryPhoto(t);
+    }, true);
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
+}
+
+// Perkecil foto dari galeri (File) sebelum upload: sisi terpanjang 1280px, JPEG.
+// Foto dari kamera (Blob hasil canvas) sudah kecil, tidak diproses lagi.
+async function shrinkImage(file) {
+  if (!(file instanceof File) || typeof createImageBitmap !== "function") return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", 0.85));
+    return blob || file;
+  } catch {
+    return file; // format tak terbaca (mis. HEIC) -> kirim apa adanya, server yang menilai
+  }
+}
+
+let tenantCache = null; // { uid, tenant }
+async function myUploadScope() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Sesi login berakhir, silakan login ulang.");
+  if (tenantCache && tenantCache.uid === session.user.id) return tenantCache;
+  const { data, error } = await supabase.from("profiles").select("tenant_id").eq("id", session.user.id).single();
+  if (error || !data?.tenant_id) throw new Error("Profil usaha tidak ditemukan.");
+  tenantCache = { uid: session.user.id, tenant: data.tenant_id };
+  return tenantCache;
+}
+
+// kind: "in" | "out" | "profile". Return PATH (bukan URL) untuk disimpan di database.
+export async function uploadPhoto(fileOrBlob, kind) {
+  if (!["in", "out", "profile"].includes(kind)) throw new Error("Jenis foto tidak valid");
+  const { uid, tenant } = await myUploadScope();
+  const body = await shrinkImage(fileOrBlob);
+  const path = `${tenant}/${uid}/${kind}/${Date.now()}.jpg`;
   const { error } = await supabase.storage
-    .from("attendance-photos")
-    .upload(fileName, fileOrBlob, { contentType: "image/jpeg", upsert: false });
+    .from(PHOTO_BUCKET)
+    .upload(path, body, { contentType: "image/jpeg", upsert: false });
   if (error) throw error;
-  const { data } = supabase.storage.from("attendance-photos").getPublicUrl(fileName);
-  return data.publicUrl;
+  return path;
+}
+
+// Ambil SEMUA baris query walau lebih dari batas 1000 baris per request
+// Supabase. makeQuery harus mengembalikan query BARU tiap dipanggil dan
+// punya urutan yang stabil (unik) — mis. tambahkan .order("id").
+export async function fetchAllRows(makeQuery, pageSize = 1000) {
+  const all = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await makeQuery().range(from, from + pageSize - 1);
+    if (error) throw error;
+    all.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return all;
 }
 
 // Ambil Blob dari elemen <video> (dipakai setelah capture kamera).
@@ -722,7 +887,7 @@ export function wireSearchSelect(id, options, { getLabel = o => String(o), getVa
 }
 
 function escapeAttr(s) {
-  return String(s).replace(/"/g, "&quot;");
+  return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 // Hitung "lama bekerja" dari tanggal masuk ke hari ini, format "X tahun Y bulan".

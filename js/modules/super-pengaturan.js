@@ -56,12 +56,16 @@ const MENU_LABELS = {
   "master-libur": "Master Hari Libur",
   "master-lokasi": "Master Lokasi Kantor",
   "kuota-cuti": "Kuota Cuti Tahunan (Kuota per Karyawan & Master Cuti Khusus)",
+  "audit-log": "Audit Log (Riwayat Perubahan Data)",
+  "ekspor-backup": "Ekspor & Backup Data",
   "pengaturan-sistem": "Pengaturan Sistem (Kelola Akses & Cut-Off Gaji)",
 };
 
 // Catatan kecil di bawah nama menu (opsional) — untuk hal yang perlu diketahui
 // sebelum menyalakan menu itu.
 const MENU_HINTS = {
+  "audit-log": "Memperlihatkan siapa mengubah data apa (termasuk perubahan gaji & akses). Sebaiknya hanya untuk pemilik/HR senior.",
+  "ekspor-backup": "Mengunduh SEMUA data usaha yang boleh dibaca role ini (termasuk gaji & data pribadi). Nyalakan hanya untuk orang yang dipercaya.",
   "profil-approval": "Menyetujui akan menimpa data di Data Karyawan, jadi menu Data Karyawan perlu ikut diizinkan untuk role yang sama.",
   "invoice-outsourcing": "Acuan angkanya diambil dari Slip Gaji yang sudah difinalisasi, jadi menu Slip Gaji sebaiknya ikut diizinkan untuk role yang sama.",
 };

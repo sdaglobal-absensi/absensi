@@ -120,6 +120,8 @@ async function createEmployee(admin: ReturnType<typeof adminClient>, caller: Cal
       throw new HttpError(400, error?.message || "Gagal membuat akun");
     }
     await assertProfile(admin, data.user.id);
+    await audit(admin, caller, "account.create", data.user.id,
+      `Membuat akun karyawan ${code} — ${fullName} (login email)`, { employee_code: code, full_name: fullName, login_type: "email" });
     return { user_id: data.user.id, login_type: "email", email };
   }
 
@@ -147,7 +149,26 @@ async function createEmployee(admin: ReturnType<typeof adminClient>, caller: Cal
     await admin.auth.admin.deleteUser(uid).catch(() => {}); // batalkan akun setengah jadi
     throw e;
   }
+  await audit(admin, caller, "account.create", uid,
+    `Membuat akun karyawan ${code} — ${fullName} (login PIN)`, { employee_code: code, full_name: fullName, login_type: "pin" });
   return { user_id: uid, login_type: "pin", pin };
+}
+
+// Catat ke audit_log (Tahap 3). Sengaja TIDAK pernah menyimpan PIN/password.
+// Gagal mencatat tidak boleh menggagalkan pembuatan akun, jadi hanya di-log.
+async function audit(
+  admin: ReturnType<typeof adminClient>, caller: Caller, action: string,
+  recordId: string, summary: string, data?: Record<string, unknown>,
+) {
+  try {
+    const { error } = await admin.rpc("audit_write", {
+      p_tenant: caller.tenant_id, p_actor: caller.id, p_action: action,
+      p_table: "profiles", p_record: recordId, p_summary: summary, p_data: data ?? null,
+    });
+    if (error) console.error("audit_write gagal:", error.message);
+  } catch (e) {
+    console.error("audit_write error:", e);
+  }
 }
 
 // Pastikan trigger handle_new_user benar-benar membuat profil di tenant yang benar.
@@ -184,6 +205,8 @@ async function resetPin(admin: ReturnType<typeof adminClient>, caller: Caller, b
     await admin.from("pin_login_attempts").delete()
       .eq("key", `${tn.kode.toLowerCase()}|${target.employee_code.toLowerCase()}`);
   }
+  await audit(admin, caller, "account.reset_pin", userId,
+    `Reset PIN karyawan ${target.employee_code ?? userId}`, { employee_code: target.employee_code ?? null });
   return { user_id: userId, pin };
 }
 

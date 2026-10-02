@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { fmtDate, fmtTime, todayISO, dayOfWeekFromDateStr, exportXLSX, toast, avatarHTML, ICONS } from "../core.js";
+import { fmtDate, fmtTime, todayISO, dayOfWeekFromDateStr, exportXLSX, toast, avatarHTML, ICONS, fetchAllRows, photoPathFromValue, getSignedPhotoUrls, photoThumbHTML, PHOTO_EXPORT_TTL } from "../core.js";
 import { esc } from "../approvalHelper.js";
 import { ICON_SEARCH } from "../approvalUI.js";
 import { fetchSpecialLeaveRules, leaveTypeLabel } from "../leaveRules.js";
@@ -530,22 +530,41 @@ async function doExport() {
   btn.disabled = true;
   btn.textContent = "Menyiapkan data…";
 
-  const { data, error } = await supabase
-    .from("attendance")
-    .select("*, profiles(full_name, department, employee_code)")
-    .gte("date", start)
-    .lte("date", end)
-    .order("date", { ascending: true })
-    .order("check_in", { ascending: true });
-
-  btn.disabled = false;
-  btn.textContent = "Export Excel";
-
-  if (error) { toast("Gagal mengambil data: " + error.message, "error"); return; }
+  // Dipaging (batas Supabase 1000 baris/request) supaya export tidak terpotong diam-diam.
+  let data;
+  try {
+    data = await fetchAllRows(() => supabase
+      .from("attendance")
+      .select("*, profiles(full_name, department, employee_code)")
+      .gte("date", start)
+      .lte("date", end)
+      .order("date", { ascending: true })
+      .order("check_in", { ascending: true })
+      .order("id", { ascending: true }));
+  } catch (error) {
+    btn.disabled = false;
+    btn.textContent = "Export Excel";
+    toast("Gagal mengambil data: " + error.message, "error");
+    return;
+  }
 
   const filtered = search
     ? (data || []).filter(r => r.profiles?.full_name?.toLowerCase().includes(search))
     : (data || []);
+
+  // Foto ada di storage privat: kolom foto berisi tautan bertanda tangan
+  // yang berlaku 7 hari (setelah itu tautannya tidak bisa dibuka lagi).
+  btn.textContent = "Menyiapkan tautan foto…";
+  const photoPaths = filtered.flatMap(r => [photoPathFromValue(r.check_in_photo_url), photoPathFromValue(r.check_out_photo_url)]).filter(Boolean);
+  const signed = await getSignedPhotoUrls(photoPaths, PHOTO_EXPORT_TTL);
+  const photoLink = v => {
+    if (!v) return "-";
+    const p = photoPathFromValue(v);
+    return p ? (signed.get(p) || "-") : v;
+  };
+
+  btn.disabled = false;
+  btn.textContent = "Export Excel";
 
   const rows = filtered.map(r => ({
     Tanggal: fmtDate(r.date),
@@ -557,10 +576,11 @@ async function doExport() {
     "Jarak Check-in (m)": r.check_in_distance_m ?? "-",
     "Jam Check-out": fmtTime(r.check_out),
     "Jarak Check-out (m)": r.check_out_distance_m ?? "-",
-    "Foto Check-in": r.check_in_photo_url || "-",
-    "Foto Check-out": r.check_out_photo_url || "-",
+    "Foto Check-in (tautan 7 hari)": photoLink(r.check_in_photo_url),
+    "Foto Check-out (tautan 7 hari)": photoLink(r.check_out_photo_url),
   }));
 
+  supabase.rpc("log_export", { p_summary: `Export absensi ${start} s/d ${end} (${rows.length} baris)`, p_data: { start, end, rows: rows.length } }).then(() => {}, () => {});
   exportXLSX(`absensi-${start}_sampai_${end}.xlsx`, rows, "Absensi");
   document.getElementById("modal-export").classList.add("hidden");
 }
@@ -572,7 +592,6 @@ function locationCell(r) {
   return `<a href="${link}" target="_blank" rel="noopener" class="btn-link">Lihat peta</a><br><span class="small muted">${dist}</span>`;
 }
 
-function photoCell(url) {
-  if (!url) return "-";
-  return `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" class="thumb"></a>`;
+function photoCell(value) {
+  return photoThumbHTML(value); // tautan bertanda tangan dipasang otomatis (storage privat)
 }

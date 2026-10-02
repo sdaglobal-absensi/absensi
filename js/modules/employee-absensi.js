@@ -716,7 +716,8 @@ async function submitAttendance(user, activeRow, tz) {
   try {
     const pos = window.__pendingPos;
     const office = window.__pendingOffice;
-    const photoUrl = await uploadPhoto(capturedBlob, `${user.id}/${pendingMode}`);
+    // Tahap 3: yang disimpan adalah PATH di storage privat, bukan URL.
+    const photoUrl = await uploadPhoto(capturedBlob, pendingMode === "in" ? "in" : "out");
     const now = new Date();
 
     if (pendingMode === "in") {

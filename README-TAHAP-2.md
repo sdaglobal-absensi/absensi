@@ -68,4 +68,4 @@ Pengujian di sini hanya mencakup: sintaks seluruh JS dan skrip halaman, serta lo
 
 ## Tahap 3 (berikutnya)
 
-Storage privat per tenant (signed URL), `checkout-reminder` per tenant, backup/ekspor, audit log — setelah itu `public_mode` boleh dinyalakan.
+Storage privat per tenant (signed URL), `checkout-reminder` per tenant, backup/ekspor, audit log — **sudah dikerjakan, lihat `README-TAHAP-3.md`**. Setelah itu `public_mode` boleh dinyalakan (dengan syarat di README Tahap 3).

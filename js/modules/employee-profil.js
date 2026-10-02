@@ -242,12 +242,12 @@ async function uploadNewPhoto(e) {
   if (!file) return;
   toast("Mengunggah foto…", "info");
   try {
-    const url = await uploadPhoto(file, `profile-photos/${currentUser.id}`);
+    const url = await uploadPhoto(file, "profile"); // path di storage privat
     const { error } = await supabase.from("profiles").update({ photo_url: url }).eq("id", currentUser.id);
     if (error) throw error;
     currentProfile.photo_url = url;
     currentUser.photo_url = url;
-    document.getElementById("profil-avatar").innerHTML = `<img src="${escapeAttr(url)}" alt="Foto profil">`;
+    document.getElementById("profil-avatar").innerHTML = avatarHTML({ photo_url: url }, "Foto profil");
     updateSidebarAvatar(currentUser);
     toast("Foto profil berhasil diperbarui", "success");
   } catch (err) {
