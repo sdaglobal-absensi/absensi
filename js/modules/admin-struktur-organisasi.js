@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { avatarHTML, toast, confirmDialog, getAllowedMenus, searchSelectHtml, wireSearchSelect, APPROVER_ROLES, STAFF_ROLES, isSuper, roleLabel } from "../core.js";
+import { avatarHTML, toast, confirmDialog, getAllowedMenus, searchSelectHtml, wireSearchSelect, APPROVER_ROLES, STAFF_ROLES, isSuper, roleLabel, isRingkas } from "../core.js";
 import { esc } from "../approvalHelper.js";
 
 // =======================================================================
@@ -140,9 +140,12 @@ const ROLE_INFO = {
 };
 
 function assignableRoles() {
-  if (isSuper(S.user.role)) return ["karyawan", "admin_approval", "admin_hr", "super_admin_hr", "super_admin"];
-  if (STAFF_ROLES.includes(S.user.role)) return ["karyawan", "admin_approval", "admin_hr", "super_admin_hr"];
-  return ["karyawan", "admin_approval"];
+  let roles;
+  if (isSuper(S.user.role)) roles = ["karyawan", "admin_approval", "admin_hr", "super_admin_hr", "super_admin"];
+  else if (STAFF_ROLES.includes(S.user.role)) roles = ["karyawan", "admin_approval", "admin_hr", "super_admin_hr"];
+  else roles = ["karyawan", "admin_approval"];
+  // Tahap 4: template ringkas (UMKM) hanya mengenal Pemilik dan Karyawan; database juga menolak role lain.
+  return isRingkas() ? roles.filter(r => r === "karyawan" || r === "super_admin") : roles;
 }
 
 function canChangeRole(p) {

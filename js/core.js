@@ -76,6 +76,45 @@ export function invalidatePermissionCache() {
 }
 
 // =====================================================================
+// TAHAP 4 — PAKET & FITUR
+// my_plan_info() (SQL 004) mengembalikan paket usaha ini, fitur yang aktif,
+// dan daftar menu yang TIDAK termasuk paket. Menu itu disembunyikan untuk
+// SEMUA role (termasuk Super Admin) karena fiturnya memang tidak ada di
+// paket. Penjaga utamanya tetap RLS di server (has_menu_access + policy
+// feature_gate); penyaringan di sini hanya supaya tampilan rapi.
+// Kalau RPC gagal (mis. SQL 004 belum dijalankan) menu tidak disaring —
+// server tetap menolak aksi yang tidak diizinkan.
+// =====================================================================
+let planInfoCache = null;
+let planInfoPromise = null;
+
+export async function getPlanInfo({ force = false } = {}) {
+  if (force) { planInfoCache = null; planInfoPromise = null; }
+  if (planInfoCache) return planInfoCache;
+  if (!planInfoPromise) {
+    planInfoPromise = supabase.rpc("my_plan_info").then(({ data, error }) => {
+      if (error || !data) {
+        console.warn("my_plan_info gagal (SQL Tahap 4 sudah dijalankan?):", error?.message);
+        planInfoPromise = null;
+        return null;
+      }
+      planInfoCache = data;
+      return data;
+    });
+  }
+  return planInfoPromise;
+}
+
+// Versi sinkron: hanya valid setelah getPlanInfo() pernah selesai (resolveMenu
+// memanggilnya saat sidebar dibangun, jadi aman dipakai di semua halaman).
+export function planInfoSync() { return planInfoCache; }
+export function isMenuBlockedByPlan(menuId) {
+  return !!planInfoCache && (planInfoCache.blocked_menus || []).includes(menuId);
+}
+// Template UMKM: hanya 2 role (Pemilik = super_admin, dan Karyawan).
+export function isRingkas() { return planInfoCache?.role_mode === "ringkas"; }
+
+// =====================================================================
 // SIDEBAR — menu berbeda tergantung role
 // =====================================================================
 // Menu pribadi (absensi/izin/lembur/riwayat sendiri) — dulu cuma dipakai
@@ -133,6 +172,7 @@ const MENUS = {
     { id: "kuota-cuti", label: "Kuota Cuti Tahunan", icon: "chart", section: "Master Data" },
     { id: "audit-log", label: "Audit Log", icon: "history", section: "Super Admin" },
     { id: "ekspor-backup", label: "Ekspor & Backup", icon: "file", section: "Super Admin" },
+    { id: "paket", label: "Paket & Fitur", icon: "layers", section: "Super Admin" },
     { id: "pengaturan-sistem", label: "Pengaturan Sistem", icon: "gear", section: "Super Admin" },
   ],
 };
@@ -159,7 +199,11 @@ export const ICONS = {
 // untuk Admin HR/Super Admin HR). allowed = null cuma untuk super_admin
 // (satu-satunya role yang tidak difilter).
 export async function resolveMenu(user) {
-  const allowed = await getAllowedMenus(user); // null utk super_admin = semua, tidak difilter
+  const [allowed, plan] = await Promise.all([
+    getAllowedMenus(user), // null utk super_admin = semua, tidak difilter
+    getPlanInfo(),         // Tahap 4: menu di luar paket disembunyikan untuk semua role
+  ]);
+  const blockedByPlan = new Set(plan?.blocked_menus || []);
 
   // Menu pribadi (grup "Menu Saya") digabung di atas menu staff (termasuk
   // "Pengaturan Sistem"), semuanya disaring bareng lewat toggle yang sama
@@ -170,7 +214,8 @@ export async function resolveMenu(user) {
   // selalu tampil untuknya tanpa perlu toggle.
   const personal = EMPLOYEE_SELF_MENUS.map(m => ({ ...m, section: "Menu Saya" }));
   const combined = [...personal, ...MENUS.staff];
-  const filtered = allowed ? combined.filter(m => allowed.has(m.id)) : combined;
+  const byRole = allowed ? combined.filter(m => allowed.has(m.id)) : combined;
+  const filtered = byRole.filter(m => !blockedByPlan.has(m.id));
   // "dashboard" selalu ditambahkan paling atas, tidak ikut difilter toggle.
   return [DASHBOARD_MENU, ...filtered];
 }

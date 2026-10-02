@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, invalidatePermissionCache, invalidatePayrollSettingsCache, payrollPeriodRange, fmtDate } from "../core.js";
+import { toast, invalidatePermissionCache, invalidatePayrollSettingsCache, payrollPeriodRange, fmtDate, getPlanInfo } from "../core.js";
 import { ICON_SEARCH } from "../approvalUI.js";
 
 // =======================================================================
@@ -58,6 +58,7 @@ const MENU_LABELS = {
   "kuota-cuti": "Kuota Cuti Tahunan (Kuota per Karyawan & Master Cuti Khusus)",
   "audit-log": "Audit Log (Riwayat Perubahan Data)",
   "ekspor-backup": "Ekspor & Backup Data",
+  "paket": "Paket & Fitur (Lihat Paket Usaha)",
   "pengaturan-sistem": "Pengaturan Sistem (Kelola Akses & Cut-Off Gaji)",
 };
 
@@ -188,7 +189,8 @@ export async function render(container, user) {
 // (role, menu_id), jadi toggle tiap role disimpan & diubah independen walau
 // menu_id-nya sama. Pencarian & urutan A–Z cuma memengaruhi tampilan (di
 // browser); status toggle tetap disimpan di permState.
-const permState = { enabledMap: {}, q: "", sort: "default", user: null };
+// Tahap 4: roles = kolom yang tampil (template ringkas hanya Karyawan), blocked = menu di luar paket.
+const permState = { enabledMap: {}, q: "", sort: "default", user: null, roles: ROLES, blocked: new Set() };
 
 const normText = s => String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
@@ -201,6 +203,9 @@ async function loadPermissions(user) {
   permState.enabledMap = {};
   (data || []).forEach(r => { permState.enabledMap[`${r.role}:${r.menu_id}`] = r.enabled; });
   permState.user = user;
+  const plan = await getPlanInfo();
+  permState.roles = plan?.role_mode === "ringkas" ? ["karyawan"] : ROLES;
+  permState.blocked = new Set(plan?.blocked_menus || []);
 
   const search = document.getElementById("perm-search");
   const sort = document.getElementById("perm-sort");
@@ -218,15 +223,16 @@ function paintPermissions() {
   const el = document.getElementById("perm-list");
   const meta = document.getElementById("perm-meta");
   const { enabledMap, user } = permState;
+  const baseRows = ALL_MENU_ROWS.filter(r => !permState.blocked.has(r.id)); // menu di luar paket tidak ditampilkan
 
   const tokens = normText(permState.q).split(/\s+/).filter(Boolean);
   let rows = tokens.length
-    ? ALL_MENU_ROWS.filter(r => { const hay = normText(r.label + " " + (MENU_HINTS[r.id] || "")); return tokens.every(t => hay.includes(t)); })
-    : ALL_MENU_ROWS.slice();
+    ? baseRows.filter(r => { const hay = normText(r.label + " " + (MENU_HINTS[r.id] || "")); return tokens.every(t => hay.includes(t)); })
+    : baseRows.slice();
   if (permState.sort === "az") rows.sort((a, b) => a.label.localeCompare(b.label, "id", { sensitivity: "base" }));
   if (permState.sort === "za") rows.sort((a, b) => b.label.localeCompare(a.label, "id", { sensitivity: "base" }));
 
-  meta.textContent = tokens.length ? `Menampilkan ${rows.length} dari ${ALL_MENU_ROWS.length} menu` : `${ALL_MENU_ROWS.length} menu`;
+  meta.textContent = tokens.length ? `Menampilkan ${rows.length} dari ${baseRows.length} menu` : `${baseRows.length} menu`;
 
   if (!rows.length) {
     el.innerHTML = `<p class="muted" style="padding:20px;">Tidak ada menu yang cocok dengan “${escapeHtml(permState.q.trim())}”.</p>`;
@@ -247,12 +253,12 @@ function paintPermissions() {
 
   el.innerHTML = `
     <table class="table">
-      <thead><tr><th>Menu</th><th>Akses Super Admin HR</th><th>Akses Admin HR</th><th>Akses Admin</th><th>Akses Karyawan</th></tr></thead>
+      <thead><tr><th>Menu</th>${permState.roles.map(role => `<th>Akses ${roleDisplayName(role)}</th>`).join("")}</tr></thead>
       <tbody>
         ${rows.map(row => `
           <tr>
             <td>${row.label}${MENU_HINTS[row.id] ? `<div class="small muted perm-hint">${MENU_HINTS[row.id]}</div>` : ""}</td>
-            ${ROLES.map(role => cell(row, role)).join("")}
+            ${permState.roles.map(role => cell(row, role)).join("")}
           </tr>
         `).join("")}
       </tbody>

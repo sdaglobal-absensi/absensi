@@ -2092,3 +2092,9 @@ button.mon-stat-link:focus-visible { outline: 2px solid var(--primary-light); ou
 
 /* Tahap 3: foto privat yang gagal dimuat */
 img.photo-missing { visibility: hidden; }
+
+/* Tahap 4: halaman Paket & Fitur */
+.paket-bar { height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; margin-top: 8px; }
+.paket-bar > span { display: block; height: 100%; background: var(--ok); border-radius: 999px; transition: width 0.3s var(--ease); }
+.paket-bar > span.paket-bar-warn { background: var(--warn); }
+.paket-list { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
