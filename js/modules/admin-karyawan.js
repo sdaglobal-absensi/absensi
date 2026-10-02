@@ -109,6 +109,20 @@ export async function render(container, user) {
             <label>Email <input type="email" id="email-readonly" disabled></label>
             <label class="small muted" style="align-self:end; padding-bottom:10px;">Karyawan lupa email? Ini alamat yang terdaftar untuk akun ini.</label>
           </div>
+          <div class="hidden" id="email-convert-wrap" style="margin-bottom:16px;">
+            <button type="button" class="btn-link" id="btn-show-convert-pin">Ganti ke login PIN (tanpa email)</button>
+            <div class="hidden" id="convert-pin-box" style="margin-top:12px; padding:14px; border:1px solid var(--border); border-radius:var(--radius);">
+              <div class="form-row two-col">
+                <label>PIN Baru (6 digit) <input id="conv-pin" inputmode="numeric" maxlength="6" placeholder="kosongkan = dibuat otomatis" autocomplete="off"></label>
+                <label class="small muted" style="align-self:end; padding-bottom:10px;">Karyawan masuk lewat tab "Karyawan (tanpa email)" memakai kode usaha + kode karyawan + PIN.</label>
+              </div>
+              <p class="small muted" style="margin:0 0 10px;">Email dan password lama tidak berlaku lagi, dan fitur "Lupa password?" tidak bisa dipakai untuk akun ini.</p>
+              <div class="modal-actions">
+                <button type="button" class="btn-secondary" id="btn-cancel-convert-pin">Batal</button>
+                <button type="button" class="btn-primary" id="btn-do-convert-pin">Ubah ke Login PIN</button>
+              </div>
+            </div>
+          </div>
           <div class="form-row two-col hidden" id="pin-manage-row" style="align-items:end;">
             <label>Cara Login <input value="Kode usaha + kode karyawan + PIN" disabled style="height:44px; box-sizing:border-box;"></label>
             <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:16px;">
@@ -242,6 +256,13 @@ export async function render(container, user) {
       document.getElementById("convert-box").classList.add("hidden");
     });
     document.getElementById("btn-do-convert").addEventListener("click", () => onConvertToEmail(user, isFullSuperAdmin));
+    document.getElementById("btn-show-convert-pin").addEventListener("click", () => {
+      document.getElementById("convert-pin-box").classList.toggle("hidden");
+    });
+    document.getElementById("btn-cancel-convert-pin").addEventListener("click", () => {
+      document.getElementById("convert-pin-box").classList.add("hidden");
+    });
+    document.getElementById("btn-do-convert-pin").addEventListener("click", () => onConvertToPin(user, isFullSuperAdmin));
     // Tombol Esc menutup formulir
     document.addEventListener("keydown", ev => {
       if (ev.key !== "Escape") return;
@@ -452,6 +473,9 @@ async function openModal(existing = null) {
   document.getElementById("email-readonly-row").classList.toggle("hidden", !existing || isPinAcc);
   document.getElementById("pin-manage-row").classList.toggle("hidden", !isPinAcc);
   document.getElementById("pin-convert-wrap").classList.toggle("hidden", !isPinAcc);
+  document.getElementById("email-convert-wrap").classList.toggle("hidden", !existing || isPinAcc);
+  document.getElementById("convert-pin-box").classList.add("hidden");
+  document.getElementById("conv-pin").value = "";
   document.getElementById("convert-box").classList.add("hidden");
   document.getElementById("conv-email").value = "";
   document.getElementById("conv-password").value = "";
@@ -681,6 +705,33 @@ async function onConvertToEmail(currentUser, isFullSuperAdmin) {
       title: "Login diubah ke Email + Password",
       namaKaryawan: nama, kodeKaryawan: kode,
       loginType: "email", email, secretLabel: "Password", secret: password,
+    });
+  } catch (err) {
+    toast("Gagal mengubah login: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Ubah akun Email + Password menjadi akun PIN (dikerjakan server).
+async function onConvertToPin(currentUser, isFullSuperAdmin) {
+  if (!editingUserId) return;
+  if (editingUserId === currentUser.id) { toast("Tidak bisa mengubah login akunmu sendiri.", "error"); return; }
+  const pin = document.getElementById("conv-pin").value.trim();
+  if (pin && !/^\d{6}$/.test(pin)) { toast("PIN harus 6 digit angka", "error"); return; }
+  if (!confirm("Ubah login karyawan ini ke PIN? Email dan password lama langsung tidak berlaku.")) return;
+  const form = document.getElementById("form-karyawan");
+  const btn = document.getElementById("btn-do-convert-pin");
+  btn.disabled = true;
+  try {
+    const res = await callFunction("account-admin", { action: "convert-to-pin", user_id: editingUserId, pin: pin || undefined });
+    const nama = form.full_name.value, kode = form.employee_code.value;
+    closeModal();
+    loadTable(true, isFullSuperAdmin);
+    await showCredentials(currentUser, {
+      title: "Login diubah ke PIN",
+      namaKaryawan: nama, kodeKaryawan: kode,
+      loginType: "pin", secretLabel: "PIN", secret: res.pin,
     });
   } catch (err) {
     toast("Gagal mengubah login: " + err.message, "error");
