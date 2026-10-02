@@ -54,8 +54,8 @@ export async function requireAuth(allowedRoles = null) {
 // ---------------------------------------------------------------------
 // Login
 // ---------------------------------------------------------------------
-export async function login(email, password, captchaToken) {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password, options: { captchaToken } });
+export async function login(email, password) {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
   return data;
 }
@@ -65,8 +65,11 @@ export async function login(email, password, captchaToken) {
 // Dicek server (Edge Function login-pin, ada batas percobaan salah);
 // sesi yang dikembalikan dipasang di client utama seperti login biasa.
 // ---------------------------------------------------------------------
-export async function loginWithPin(kodeUsaha, kodeKaryawan, pin, captchaToken) {
-  const res = await callFunction("login-pin", { kode_usaha: kodeUsaha, kode_karyawan: kodeKaryawan, pin, captcha_token: captchaToken }, false);
+export async function loginWithPin(kodeUsaha, kodeKaryawan, pin) {
+  const res = await callFunction("login-pin", { kode_usaha: kodeUsaha, kode_karyawan: kodeKaryawan, pin }, false);
+  if (!res?.session?.access_token) {
+    throw new Error("Server login PIN tidak mengembalikan sesi. Edge Function login-pin yang ter-deploy kemungkinan bukan versi yang benar — deploy ulang.");
+  }
   const { error } = await supabase.auth.setSession(res.session);
   if (error) throw error;
 }
