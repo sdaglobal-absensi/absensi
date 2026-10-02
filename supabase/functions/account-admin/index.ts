@@ -1,0 +1,193 @@
+// Edge Function: account-admin
+// -----------------------------------------------------------------------
+// Satu-satunya jalan resmi membuat / mengelola akun karyawan (menggantikan
+// auth.signUp dari browser admin, yang tidak bisa menempatkan akun ke
+// tenant yang benar).
+//
+// Aksi (body JSON: { action, ... }):
+//   create-employee : buat akun karyawan baru di tenant si pemanggil.
+//       { employee_code, full_name, login_type: "email"|"pin",
+//         email?, password?  (login_type=email)
+//         pin?               (login_type=pin; kosong = dibuatkan acak) }
+//   reset-pin       : { user_id, pin? } -> PIN baru untuk akun PIN.
+//
+// Keamanan:
+//   - Pemanggil WAJIB login. Tenant diambil dari PROFIL pemanggil di
+//     database, TIDAK PERNAH dari body request.
+//   - Pemanggil harus Super Admin, atau role dengan menu "karyawan"
+//     menyala di Pengaturan Sistem (aturan yang sama dengan Data Karyawan).
+//   - Role akun baru selalu 'karyawan' (diubah lewat Struktur Organisasi).
+//
+// Deploy (wajib --no-verify-jwt karena kunci "sb_publishable_..." bukan JWT;
+// function ini memverifikasi token sendiri di bawah):
+//   supabase functions deploy account-admin --no-verify-jwt
+//   supabase secrets set PIN_PEPPER=<string-acak-panjang>
+// -----------------------------------------------------------------------
+import {
+  adminClient, anonClient, corsHeaders, derivePinPassword, generatePin, HttpError, isValidPin,
+  json, normKode, PIN_EMAIL_DOMAIN,
+} from "../_shared/common.ts";
+
+const STAFF_ROLES = ["super_admin", "super_admin_hr", "admin_hr"];
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "Method tidak didukung" }, 405);
+
+  try {
+    const admin = adminClient();
+    const caller = await authenticate(req, admin);
+
+    let body: Record<string, unknown>;
+    try { body = await req.json(); } catch { throw new HttpError(400, "Body bukan JSON yang valid"); }
+
+    switch (body.action) {
+      case "create-employee": return json(await createEmployee(admin, caller, body));
+      case "reset-pin":       return json(await resetPin(admin, caller, body));
+      default: throw new HttpError(400, "Aksi tidak dikenal");
+    }
+  } catch (e) {
+    if (e instanceof HttpError) return json({ error: e.message }, e.status);
+    console.error("account-admin error:", e);
+    return json({ error: "Terjadi kesalahan di server" }, 500);
+  }
+});
+
+type Caller = { id: string; tenant_id: string; role: string };
+
+// Verifikasi token, ambil profil, pastikan boleh mengelola karyawan.
+async function authenticate(req: Request, admin: ReturnType<typeof adminClient>): Promise<Caller> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!token) throw new HttpError(401, "Belum login");
+
+  const { data: u, error: uErr } = await anonClient().auth.getUser(token);
+  if (uErr || !u.user) throw new HttpError(401, "Sesi tidak valid, silakan login ulang");
+
+  const { data: p } = await admin.from("profiles")
+    .select("id, tenant_id, role, is_active").eq("id", u.user.id).maybeSingle();
+  if (!p || !p.is_active) throw new HttpError(403, "Akun tidak aktif atau belum terdaftar di sebuah usaha");
+
+  const { data: t } = await admin.from("tenants").select("status").eq("id", p.tenant_id).maybeSingle();
+  if (!t || t.status === "suspended") throw new HttpError(403, "Usaha ini sedang dinonaktifkan");
+
+  if (p.role !== "super_admin") {
+    if (!STAFF_ROLES.includes(p.role)) throw new HttpError(403, "Tidak punya akses mengelola karyawan");
+    const { data: rp } = await admin.from("role_permissions").select("enabled")
+      .eq("tenant_id", p.tenant_id).eq("role", p.role).eq("menu_id", "karyawan").maybeSingle();
+    if (!rp?.enabled) throw new HttpError(403, "Menu Data Karyawan belum diizinkan untuk role kamu");
+  }
+  return { id: p.id, tenant_id: p.tenant_id, role: p.role };
+}
+
+async function createEmployee(admin: ReturnType<typeof adminClient>, caller: Caller, b: Record<string, unknown>) {
+  const code = normKode(b.employee_code);
+  const fullName = normKode(b.full_name);
+  const loginType = b.login_type === "pin" ? "pin" : "email";
+  if (!code) throw new HttpError(400, "Kode Karyawan wajib diisi");
+  if (code.length > 40) throw new HttpError(400, "Kode Karyawan terlalu panjang (maks. 40 karakter)");
+  if (!fullName) throw new HttpError(400, "Nama Lengkap wajib diisi");
+
+  // Kode karyawan unik per usaha (tanpa membedakan huruf besar/kecil)
+  const { data: dup } = await admin.from("profiles").select("id")
+    .eq("tenant_id", caller.tenant_id).ilike("employee_code", escapeLike(code)).limit(1);
+  if (dup && dup.length) throw new HttpError(409, `Kode Karyawan "${code}" sudah dipakai di usaha ini`);
+
+  // Batas jumlah karyawan paket
+  const { data: tn } = await admin.from("tenants").select("max_karyawan").eq("id", caller.tenant_id).single();
+  if (tn?.max_karyawan) {
+    const { count } = await admin.from("profiles").select("id", { count: "exact", head: true })
+      .eq("tenant_id", caller.tenant_id);
+    if ((count ?? 0) >= tn.max_karyawan) {
+      throw new HttpError(403, `Batas jumlah karyawan untuk paket ini sudah tercapai (maks. ${tn.max_karyawan}).`);
+    }
+  }
+
+  const appMeta = { tenant_id: caller.tenant_id, login_type: loginType };
+  const userMeta = { full_name: fullName, employee_code: code };
+
+  // ---------- akun email ----------
+  if (loginType === "email") {
+    const email = normKode(b.email).toLowerCase();
+    const password = String(b.password ?? "");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, "Format email tidak valid");
+    if (password.length < 6) throw new HttpError(400, "Password minimal 6 karakter");
+
+    const { data, error } = await admin.auth.admin.createUser({
+      email, password, email_confirm: true, user_metadata: userMeta, app_metadata: appMeta,
+    });
+    if (error || !data.user) {
+      if (/already|registered|exists/i.test(error?.message ?? "")) throw new HttpError(409, "Email sudah terdaftar di sistem login");
+      throw new HttpError(400, error?.message || "Gagal membuat akun");
+    }
+    await assertProfile(admin, data.user.id);
+    return { user_id: data.user.id, login_type: "email", email };
+  }
+
+  // ---------- akun PIN ----------
+  let pin = normKode(b.pin);
+  if (pin && !isValidPin(pin)) throw new HttpError(400, "PIN harus 6 digit angka dan tidak boleh pola mudah ditebak (mis. 123456, 111111)");
+  if (!pin) pin = generatePin();
+
+  const placeholderEmail = `u-${crypto.randomUUID()}@${PIN_EMAIL_DOMAIN}`;
+  const { data, error } = await admin.auth.admin.createUser({
+    email: placeholderEmail, password: crypto.randomUUID() + crypto.randomUUID(),
+    email_confirm: true, user_metadata: userMeta, app_metadata: appMeta,
+  });
+  if (error || !data.user) throw new HttpError(400, error?.message || "Gagal membuat akun");
+  const uid = data.user.id;
+
+  try {
+    await assertProfile(admin, uid);
+    const pw = await derivePinPassword(uid, pin);
+    const { error: pwErr } = await admin.auth.admin.updateUserById(uid, { password: pw });
+    if (pwErr) throw new HttpError(500, "Gagal menyimpan PIN: " + pwErr.message);
+    const { error: pErr } = await admin.from("profiles").update({ login_type: "pin", email: null }).eq("id", uid);
+    if (pErr) throw new HttpError(500, "Gagal menandai akun PIN: " + pErr.message);
+  } catch (e) {
+    await admin.auth.admin.deleteUser(uid).catch(() => {}); // batalkan akun setengah jadi
+    throw e;
+  }
+  return { user_id: uid, login_type: "pin", pin };
+}
+
+// Pastikan trigger handle_new_user benar-benar membuat profil di tenant yang benar.
+async function assertProfile(admin: ReturnType<typeof adminClient>, uid: string) {
+  const { data } = await admin.from("profiles").select("id").eq("id", uid).maybeSingle();
+  if (!data) {
+    await admin.auth.admin.deleteUser(uid).catch(() => {});
+    throw new HttpError(500, "Profil karyawan tidak terbentuk (cek bahwa 001_multi_tenant.sql sudah dijalankan)");
+  }
+}
+
+async function resetPin(admin: ReturnType<typeof adminClient>, caller: Caller, b: Record<string, unknown>) {
+  const userId = normKode(b.user_id);
+  if (!userId) throw new HttpError(400, "user_id wajib diisi");
+
+  const { data: target } = await admin.from("profiles")
+    .select("id, tenant_id, role, login_type, employee_code").eq("id", userId).maybeSingle();
+  // Tenant lain diperlakukan seperti "tidak ada" (tidak membocorkan keberadaan akun)
+  if (!target || target.tenant_id !== caller.tenant_id) throw new HttpError(404, "Karyawan tidak ditemukan");
+  if (target.login_type !== "pin") throw new HttpError(400, "Akun ini memakai email & password, bukan PIN");
+  if (target.role === "super_admin" && caller.role !== "super_admin") throw new HttpError(403, "Tidak boleh mengubah akun Super Admin");
+
+  let pin = normKode(b.pin);
+  if (pin && !isValidPin(pin)) throw new HttpError(400, "PIN harus 6 digit angka dan tidak boleh pola mudah ditebak");
+  if (!pin) pin = generatePin();
+
+  const pw = await derivePinPassword(userId, pin);
+  const { error } = await admin.auth.admin.updateUserById(userId, { password: pw });
+  if (error) throw new HttpError(500, "Gagal mengganti PIN: " + error.message);
+
+  // Buka kunci kalau sebelumnya terkunci karena salah PIN
+  const { data: tn } = await admin.from("tenants").select("kode").eq("id", caller.tenant_id).single();
+  if (tn && target.employee_code) {
+    await admin.from("pin_login_attempts").delete()
+      .eq("key", `${tn.kode.toLowerCase()}|${target.employee_code.toLowerCase()}`);
+  }
+  return { user_id: userId, pin };
+}
+
+// Escape karakter wildcard LIKE supaya "_" dan "%" di kode karyawan dibaca apa adanya.
+function escapeLike(s: string) {
+  return s.replace(/[\\%_]/g, m => "\\" + m);
+}

@@ -2079,3 +2079,13 @@ button.mon-stat-link:focus-visible { outline: 2px solid var(--primary-light); ou
 @media (min-width: 761px) and (max-width: 860px) {
   .org-levels-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+
+/* ===== Tahap 2: tab login & halaman daftar usaha ===== */
+.login-tabs { display: flex; gap: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px; margin: 16px 0 4px; }
+.login-tab { flex: 1; background: none; border: none; border-radius: 6px; padding: 8px 10px; font-size: 0.85rem; font-weight: 500; color: var(--muted); cursor: pointer; }
+.login-tab.active { background: var(--surface); color: var(--primary); box-shadow: var(--shadow-xs); }
+.login-tab:focus-visible { outline: 2px solid var(--primary-light); outline-offset: 1px; }
+.pin-input { letter-spacing: 0.4em; font-variant-numeric: tabular-nums; }
+.kode-usaha-box { background: var(--ok-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin: 14px 0; text-align: center; }
+.kode-usaha-box b { display: block; font-size: 1.6rem; letter-spacing: 0.08em; color: var(--primary); }

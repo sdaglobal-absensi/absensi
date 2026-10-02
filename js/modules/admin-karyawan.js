@@ -1,4 +1,5 @@
-import { supabase, supabaseAdminCreate } from "../supabaseClient.js";
+import { supabase } from "../supabaseClient.js";
+import { createEmployeeAccount, resetEmployeePin, inviteText } from "../accountApi.js";
 import { esc } from "../approvalHelper.js";
 import { toast, roleLabel, jenisHubunganKerjaLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper, avatarHTML } from "../core.js";
 import { downloadKaryawanTemplate, exportKaryawan, importKaryawanFile } from "./karyawan-excel.js";
@@ -84,13 +85,29 @@ export async function render(container, user) {
               <div id="role-hint" class="small muted">Diatur lewat Struktur Organisasi → Ubah Role.</div>
             </label>
           </div>
+          <div class="form-row" id="logintype-row">
+            <label>Cara Login
+              <select name="login_type" id="login_type">
+                <option value="email">Email + password</option>
+                <option value="pin">Tanpa email — kode usaha + kode karyawan + PIN</option>
+              </select>
+            </label>
+          </div>
           <div class="form-row two-col" id="email-row">
             <label id="email-label">Email <input type="email" name="email" required></label>
             <label id="password-label">Password Awal <input type="text" name="password" placeholder="min. 6 karakter"></label>
           </div>
+          <div class="form-row two-col hidden" id="pin-row">
+            <label>PIN Awal (6 digit) <input name="pin" inputmode="numeric" maxlength="6" pattern="\\d{6}" placeholder="kosongkan = dibuat otomatis"></label>
+            <label class="small muted" style="align-self:end; padding-bottom:10px;">Untuk karyawan yang tidak punya email. Karyawan masuk lewat tab "Karyawan (tanpa email)".</label>
+          </div>
           <div class="form-row two-col hidden" id="email-readonly-row">
             <label>Email <input type="email" id="email-readonly" disabled></label>
             <label class="small muted" style="align-self:end; padding-bottom:10px;">Karyawan lupa email? Ini alamat yang terdaftar untuk akun ini.</label>
+          </div>
+          <div class="form-row two-col hidden" id="pin-manage-row">
+            <label>Cara Login <input value="Kode usaha + kode karyawan + PIN" disabled></label>
+            <div style="align-self:end; padding-bottom:6px;"><button type="button" class="btn-secondary" id="btn-reset-pin">Reset PIN</button></div>
           </div>
           <div class="form-row">
             <label class="checkbox-row"><input type="checkbox" name="is_active" checked> Akun aktif</label>
@@ -193,6 +210,8 @@ export async function render(container, user) {
     pickFileThen(document.getElementById("import-file"), file => importKaryawanFile(file, excelCtx()));
     document.getElementById("btn-cancel-modal").addEventListener("click", closeModal);
     document.getElementById("form-karyawan").addEventListener("submit", e => onSubmit(e, user, isFullSuperAdmin));
+    document.getElementById("login_type").addEventListener("change", refreshLoginType);
+    document.getElementById("btn-reset-pin").addEventListener("click", () => onResetPin(user));
     wireFamilyForm(document.getElementById("form-karyawan"));
     document.getElementById("join_date").addEventListener("input", refreshTenure);
     document.getElementById("resign_date").addEventListener("input", refreshTenure);
@@ -321,7 +340,7 @@ function renderKaryawanTable() {
                 <span class="row-avatar">${avatarHTML(k, k.full_name)}</span>
                 <div>
                   <div class="kr-name">${esc(k.full_name)}</div>
-                  <div class="kr-sub">${esc(k.email || "-")}</div>
+                  <div class="kr-sub">${esc(k.login_type === "pin" ? "Login PIN (tanpa email)" : (k.email || "-"))}</div>
                 </div>
               </div>
             </td>
@@ -390,10 +409,15 @@ async function openModal(existing = null) {
   renderRoleDisplay(existing);
 
   document.getElementById("modal-title").textContent = existing ? "Edit Karyawan" : "Tambah Karyawan";
-  document.getElementById("email-row").classList.toggle("hidden", !!existing);
-  form.email.required = !existing;
-  document.getElementById("email-readonly-row").classList.toggle("hidden", !existing);
+  const isPinAcc = existing?.login_type === "pin";
+  document.getElementById("logintype-row").classList.toggle("hidden", !!existing);
+  document.getElementById("login_type").value = "email";
+  refreshLoginType();
+  document.getElementById("email-readonly-row").classList.toggle("hidden", !existing || isPinAcc);
+  document.getElementById("pin-manage-row").classList.toggle("hidden", !isPinAcc);
   document.getElementById("email-readonly").value = existing?.email || "(tidak diketahui)";
+  editingUserId = existing?.id || null;
+  if (existing) { document.getElementById("email-row").classList.add("hidden"); form.email.required = false; document.getElementById("pin-row").classList.add("hidden"); }
 
   if (existing) {
     form.id.value = existing.id;
@@ -479,28 +503,32 @@ async function onSubmit(e, currentUser, isFullSuperAdmin) {
       await saveChildrenLabeled(id, children);
       toast("Data karyawan diperbarui", "success");
     } else {
-      const email = fd.get("email");
+      const loginType = fd.get("login_type") === "pin" ? "pin" : "email";
+      const email = loginType === "email" ? String(fd.get("email") || "").trim() : null;
       const password = fd.get("password") || Math.random().toString(36).slice(2, 10);
-      // Pakai client terpisah supaya sesi admin yang sedang login tidak tertimpa.
-      // Catatan keamanan: trigger di server SENGAJA mengabaikan "role" yang
-      // dikirim lewat signUp metadata (siapa pun bisa memanggil signUp
-      // langsung lewat anon key, jadi role tidak boleh dipercaya dari sini).
-      // Profil selalu dibuat dengan role 'karyawan' dan role TIDAK ikut dikirim di
-      // update di bawah; role diubah lewat Struktur Organisasi (Ubah Role).
-      const { data: signUpData, error: signUpError } = await supabaseAdminCreate.auth.signUp({
-        email, password,
-        options: { data: { full_name: payload.full_name, employee_code: payload.employee_code } },
+      // Akun dibuat di server (Edge Function account-admin) supaya otomatis
+      // masuk ke usaha admin ini dengan role 'karyawan'. Role diubah lewat
+      // Struktur Organisasi (Ubah Role), bukan di sini.
+      const created = await createEmployeeAccount({
+        employee_code: payload.employee_code, full_name: payload.full_name, login_type: loginType,
+        ...(loginType === "email" ? { email, password } : { pin: String(fd.get("pin") || "").trim() }),
       });
-      if (signUpError) throw signUpError;
 
-      const newUserId = signUpData.user?.id;
-      if (newUserId) {
-        const { error: updErr } = await supabase.from("profiles").update({ ...payload, email }).eq("id", newUserId);
-        if (updErr) throw updErr;
-        await saveChildrenLabeled(newUserId, children);
-      }
-      await supabaseAdminCreate.auth.signOut();
-      toast(`Akun dibuat. Beritahu karyawan: email ${email}, password ${password}`, "success");
+      const newUserId = created.user_id;
+      const { error: updErr } = await supabase.from("profiles")
+        .update(loginType === "email" ? { ...payload, email } : payload).eq("id", newUserId);
+      if (updErr) throw updErr;
+      await saveChildrenLabeled(newUserId, children);
+
+      closeModal();
+      loadTable(true, isFullSuperAdmin);
+      await showCredentials(currentUser, {
+        title: "Akun karyawan dibuat",
+        namaKaryawan: payload.full_name, kodeKaryawan: payload.employee_code,
+        loginType, email,
+        secretLabel: loginType === "pin" ? "PIN" : "Password", secret: loginType === "pin" ? created.pin : password,
+      });
+      return;
     }
     closeModal();
     loadTable(true, isFullSuperAdmin);
@@ -553,4 +581,74 @@ function onJenisChange() {
   const opts = ptOptionsFor(document.getElementById("jenis_hubungan_kerja").value);
   ssUnitPt.setOptions(opts);
   if (ssUnitPt.value && !opts.some(o => o.nama === ssUnitPt.value)) ssUnitPt.clear();
+}
+
+
+// ---------------------------------------------------------------------
+// Cara Login (Email / PIN) pada form Tambah Karyawan
+// ---------------------------------------------------------------------
+let editingUserId = null;
+
+function refreshLoginType() {
+  const form = document.getElementById("form-karyawan");
+  const isPin = document.getElementById("login_type").value === "pin";
+  const adding = !form.id.value;
+  document.getElementById("email-row").classList.toggle("hidden", isPin || !adding);
+  document.getElementById("pin-row").classList.toggle("hidden", !isPin || !adding);
+  form.email.required = !isPin && adding;
+}
+
+async function onResetPin(currentUser) {
+  if (!editingUserId) return;
+  if (!confirm("Buat PIN baru untuk karyawan ini? PIN lama langsung tidak berlaku.")) return;
+  const form = document.getElementById("form-karyawan");
+  const btn = document.getElementById("btn-reset-pin");
+  btn.disabled = true;
+  try {
+    const res = await resetEmployeePin(editingUserId);
+    await showCredentials(currentUser, {
+      title: "PIN baru dibuat",
+      namaKaryawan: form.full_name.value, kodeKaryawan: form.employee_code.value,
+      loginType: "pin", secretLabel: "PIN", secret: res.pin,
+    });
+  } catch (err) {
+    toast("Gagal reset PIN: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Jendela berisi kredensial + pesan undangan siap kirim (WhatsApp).
+// Sengaja BUKAN toast: PIN/password hanya ditampilkan sekali ini.
+async function showCredentials(currentUser, info) {
+  let tenant = null;
+  try {
+    const { data } = await supabase.from("tenants").select("kode, nama").eq("id", currentUser.tenant_id).maybeSingle();
+    tenant = data;
+  } catch { /* tetap tampilkan tanpa kode usaha */ }
+
+  const text = inviteText({
+    namaUsaha: tenant?.nama || "perusahaan", kodeUsaha: tenant?.kode || "-",
+    namaKaryawan: info.namaKaryawan, kodeKaryawan: info.kodeKaryawan,
+    email: info.email, secretLabel: info.secretLabel, secret: info.secret, loginType: info.loginType,
+  });
+
+  const el = document.createElement("div");
+  el.className = "modal";
+  el.innerHTML = `
+    <div class="modal-box">
+      <h3>${esc(info.title)}</h3>
+      <p class="small muted">${esc(info.secretLabel)} ini <b>hanya tampil sekarang</b>. Salin pesan di bawah dan kirim ke karyawan.</p>
+      <textarea readonly rows="9" style="width:100%; font-family:inherit;">${esc(text)}</textarea>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" data-act="close">Tutup</button>
+        <button type="button" class="btn-primary" data-act="copy">Salin Pesan</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  el.querySelector('[data-act="close"]').addEventListener("click", () => el.remove());
+  el.querySelector('[data-act="copy"]').addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(text); toast("Pesan disalin", "success"); }
+    catch { el.querySelector("textarea").select(); toast("Pilih teks lalu salin manual", "info"); }
+  });
 }

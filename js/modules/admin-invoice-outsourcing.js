@@ -272,7 +272,7 @@ async function onSave(card) {
     updated_by: authUser?.user?.id || null,
     updated_at: new Date().toISOString(),
   };
-  const { error } = await supabase.from("outsourcing_area_invoices").upsert(payload, { onConflict: "vendor,area,period" });
+  const { error } = await supabase.from("outsourcing_area_invoices").upsert(payload, { onConflict: "tenant_id,vendor,area,period" });
   if (error) { toast("Gagal menyimpan: " + error.message, "error"); return; }
 
   savedByKey[a.key] = payload;

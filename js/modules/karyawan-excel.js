@@ -1,4 +1,5 @@
-import { supabase, supabaseAdminCreate } from "../supabaseClient.js";
+import { supabase } from "../supabaseClient.js";
+import { createEmployeeAccount } from "../accountApi.js";
 import { esc } from "../approvalHelper.js";
 import { toast, roleLabel, jenisHubunganKerjaLabel } from "../core.js";
 import { hasXLSX, readFirstSheet, cellText, cellDateISO, normKey, writeWorkbook, widthsFor } from "../excelIO.js";
@@ -302,7 +303,7 @@ function openPreview({ valid, rejected, skipped }, m) {
           </tbody>
         </table>
       </div>
-      <p class="small muted" style="margin-top:8px;">Akun dibuat satu per satu, jadi butuh waktu (± 1 detik per karyawan). Jangan tutup halaman sampai selesai. Setelah selesai, file berisi email dan password awal otomatis diunduh.</p>` : `<p class="muted">Tidak ada baris yang bisa dibuat.</p>`}
+      <p class="small muted" style="margin-top:8px;">Akun dibuat satu per satu, jadi butuh waktu. Jangan tutup halaman sampai selesai. Setelah selesai, file berisi email dan password awal otomatis diunduh.</p>` : `<p class="muted">Tidak ada baris yang bisa dibuat.</p>`}
     <div id="imp-progress" class="small" style="margin-top:8px;"></div>
     <div class="modal-actions">
       <button type="button" id="imp-cancel" class="btn-secondary">${valid.length ? "Batal" : "Tutup"}</button>
@@ -330,25 +331,21 @@ async function runImport(valid, rejected, skipped, m, body, close) {
     if (stopped) { results.push({ v, status: "Belum diproses", note: "Dihentikan karena batas pendaftaran tercapai; import ulang file yang sama nanti" }); continue; }
     progress.textContent = `Membuat akun ${i + 1} dari ${valid.length}: ${v.nama}…`;
     try {
-      const { data, error } = await supabaseAdminCreate.auth.signUp({
-        email: v.email, password: v.password,
-        options: { data: { full_name: v.payload.full_name, employee_code: v.payload.employee_code } },
+      // Akun dibuat di server (Edge Function) supaya masuk ke usaha yang benar.
+      const created = await createEmployeeAccount({
+        employee_code: v.payload.employee_code, full_name: v.payload.full_name,
+        login_type: "email", email: v.email, password: v.password,
       });
-      if (error) throw error;
-      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) throw new Error("Email sudah terdaftar di sistem login");
-      const uid = data.user?.id;
-      if (!uid) throw new Error("Akun tidak terbentuk");
+      const uid = created.user_id;
       const { error: updErr } = await supabase.from("profiles").update({ ...v.payload, email: v.email }).eq("id", uid);
       if (updErr) results.push({ v, status: "Sebagian", note: "Akun dibuat, tapi data profil gagal disimpan: " + updErr.message });
       else results.push({ v, status: "Berhasil", note: "" });
     } catch (err) {
       const msg = err.message || String(err);
       results.push({ v, status: "Gagal", note: msg });
-      if (/rate limit|too many|security purposes/i.test(msg)) stopped = true;
-    } finally {
-      await supabaseAdminCreate.auth.signOut().catch(() => {});
+      if (/batas jumlah karyawan|rate limit|too many/i.test(msg)) stopped = true;
     }
-    await sleep(500);
+    await sleep(200);
   }
 
   // File hasil (berisi password awal -> kirimkan ke karyawan bersangkutan)

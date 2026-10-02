@@ -288,7 +288,7 @@ async function onTogglePermission(checkbox, user) {
     .from("role_permissions")
     .upsert(
       { role, menu_id: menuId, enabled, updated_by: user.id, updated_at: new Date().toISOString() },
-      { onConflict: "role,menu_id" }
+      { onConflict: "tenant_id,role,menu_id" }
     );
 
   checkbox.disabled = false;

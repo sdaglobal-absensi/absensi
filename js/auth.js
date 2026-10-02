@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient.js";
+import { callFunction } from "./accountApi.js";
 
 // ---------------------------------------------------------------------
 // Ambil sesi & profil user yang sedang login. Return null kalau belum login.
@@ -14,7 +15,8 @@ export async function getCurrentUser() {
     .single();
 
   if (error || !profile) return null;
-  return { ...profile, email: session.user.email };
+  // Akun PIN memakai email palsu internal -> jangan ditampilkan ke user.
+  return { ...profile, email: profile.login_type === "pin" ? null : session.user.email };
 }
 
 // ---------------------------------------------------------------------
@@ -56,6 +58,17 @@ export async function login(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
   return data;
+}
+
+// ---------------------------------------------------------------------
+// Login karyawan tanpa email: kode usaha + kode karyawan + PIN.
+// Dicek server (Edge Function login-pin, ada batas percobaan salah);
+// sesi yang dikembalikan dipasang di client utama seperti login biasa.
+// ---------------------------------------------------------------------
+export async function loginWithPin(kodeUsaha, kodeKaryawan, pin) {
+  const res = await callFunction("login-pin", { kode_usaha: kodeUsaha, kode_karyawan: kodeKaryawan, pin }, false);
+  const { error } = await supabase.auth.setSession(res.session);
+  if (error) throw error;
 }
 
 // ---------------------------------------------------------------------

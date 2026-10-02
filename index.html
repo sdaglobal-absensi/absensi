@@ -20,7 +20,7 @@ if ("serviceWorker" in navigator) {
   });
 }
 </script>
-<link rel="stylesheet" href="css/style.css?v=20261001a">
+<link rel="stylesheet" href="css/style.css?v=20261002a">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -45,6 +45,10 @@ if ("serviceWorker" in navigator) {
         <div id="panel-login">
           <h2>Selamat datang kembali</h2>
           <span class="muted">Masuk dengan akun yang diberikan perusahaan</span>
+          <div class="login-tabs" role="tablist">
+            <button type="button" class="login-tab active" id="tab-email" role="tab" aria-selected="true">Email</button>
+            <button type="button" class="login-tab" id="tab-pin" role="tab" aria-selected="false">Karyawan (tanpa email)</button>
+          </div>
           <form id="form-login">
             <label>Email <input type="email" name="email" required autocomplete="username"></label>
             <label>Password
@@ -59,7 +63,16 @@ if ("serviceWorker" in navigator) {
             <div class="error-msg" id="login-error"></div>
             <button type="submit" class="btn-primary btn-block">Masuk</button>
           </form>
+          <form id="form-login-pin" class="hidden">
+            <label>Kode Usaha <input name="kode_usaha" required autocomplete="organization" autocapitalize="none" spellcheck="false" placeholder="mis. tokomaju"></label>
+            <label>Kode Karyawan <input name="kode_karyawan" required autocomplete="username" autocapitalize="characters" spellcheck="false"></label>
+            <label>PIN (6 digit) <input name="pin" type="password" inputmode="numeric" maxlength="6" pattern="\d{6}" required autocomplete="current-password" class="pin-input"></label>
+            <div class="error-msg" id="pin-error"></div>
+            <button type="submit" class="btn-primary btn-block">Masuk</button>
+            <p class="small muted" style="margin-top:12px;">Kode usaha dan PIN diberikan oleh admin perusahaanmu. Lupa PIN? Minta admin mereset.</p>
+          </form>
           <button type="button" id="btn-show-forgot" class="btn-link forgot-link">Lupa password?</button>
+          <a href="daftar.html" id="link-daftar" class="btn-link forgot-link hidden">Belum punya akun usaha? Daftarkan usaha kamu</a>
         </div>
 
         <div id="panel-forgot" class="hidden">
@@ -79,7 +92,7 @@ if ("serviceWorker" in navigator) {
 
   <script type="module">
     import { supabase } from "./js/supabaseClient.js";
-    import { login, getCurrentUser } from "./js/auth.js";
+    import { login, loginWithPin, getCurrentUser } from "./js/auth.js";
     import { wirePasswordToggles } from "./js/core.js";
 
     wirePasswordToggles();
@@ -94,11 +107,37 @@ if ("serviceWorker" in navigator) {
       document.getElementById("panel-login").classList.remove("hidden");
     });
 
+    // Tab: login email <-> login PIN
+    function setTab(pin) {
+      document.getElementById("tab-email").classList.toggle("active", !pin);
+      document.getElementById("tab-pin").classList.toggle("active", pin);
+      document.getElementById("tab-email").setAttribute("aria-selected", String(!pin));
+      document.getElementById("tab-pin").setAttribute("aria-selected", String(pin));
+      document.getElementById("form-login").classList.toggle("hidden", pin);
+      document.getElementById("form-login-pin").classList.toggle("hidden", !pin);
+      document.getElementById("btn-show-forgot").classList.toggle("hidden", pin);
+    }
+    document.getElementById("tab-email").addEventListener("click", () => setTab(false));
+    document.getElementById("tab-pin").addEventListener("click", () => setTab(true));
+
+    // Tautan "Daftarkan usaha" hanya muncul kalau pendaftaran publik dibuka.
+    let signupOpen = false;
+    (async () => {
+      try {
+        const { data } = await supabase.rpc("public_signup_open");
+        signupOpen = data === true;
+        document.getElementById("link-daftar").classList.toggle("hidden", !signupOpen);
+      } catch (e) { /* SQL Tahap 2 belum dijalankan: abaikan */ }
+    })();
+
     // Kalau ada session TAPI baris profil-nya bermasalah, app.html akan
     // melempar balik ke sini. Tampilkan pesan yang jelas alih-alih diam-diam
     // redirect lagi (itu yang menyebabkan loop refresh tanpa henti).
     const params = new URLSearchParams(location.search);
     if (params.get("reason") === "no-profile") {
+      // Pendaftar usaha yang sudah konfirmasi email tapi belum membuat usahanya
+      // -> lanjutkan di halaman daftar (kalau pendaftaran dibuka).
+      supabase.rpc("public_signup_open").then(({ data }) => { if (data === true) location.replace("daftar.html?lanjut=1"); });
       document.getElementById("login-error").textContent =
         "Akun berhasil login tapi datanya belum lengkap di database (baris di tabel 'profiles' tidak ditemukan). Hubungi admin, atau jalankan ulang supabase-schema.sql lalu buat ulang akun lewat panel admin.";
     }
@@ -134,6 +173,22 @@ if ("serviceWorker" in navigator) {
         window.location.href = "app.html";
       } catch (err) {
         errEl.textContent = "Email atau password salah.";
+      }
+    });
+
+    document.getElementById("form-login-pin").addEventListener("submit", async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const errEl = document.getElementById("pin-error");
+      const btn = e.target.querySelector('button[type="submit"]');
+      errEl.textContent = "";
+      btn.disabled = true;
+      try {
+        await loginWithPin(String(fd.get("kode_usaha")).trim(), String(fd.get("kode_karyawan")).trim(), String(fd.get("pin")).trim());
+        window.location.href = "app.html";
+      } catch (err) {
+        errEl.textContent = err.message || "Gagal masuk.";
+        btn.disabled = false;
       }
     });
 

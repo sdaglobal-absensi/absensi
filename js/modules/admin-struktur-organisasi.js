@@ -694,7 +694,7 @@ async function saveLevels() {
     updated_by: S.user.id,
     updated_at: new Date().toISOString(),
   }));
-  const { error } = await supabase.from("approval_settings").upsert(rows, { onConflict: "request_type" });
+  const { error } = await supabase.from("approval_settings").upsert(rows, { onConflict: "tenant_id,request_type" });
   if (error) return fail(error);
   rows.forEach(r => (S.settings[r.request_type] = r.levels));
   toast("Jumlah tingkat approval disimpan (berlaku untuk pengajuan baru)", "success");
