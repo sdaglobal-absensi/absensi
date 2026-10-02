@@ -62,6 +62,7 @@ if ("serviceWorker" in navigator) {
           <span id="notif-badge-desktop" class="notif-badge hidden"></span>
         </button>
       </div>
+      <div id="plan-banner" class="hidden"></div>
       <div id="content"><p class="muted">Memuat…</p></div>
     </main>
   </div>
@@ -70,7 +71,7 @@ if ("serviceWorker" in navigator) {
 
   <script type="module">
     import { requireAuth, logout } from "./js/auth.js";
-    import { renderSidebar, toast, ICONS, isMenuBlockedByPlan } from "./js/core.js";
+    import { renderSidebar, toast, ICONS, isMenuBlockedByPlan, planInfoSync, fmtDate } from "./js/core.js";
     import { initNotifications } from "./js/notifications.js";
 
     const MODULE_MAP = {
@@ -105,6 +106,7 @@ if ("serviceWorker" in navigator) {
       "audit-log": () => import("./js/modules/admin-audit-log.js"),
       "ekspor-backup": () => import("./js/modules/admin-ekspor-backup.js"),
       "paket": () => import("./js/modules/super-paket.js"),
+      "platform": () => import("./js/modules/platform-admin.js"),
       "pengaturan-sistem": () => import("./js/modules/super-pengaturan.js"),
     };
 
@@ -152,6 +154,34 @@ if ("serviceWorker" in navigator) {
     }
 
     let currentTabId = null;
+
+    // Tahap 5 — banner masa aktif untuk Pemilik: muncul saat sisa waktu paket
+    // atau trial <= 7 hari, atau paket baru saja habis (14 hari terakhir).
+    function renderPlanBanner() {
+      const el = document.getElementById("plan-banner");
+      const info = planInfoSync();
+      el.className = "hidden";
+      if (!info || !info.is_owner || info.plan === "internal") return;
+      const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      let tone = "", text = "", label = "Perpanjang";
+      const d = info.days_left;
+      if (d !== null && d !== undefined && d <= 7) {
+        const nm = esc(info.plan_nama || info.plan);
+        const trial = info.status === "trial";
+        tone = d <= 2 ? "danger" : "warn";
+        text = d <= 0
+          ? `${trial ? "Masa percobaan" : "Paket " + nm} berakhir hari ini.`
+          : `${trial ? "Masa percobaan paket " + nm : "Paket " + nm} berakhir ${d} hari lagi (${esc(fmtDate(info.plan_expires_at || info.trial_ends_at))}).`;
+      } else if (info.recently_expired) {
+        const from = esc(info.recently_expired.from_plan || "berbayar");
+        tone = "danger";
+        label = "Aktifkan lagi";
+        text = `Masa aktif paket ${from} sudah habis, usahamu kembali ke paket Gratis. Fitur berbayar terkunci, datanya tetap aman.`;
+      } else return;
+      el.className = `plan-banner plan-banner-${tone}`;
+      el.innerHTML = `<span>${text}</span><button type="button" class="btn-primary btn-sm" id="plan-banner-btn">${label}</button>`;
+      document.getElementById("plan-banner-btn").addEventListener("click", () => loadTab("paket"));
+    }
 
     async function loadTab(tabId, { silent = false } = {}) {
       if (!isTabAllowed(tabId)) {
@@ -207,6 +237,7 @@ if ("serviceWorker" in navigator) {
       allowedTabIds = new Set(menu.map(m => m.id));
       menuLabels = Object.fromEntries(menu.map(m => [m.id, m.label]));
       buildTabbar(menu);
+      renderPlanBanner();
 
       const fallbackTab = "dashboard";
       const hashTab = location.hash.replace("#", "");

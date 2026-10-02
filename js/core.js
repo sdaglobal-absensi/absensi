@@ -111,6 +111,8 @@ export function planInfoSync() { return planInfoCache; }
 export function isMenuBlockedByPlan(menuId) {
   return !!planInfoCache && (planInfoCache.blocked_menus || []).includes(menuId);
 }
+// Tahap 5: my_plan_info() juga membawa masa aktif (plan_expires_at, days_left),
+// is_owner, is_platform_admin, dan recently_expired (paket baru saja habis).
 // Template UMKM: hanya 2 role (Pemilik = super_admin, dan Karyawan).
 export function isRingkas() { return planInfoCache?.role_mode === "ringkas"; }
 
@@ -139,6 +141,9 @@ const EMPLOYEE_SELF_MENUS = [
 // bisa dimatikan). Isinya sendiri sudah otomatis menyesuaikan ke menu apa
 // saja yang benar-benar diizinkan untuk user yang login (lihat dashboard.js).
 const DASHBOARD_MENU = { id: "dashboard", label: "Dashboard", icon: "home" };
+
+// Tahap 5 — khusus pemilik aplikasi (lihat resolveMenu).
+const PLATFORM_MENU = { id: "platform", label: "Admin Platform", icon: "chart", section: "Platform" };
 
 const MENUS = {
   karyawan: EMPLOYEE_SELF_MENUS,
@@ -216,8 +221,12 @@ export async function resolveMenu(user) {
   const combined = [...personal, ...MENUS.staff];
   const byRole = allowed ? combined.filter(m => allowed.has(m.id)) : combined;
   const filtered = byRole.filter(m => !blockedByPlan.has(m.id));
+  // Tahap 5: menu "Admin Platform" hanya untuk pemilik aplikasi (baris di
+  // platform_admins), terlepas dari role/paket/toggle. Penjaganya di server:
+  // semua fungsi pa_* memeriksa is_platform_admin() sendiri.
+  const platform = plan?.is_platform_admin ? [PLATFORM_MENU] : [];
   // "dashboard" selalu ditambahkan paling atas, tidak ikut difilter toggle.
-  return [DASHBOARD_MENU, ...filtered];
+  return [DASHBOARD_MENU, ...filtered, ...platform];
 }
 
 // Ikon siluet orang generik — dipakai sebagai placeholder avatar di
