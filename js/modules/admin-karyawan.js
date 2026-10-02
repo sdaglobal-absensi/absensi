@@ -103,7 +103,7 @@ export async function render(container, user) {
           </div>
           <div class="form-row two-col hidden" id="pin-row">
             <label>PIN Awal (6 digit) <input name="pin" inputmode="numeric" maxlength="6" pattern="\\d{6}" placeholder="kosongkan = dibuat otomatis"></label>
-            <label class="small muted" style="align-self:end; padding-bottom:10px;">Untuk karyawan yang tidak punya email. Karyawan masuk lewat tab "Karyawan (tanpa email)".</label>
+            <label class="small muted" style="align-self:end; padding-bottom:10px;">Untuk karyawan yang tidak punya email. Karyawan masuk lewat tab "Kode Karyawan".</label>
           </div>
           <div class="form-row two-col hidden" id="email-readonly-row">
             <label>Email <input type="email" id="email-readonly" disabled></label>
@@ -114,7 +114,7 @@ export async function render(container, user) {
             <div class="hidden" id="convert-pin-box" style="margin-top:12px; padding:14px; border:1px solid var(--border); border-radius:var(--radius);">
               <div class="form-row two-col">
                 <label>PIN Baru (6 digit) <input id="conv-pin" inputmode="numeric" maxlength="6" placeholder="kosongkan = dibuat otomatis" autocomplete="off"></label>
-                <label class="small muted" style="align-self:end; padding-bottom:10px;">Karyawan masuk lewat tab "Karyawan (tanpa email)" memakai kode usaha + kode karyawan + PIN.</label>
+                <label class="small muted" style="align-self:end; padding-bottom:10px;">Karyawan masuk lewat tab "Kode Karyawan" memakai kode usaha + kode karyawan + PIN.</label>
               </div>
               <p class="small muted" style="margin:0 0 10px;">Email dan password lama tidak berlaku lagi, dan fitur "Lupa password?" tidak bisa dipakai untuk akun ini.</p>
               <div class="modal-actions">
