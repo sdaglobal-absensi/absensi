@@ -30,6 +30,7 @@ Deno.serve(async (req) => {
     const kodeUsaha = normKode(b.kode_usaha).toLowerCase();
     const kodeKaryawan = normKode(b.kode_karyawan);
     const pin = normKode(b.pin);
+    const captchaToken = typeof b.captcha_token === "string" && b.captcha_token ? b.captcha_token : undefined;
     if (!kodeUsaha || !kodeKaryawan || !/^\d{6}$/.test(pin)) throw new HttpError(400, "Lengkapi kode usaha, kode karyawan, dan PIN 6 digit.");
     if (kodeUsaha.length > 40 || kodeKaryawan.length > 40) throw new HttpError(400, GENERIC);
 
@@ -44,7 +45,7 @@ Deno.serve(async (req) => {
     }
 
     // 2) Cari akun (semua kegagalan memakai pesan yang sama + dihitung)
-    const ok = await tryLogin(admin, kodeUsaha, kodeKaryawan, pin);
+    const ok = await tryLogin(admin, kodeUsaha, kodeKaryawan, pin, captchaToken);
     if (!ok) {
       const fails = (att?.fail_count ?? 0) + 1;
       const locked = fails >= MAX_FAIL;
@@ -67,7 +68,7 @@ Deno.serve(async (req) => {
 });
 
 // Mengembalikan { access_token, refresh_token } kalau cocok, selain itu null.
-async function tryLogin(admin: ReturnType<typeof adminClient>, kodeUsaha: string, kodeKaryawan: string, pin: string) {
+async function tryLogin(admin: ReturnType<typeof adminClient>, kodeUsaha: string, kodeKaryawan: string, pin: string, captchaToken?: string) {
   const { data: tn } = await admin.from("tenants").select("id, status").ilike("kode", escapeLike(kodeUsaha)).maybeSingle();
   if (!tn || tn.status === "suspended") return null;
 
@@ -79,7 +80,7 @@ async function tryLogin(admin: ReturnType<typeof adminClient>, kodeUsaha: string
   if (!au?.user?.email) return null;
 
   const password = await derivePinPassword(p.id, pin);
-  const { data, error } = await anonClient().auth.signInWithPassword({ email: au.user.email, password });
+  const { data, error } = await anonClient().auth.signInWithPassword({ email: au.user.email, password, options: { captchaToken } });
   if (error || !data.session) return null;
   return { access_token: data.session.access_token, refresh_token: data.session.refresh_token };
 }
