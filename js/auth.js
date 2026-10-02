@@ -54,8 +54,8 @@ export async function requireAuth(allowedRoles = null) {
 // ---------------------------------------------------------------------
 // Login
 // ---------------------------------------------------------------------
-export async function login(email, password) {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+export async function login(email, password, captchaToken) {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password, options: { captchaToken } });
   if (error) throw error;
   return data;
 }
@@ -65,8 +65,8 @@ export async function login(email, password) {
 // Dicek server (Edge Function login-pin, ada batas percobaan salah);
 // sesi yang dikembalikan dipasang di client utama seperti login biasa.
 // ---------------------------------------------------------------------
-export async function loginWithPin(kodeUsaha, kodeKaryawan, pin) {
-  const res = await callFunction("login-pin", { kode_usaha: kodeUsaha, kode_karyawan: kodeKaryawan, pin }, false);
+export async function loginWithPin(kodeUsaha, kodeKaryawan, pin, captchaToken) {
+  const res = await callFunction("login-pin", { kode_usaha: kodeUsaha, kode_karyawan: kodeKaryawan, pin, captcha_token: captchaToken }, false);
   const { error } = await supabase.auth.setSession(res.session);
   if (error) throw error;
 }
