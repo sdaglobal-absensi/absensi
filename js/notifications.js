@@ -37,6 +37,7 @@ function timeAgo(iso) {
 // Approval-nya), "approval_decided" = ini status pengajuan user sendiri
 // (buka halaman Pengajuan-nya).
 function targetTab(n) {
+  if (n.type === "announcement") return "pengumuman";
   if (n.type === "approval_needed") {
     return { leave: "izin-approval", overtime: "lembur-approval", koreksi: "koreksi-approval" }[n.request_type] || null;
   }

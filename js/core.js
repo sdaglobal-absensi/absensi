@@ -134,6 +134,7 @@ const EMPLOYEE_SELF_MENUS = [
   { id: "koreksi", label: "Koreksi Absen", icon: "clock" },
   { id: "riwayat", label: "Riwayat Saya", icon: "history" },
   { id: "slip-gaji-saya", label: "Slip Gaji Saya", icon: "file" },
+  { id: "pengumuman", label: "Info Internal", icon: "bell" },
 ];
 
 // Dashboard/beranda — selalu tampil untuk SEMUA role sebagai halaman pertama
@@ -157,6 +158,7 @@ const MENUS = {
   staff: [
     { id: "karyawan", label: "Data Karyawan", icon: "users", section: "Organisasi" },
     { id: "struktur-organisasi", label: "Struktur Organisasi", icon: "layers", section: "Organisasi" },
+    { id: "pengumuman-kelola", label: "Kelola Pengumuman", icon: "bell", section: "Organisasi" },
     { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock", section: "Approval & Monitoring" },
     { id: "izin-approval", label: "Approval Izin", icon: "check", section: "Approval & Monitoring" },
     { id: "lembur-approval", label: "Approval Lembur", icon: "check", section: "Approval & Monitoring" },
@@ -183,6 +185,7 @@ const MENUS = {
 };
 
 export const ICONS = {
+  bell: "M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9zM13.73 21a2 2 0 01-3.46 0",
   home: "M3 11.5L12 4l9 7.5M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10",
   user: "M20 21a8 8 0 10-16 0M12 11a4 4 0 100-8 4 4 0 000 8z",
   clock: "M12 6v6l4 2M12 21a9 9 0 100-18 9 9 0 000 18z",

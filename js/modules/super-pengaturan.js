@@ -36,6 +36,7 @@ import { ICON_SEARCH } from "../approvalUI.js";
 // di role_permissions, dan defaultnya TIDAK ada baris = dianggap mati.
 const MENU_LABELS = {
   "karyawan": "Data Karyawan",
+  "pengumuman-kelola": "Kelola Pengumuman (Buat & Kirim Info Internal ke Karyawan)",
   "struktur-organisasi": "Struktur Organisasi (Lihat Pohon Unit & Anggota)",
   "struktur-kelola": "Struktur Organisasi — Boleh Mengubah (Unit, Anggota, Tingkat Approval)",
   "absensi-monitor": "Monitor Absensi",
@@ -79,6 +80,7 @@ const PERSONAL_MENU_LABELS = {
   "koreksi": "Pengajuan Koreksi Absen Pribadi",
   "riwayat": "Riwayat Absensi Pribadi",
   "slip-gaji-saya": "Slip Gaji Saya (Lihat & Cetak Punya Sendiri)",
+  "pengumuman": "Info Internal (Baca Pengumuman)",
 };
 
 // Tiga role bisa disetel manual di sini, baris per baris, independen satu
