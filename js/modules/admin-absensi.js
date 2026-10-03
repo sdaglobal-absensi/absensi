@@ -587,7 +587,9 @@ async function doExport() {
 
 function locationCell(r) {
   if (r.check_in_lat == null) return "-";
-  const dist = r.check_in_distance_m != null ? `${r.check_in_distance_m}m dari kantor` : "";
+  const fwLabel = { dinas_luar: "Dinas Luar", wfh: "WFH", kunjungan: "Kunjungan" }[r.work_mode];
+  const dist = (r.check_in_distance_m != null ? `${r.check_in_distance_m}m dari kantor` : "")
+    + (fwLabel ? ` <span class="badge badge-ok">${fwLabel}</span>` : "");
   const link = `https://www.google.com/maps?q=${r.check_in_lat},${r.check_in_lng}`;
   return `<a href="${link}" target="_blank" rel="noopener" class="btn-link">Lihat peta</a><br><span class="small muted">${dist}</span>`;
 }

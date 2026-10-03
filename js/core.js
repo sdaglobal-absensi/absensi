@@ -135,6 +135,7 @@ const EMPLOYEE_SELF_MENUS = [
   { id: "riwayat", label: "Riwayat Saya", icon: "history" },
   { id: "slip-gaji-saya", label: "Slip Gaji Saya", icon: "file" },
   { id: "pengumuman", label: "Info Internal", icon: "bell" },
+  { id: "dinas-luar", label: "Dinas Luar / WFH", icon: "map" },
 ];
 
 // Dashboard/beranda — selalu tampil untuk SEMUA role sebagai halaman pertama
@@ -163,6 +164,7 @@ const MENUS = {
     { id: "izin-approval", label: "Approval Izin", icon: "check", section: "Approval & Monitoring" },
     { id: "lembur-approval", label: "Approval Lembur", icon: "check", section: "Approval & Monitoring" },
     { id: "koreksi-approval", label: "Approval Koreksi Absen", icon: "check", section: "Approval & Monitoring" },
+    { id: "dinas-luar-approval", label: "Approval Dinas Luar", icon: "check", section: "Approval & Monitoring" },
     { id: "profil-approval", label: "Approval Perubahan Data", icon: "check", section: "Approval & Monitoring" },
     { id: "kenaikan-upah", label: "Kenaikan Upah & Gaji", icon: "chart", section: "Payroll & Laporan" },
     { id: "slip-gaji", label: "Slip Gaji", icon: "file", section: "Payroll & Laporan" },
@@ -185,6 +187,7 @@ const MENUS = {
 };
 
 export const ICONS = {
+  map: "M12 21s-7-6.2-7-11a7 7 0 1114 0c0 4.8-7 11-7 11zM12 12a2 2 0 100-4 2 2 0 000 4z",
   bell: "M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9zM13.73 21a2 2 0 01-3.46 0",
   home: "M3 11.5L12 4l9 7.5M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10",
   user: "M20 21a8 8 0 10-16 0M12 11a4 4 0 100-8 4 4 0 000 8z",

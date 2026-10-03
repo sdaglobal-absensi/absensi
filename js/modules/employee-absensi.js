@@ -604,8 +604,13 @@ export async function openCamera(mode, user, activeRow, tz, onDone = null) {
         window.__pendingOffice = office;
         window.__pendingAddress = null;
         if (office && office.distance > office.radius_meters) {
-          document.getElementById("camera-status").textContent =
-            `⚠️ Kamu ${Math.round(office.distance)}m dari ${office.name} (radius ${office.radius_meters}m). Absen tetap bisa dikirim untuk ditinjau admin.`;
+          // Dinas luar / WFH / kunjungan yang sudah disetujui -> absen di luar radius sah.
+          let fw = null;
+          try { fw = (await supabase.rpc("my_field_work_today")).data?.[0] || null; } catch { /* abaikan: tetap pakai pesan biasa */ }
+          const fwLabel = { dinas_luar: "Dinas luar", wfh: "WFH", kunjungan: "Kunjungan" };
+          document.getElementById("camera-status").textContent = fw
+            ? `✓ ${fwLabel[fw.kind] || "Dinas luar"} disetujui${fw.destination ? " (" + fw.destination + ")" : ""}. Absen di luar kantor sah. Silakan ambil foto.`
+            : `⚠️ Kamu ${Math.round(office.distance)}m dari ${office.name} (radius ${office.radius_meters}m). Absen tetap bisa dikirim untuk ditinjau admin — atau ajukan Dinas Luar/WFH lebih dulu.`;
         } else if (office) {
           document.getElementById("camera-status").textContent = `Lokasi terverifikasi ✓ (${office.name}). Silakan ambil foto.`;
         } else {
