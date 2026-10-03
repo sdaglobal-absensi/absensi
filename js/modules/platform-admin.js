@@ -25,7 +25,7 @@ const ORDER_BADGE = {
 };
 const ACTION_LABEL = {
   set_plan: "Ubah paket", extend: "Perpanjang", start_trial: "Mulai trial", set_status: "Ubah status",
-  set_feature: "Fitur tambahan", set_price: "Ubah harga", set_trial: "Pengaturan trial",
+  set_feature: "Fitur tambahan", set_plan_features: "Ubah fitur paket", set_price: "Ubah harga", set_trial: "Pengaturan trial",
   expire: "Paket habis (otomatis)", payment: "Pembayaran (otomatis)",
 };
 
@@ -335,18 +335,85 @@ async function drawOrders(body) {
     : `<p class="muted">Belum ada pesanan.</p>`;
 }
 
-// Tabel fitur apa saja yang termasuk di tiap paket.
+// Fitur dasar: selalu aktif di semua paket (tidak ada di katalog, tidak bisa diubah).
+const BASIC_ROWS = [
+  "Profil & absensi (check-in/out dengan foto dan lokasi)",
+  "Riwayat absensi",
+  "Data karyawan",
+  "Monitor absensi",
+  "Laporan",
+  "Master lokasi, jadwal kerja, dan hari libur",
+  "Master level dan departemen",
+  "Approval perubahan data karyawan",
+  "Pengaturan sistem (akses menu per role)",
+  "Paket & Fitur",
+];
+
+// Tabel fitur per paket: baris fitur dasar (terkunci) + fitur tambahan (bisa dicentang).
 function matrixHtml(o) {
   const plans = o.plans.filter(p => p.is_active && Array.isArray(p.features));
   if (!plans.length) return "";
+  const ok = `<span class="badge badge-ok">Termasuk</span>`;
+  const head = `<tr><th>Fitur</th>${plans.map(p => `<th style="text-align:center;">${esc(p.nama)}</th>`).join("")}</tr>`;
+  const basic = BASIC_ROWS.map(n => `<tr><td>${esc(n)}</td>${plans.map(() => `<td style="text-align:center;">${ok}</td>`).join("")}</tr>`).join("");
+  const extra = o.features.map(f => `<tr><td>${esc(f.nama)}${(f.requires || []).length ? `<div class="small muted">Butuh: ${f.requires.map(k => esc(o.features.find(x => x.kode === k)?.nama || k)).join(", ")}</div>` : ""}</td>
+    ${plans.map(p => p.kode === "internal"
+      ? `<td style="text-align:center;">${ok}</td>`
+      : `<td style="text-align:center;"><input type="checkbox" class="pf-chk" data-plan="${esc(p.kode)}" data-feat="${esc(f.kode)}" ${p.features.includes(f.kode) ? "checked" : ""} aria-label="${esc(f.nama)} di paket ${esc(p.nama)}"></td>`).join("")}</tr>`).join("");
+  const save = `<tr>${`<td></td>`}${plans.map(p => p.kode === "internal" ? `<td></td>`
+    : `<td style="text-align:center;"><button class="btn-primary btn-sm pf-save" data-plan="${esc(p.kode)}" disabled>Simpan</button></td>`).join("")}</tr>`;
   return `<h2 class="section-title">Fitur per paket</h2>
-    <div class="table-wrap"><table class="table">
-      <thead><tr><th>Fitur</th>${plans.map(p => `<th style="text-align:center;">${esc(p.nama)}</th>`).join("")}</tr></thead>
-      <tbody>${o.features.map(f => `<tr><td>${esc(f.nama)}</td>${plans.map(p => p.features.includes(f.kode)
-        ? `<td style="text-align:center;"><span class="badge badge-ok">Termasuk</span></td>`
-        : `<td style="text-align:center;" class="muted">—</td>`).join("")}</tr>`).join("")}</tbody>
+    <div class="table-wrap"><table class="table" id="pf-table">
+      <thead>${head}</thead>
+      <tbody>
+        <tr><td colspan="${plans.length + 1}" class="small muted" style="background:var(--bg-soft,transparent);"><b>Fitur dasar</b> · selalu ada di semua paket, tidak bisa diubah</td></tr>
+        ${basic}
+        <tr><td colspan="${plans.length + 1}" class="small muted" style="background:var(--bg-soft,transparent);"><b>Fitur tambahan</b> · centang untuk memasukkan ke paket, lalu klik Simpan</td></tr>
+        ${extra}${save}
+      </tbody>
     </table></div>
-    <p class="small muted" style="margin-top:8px;">Fitur dasar (absensi, riwayat, data karyawan, laporan, master lokasi/jadwal/libur) selalu ada di semua paket.</p>`;
+    <p class="small muted" style="margin-top:8px;">Perubahan fitur paket langsung berlaku untuk semua usaha yang memakai paket tersebut. Pengaturan "Tambahkan / Cabut" per usaha tetap diutamakan. Paket Internal selalu memuat semua fitur.</p>`;
+}
+
+function bindMatrix(body, o, done) {
+  const tbl = body.querySelector("#pf-table");
+  if (!tbl) return;
+  const chk = (plan, feat) => tbl.querySelector(`.pf-chk[data-plan="${plan}"][data-feat="${feat}"]`);
+  const current = plan => o.features.filter(f => chk(plan, f.kode).checked).map(f => f.kode);
+  const dirty = plan => {
+    const orig = o.plans.find(p => p.kode === plan).features;
+    const cur = current(plan);
+    return cur.length !== orig.length || cur.some(k => !orig.includes(k));
+  };
+
+  tbl.addEventListener("change", e => {
+    const c = e.target.closest(".pf-chk");
+    if (!c) return;
+    const { plan, feat } = c.dataset;
+    // Jaga ketergantungan antar fitur: mencentang fitur ikut mencentang yang dibutuhkan;
+    // mencabut fitur ikut mencabut fitur yang bergantung padanya.
+    if (c.checked) (o.features.find(f => f.kode === feat)?.requires || []).forEach(k => { chk(plan, k).checked = true; });
+    else o.features.filter(f => (f.requires || []).includes(feat)).forEach(f => { chk(plan, f.kode).checked = false; });
+    tbl.querySelector(`.pf-save[data-plan="${plan}"]`).disabled = !dirty(plan);
+  });
+
+  tbl.addEventListener("click", async e => {
+    const b = e.target.closest(".pf-save");
+    if (!b) return;
+    const plan = b.dataset.plan;
+    const p = o.plans.find(x => x.kode === plan);
+    const pakai = state.tenants.filter(t => t.plan === plan).length;
+    const ok = await confirmDialog({
+      title: `Ubah fitur paket ${p.nama}?`,
+      message: `Perubahan langsung berlaku untuk ${pakai} usaha yang memakai paket ini. Fitur yang dicabut tidak bisa dipakai lagi (datanya tetap aman).`,
+      confirmLabel: "Simpan",
+    });
+    if (!ok) return;
+    try {
+      await rpc("pa_set_plan_features", { p_plan: plan, p_features: current(plan) });
+      await done(`Fitur paket ${p.nama} disimpan`);
+    } catch (err) { toast(err.message, "error"); }
+  });
 }
 
 // ---------------------------------------------------------------- Harga & trial
@@ -378,6 +445,7 @@ function drawPricing(body, container) {
     ${matrixHtml(o)}`;
 
   const done = async msg => { toast(msg, "success"); await reloadCore(); draw(container); };
+  bindMatrix(body, o, done);
 
   body.querySelectorAll(".pr-save").forEach(btn => btn.addEventListener("click", async () => {
     const tr = btn.closest("tr");
