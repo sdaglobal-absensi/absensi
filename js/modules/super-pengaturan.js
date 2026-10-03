@@ -44,6 +44,7 @@ const MENU_LABELS = {
   "lembur-approval": "Approval Lembur",
   "koreksi-approval": "Approval Koreksi Absen",
   "dinas-luar-approval": "Approval Dinas Luar / WFH / Kunjungan",
+  "kasbon-approval": "Approval & Kelola Kasbon / Pinjaman Karyawan",
   "profil-approval": "Approval Perubahan Data",
   "kenaikan-upah": "Kenaikan Upah & Gaji",
   "slip-gaji": "Slip Gaji",
@@ -83,6 +84,7 @@ const PERSONAL_MENU_LABELS = {
   "slip-gaji-saya": "Slip Gaji Saya (Lihat & Cetak Punya Sendiri)",
   "pengumuman": "Info Internal (Baca Pengumuman)",
   "dinas-luar": "Pengajuan Dinas Luar / WFH / Kunjungan Pribadi",
+  "kasbon": "Pengajuan Kasbon / Pinjaman Pribadi",
 };
 
 // Tiga role bisa disetel manual di sini, baris per baris, independen satu

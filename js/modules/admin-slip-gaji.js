@@ -114,6 +114,7 @@ let salaryByUser = {};
 let attendanceByUser = {};
 let overtimeByUser = {};
 let adjByUser = {};
+let loanByUser = {}; // { [userId]: [{ loan_id, seq, amount, status }] } — cicilan kasbon periode terpilih (SQL 010)
 let allowancesByUser = {}; // { [userId]: [{ nama, nominal }] } — dari Master Tunjangan (aktif saja)
 let penaltyRules = { telat: { weekday: [], saturday: [] }, pulang_cepat: { weekday: [], saturday: [] } };
 let scheduleDaysByKey = {}; // { "${schedule_id}_${day_of_week}": work_schedule_days row } — lihat resolveShiftWindow()
@@ -326,6 +327,13 @@ async function loadData(p) {
     (allowancesByUser[a.user_id] ??= []).push({ nama, nominal: a.nominal || 0 });
   });
 
+  // Cicilan kasbon yang jatuh di periode ini (dipotong otomatis). Kalau SQL 010
+  // belum dijalankan / paket tanpa fitur kasbon, hasilnya kosong -> tidak ada potongan.
+  loanByUser = {};
+  const { data: loanInst } = await supabase.from("loan_installments")
+    .select("user_id, loan_id, seq, amount, status").eq("period", p).in("status", ["scheduled", "paid"]);
+  (loanInst || []).forEach(i => { (loanByUser[i.user_id] ??= []).push(i); });
+
   frozenSlipsByUser = {};
   (slips || []).forEach(s => { frozenSlipsByUser[s.user_id] = s.snapshot; });
 }
@@ -505,14 +513,15 @@ function computeSlip(emp) {
   const bpjsTkKaryawan = upahLapor * (level?.bpjs_tk_karyawan_persen || 0) / 100;
   const pph21 = totalPendapatan * (level?.pph21_persen || 0) / 100;
   const potonganLain = adj.potongan_lain || 0;
-  const totalPotongan = dendaKeterlambatan + dendaPulangCepat + bpjsKesKaryawan + bpjsTkKaryawan + pph21 + potonganLain;
+  const potonganKasbon = (loanByUser[emp.id] || []).reduce((s, i) => s + Number(i.amount || 0), 0);
+  const totalPotongan = dendaKeterlambatan + dendaPulangCepat + bpjsKesKaryawan + bpjsTkKaryawan + pph21 + potonganLain + potonganKasbon;
 
   const gajiBersih = totalPendapatan - totalPotongan;
 
   return {
     emp, level, adj, hariHadir, hariTelat, jamLemburBiasa, jamLemburLibur,
     gajiPokok, gajiPokokLabel, rateLemburBiasa, rateLemburLibur, uangLembur, uangDinas, tunjanganList, tunjanganTambahan, tunjanganLain, totalPendapatan,
-    dendaKeterlambatan, dendaPulangCepat, upahLapor, bpjsKesKaryawan, bpjsTkKaryawan, pph21, potonganLain, totalPotongan, gajiBersih,
+    dendaKeterlambatan, dendaPulangCepat, upahLapor, bpjsKesKaryawan, bpjsTkKaryawan, pph21, potonganLain, potonganKasbon, totalPotongan, gajiBersih,
   };
 }
 
@@ -708,6 +717,7 @@ function renderSlipContent(s) {
           <div class="slip-line"><span>BPJS Ketenagakerjaan (${s.level?.bpjs_tk_karyawan_persen ?? 0}%)</span><span>${fmtRupiah(s.bpjsTkKaryawan)}</span></div>
           <div class="slip-line"><span>PPh21 (${s.level?.pph21_persen ?? 0}%)</span><span>${fmtRupiah(s.pph21)}</span></div>
           <div class="slip-line"><span>${s.adj.keterangan_potongan || "Potongan Lain"}</span><span>${fmtRupiah(s.potonganLain)}</span></div>
+          ${(s.potonganKasbon || 0) > 0 ? `<div class="slip-line"><span>Potongan Kasbon</span><span>${fmtRupiah(s.potonganKasbon)}</span></div>` : ""}
           <div class="slip-line total"><span>Total Potongan</span><span>${fmtRupiah(s.totalPotongan)}</span></div>
         </div>
       </div>
@@ -804,6 +814,7 @@ function doExport() {
     "BPJS Ketenagakerjaan": s.bpjsTkKaryawan,
     "PPh21": s.pph21,
     "Potongan Lain": s.potonganLain,
+    "Potongan Kasbon": s.potonganKasbon || 0,
     "Total Potongan": s.totalPotongan,
     "Gaji Bersih": s.gajiBersih,
   }));
