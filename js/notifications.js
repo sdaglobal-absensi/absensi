@@ -45,6 +45,8 @@ function targetTab(n) {
   if (n.type === "expense_needed") return "reimburse-approval";
   if (n.type === "expense_decided") return "reimburse";
   if (n.type === "document_expiry") return "dokumen-kelola";
+  if (n.type === "swap_request" || n.type === "swap_decided") return "tukar-shift";
+  if (n.type === "swap_needed") return "tukar-shift-approval";
   if (n.type === "approval_needed") {
     return { leave: "izin-approval", overtime: "lembur-approval", koreksi: "koreksi-approval" }[n.request_type] || null;
   }

@@ -139,6 +139,7 @@ const EMPLOYEE_SELF_MENUS = [
   { id: "kasbon", label: "Kasbon / Pinjaman", icon: "file" },
   { id: "reimburse", label: "Reimbursement", icon: "file" },
   { id: "dokumen", label: "Dokumen Saya", icon: "file" },
+  { id: "tukar-shift", label: "Tukar Shift", icon: "clock" },
 ];
 
 // Dashboard/beranda — selalu tampil untuk SEMUA role sebagai halaman pertama
@@ -171,6 +172,7 @@ const MENUS = {
     { id: "dinas-luar-approval", label: "Approval Dinas Luar", icon: "check", section: "Approval & Monitoring" },
     { id: "kasbon-approval", label: "Approval Kasbon", icon: "check", section: "Approval & Monitoring" },
     { id: "reimburse-approval", label: "Approval Reimbursement", icon: "check", section: "Approval & Monitoring" },
+    { id: "tukar-shift-approval", label: "Approval Tukar Shift", icon: "check", section: "Approval & Monitoring" },
     { id: "profil-approval", label: "Approval Perubahan Data", icon: "check", section: "Approval & Monitoring" },
     { id: "kenaikan-upah", label: "Kenaikan Upah & Gaji", icon: "chart", section: "Payroll & Laporan" },
     { id: "slip-gaji", label: "Slip Gaji", icon: "file", section: "Payroll & Laporan" },

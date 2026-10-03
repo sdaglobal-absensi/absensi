@@ -16,7 +16,45 @@ export async function getCurrentUser() {
 
   if (error || !profile) return null;
   // Akun PIN memakai email palsu internal -> jangan ditampilkan ke user.
-  return { ...profile, email: profile.login_type === "pin" ? null : session.user.email };
+  const user = { ...profile, email: profile.login_type === "pin" ? null : session.user.email };
+  user.base_schedule_id = profile.schedule_id;
+  user.schedule_id = await effectiveScheduleId(profile);
+  return user;
+}
+
+// ---------------------------------------------------------------------
+// Tukar shift (SQL 013): kalau hari ini ada jadwal penimpa, seluruh logika
+// absensi memakainya lewat user.schedule_id. Jadwal dasar tetap di
+// user.base_schedule_id. Kalau shift tukaran kemarin lintas tengah malam dan
+// sekarang masih pagi, jadwal kemarin itulah yang dipakai (check-out dini hari).
+// Gagal/tabel belum ada -> pakai jadwal dasar.
+// ---------------------------------------------------------------------
+async function effectiveScheduleId(profile) {
+  const base = profile.schedule_id;
+  try {
+    const tz = "Asia/Jakarta";
+    const now = new Date();
+    const fmt = d => new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d);
+    const today = fmt(now);
+    const yesterday = fmt(new Date(now.getTime() - 86400000));
+    const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", hour12: false }).format(now)) % 24;
+
+    const { data, error } = await supabase.from("schedule_overrides")
+      .select("work_date, schedule_id").eq("user_id", profile.id).in("work_date", [yesterday, today]);
+    if (error || !data?.length) return base;
+
+    const todayRow = data.find(r => r.work_date === today);
+    if (todayRow) return todayRow.schedule_id;
+
+    const yRow = data.find(r => r.work_date === yesterday);
+    if (yRow && hour < 12) {
+      const dow = new Date(yesterday + "T00:00:00Z").getUTCDay();
+      const { data: day } = await supabase.from("work_schedule_days")
+        .select("crosses_midnight").eq("schedule_id", yRow.schedule_id).eq("day_of_week", dow).maybeSingle();
+      if (day?.crosses_midnight) return yRow.schedule_id;
+    }
+  } catch { /* pakai jadwal dasar */ }
+  return base;
 }
 
 // ---------------------------------------------------------------------
