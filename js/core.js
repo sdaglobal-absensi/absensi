@@ -138,6 +138,7 @@ const EMPLOYEE_SELF_MENUS = [
   { id: "dinas-luar", label: "Dinas Luar / WFH", icon: "map" },
   { id: "kasbon", label: "Kasbon / Pinjaman", icon: "file" },
   { id: "reimburse", label: "Reimbursement", icon: "file" },
+  { id: "dokumen", label: "Dokumen Saya", icon: "file" },
 ];
 
 // Dashboard/beranda — selalu tampil untuk SEMUA role sebagai halaman pertama
@@ -162,6 +163,7 @@ const MENUS = {
     { id: "karyawan", label: "Data Karyawan", icon: "users", section: "Organisasi" },
     { id: "struktur-organisasi", label: "Struktur Organisasi", icon: "layers", section: "Organisasi" },
     { id: "pengumuman-kelola", label: "Kelola Pengumuman", icon: "bell", section: "Organisasi" },
+    { id: "dokumen-kelola", label: "Dokumen Karyawan", icon: "file", section: "Organisasi" },
     { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock", section: "Approval & Monitoring" },
     { id: "izin-approval", label: "Approval Izin", icon: "check", section: "Approval & Monitoring" },
     { id: "lembur-approval", label: "Approval Lembur", icon: "check", section: "Approval & Monitoring" },
