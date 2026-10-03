@@ -175,11 +175,29 @@ function modal(html) {
 // "2026-11-30" -> akhir hari itu di WIB.
 const endOfDayWIB = d => (d ? `${d}T23:59:59+07:00` : null);
 
+// Status satu fitur untuk sebuah usaha: gabungan fitur paket + override.
+// v: "" (ikut paket) | "on" (ditambahkan) | "off" (dicabut)
+function featState(inPlan, v) {
+  if (v === "off") return inPlan
+    ? { on: false, label: "Nonaktif · dicabut", cls: "badge-danger" }
+    : { on: false, label: "Tidak termasuk paket", cls: "badge-muted" };
+  if (v === "on") return inPlan
+    ? { on: true, label: "Aktif · dari paket", cls: "badge-ok" }
+    : { on: true, label: "Aktif · tambahan", cls: "badge-warn" };
+  return inPlan
+    ? { on: true, label: "Aktif · dari paket", cls: "badge-ok" }
+    : { on: false, label: "Tidak termasuk paket", cls: "badge-muted" };
+}
+
 function openManage(t, container) {
   const o = state.overview;
   const paidPlans = o.plans.filter(p => p.is_active && !["free", "internal"].includes(p.kode));
   const allPlans = o.plans.filter(p => p.is_active && p.kode !== "internal");
   const locked = t.is_default;
+  const curPlan = o.plans.find(p => p.kode === t.effective_plan) || o.plans.find(p => p.kode === t.plan);
+  const planFeats = Array.isArray(curPlan?.features) ? curPlan.features : null;   // null = SQL 006 belum dijalankan
+  const origV = k => (t.override?.[k] === true ? "on" : t.override?.[k] === false ? "off" : "");
+  const countActive = get => o.features.filter(f => featState(planFeats.includes(f.kode), get(f.kode)).on).length;
   const { el, close } = modal(`
     <h3>${esc(t.nama)} <span class="small muted">· ${esc(t.kode)}</span></h3>
     <p class="small muted">${esc(t.plan_nama || t.plan)} ${STATUS_BADGE[t.status] || ""} · ${t.karyawan} karyawan${t.max_karyawan ? ` (maks. ${t.max_karyawan})` : ""}</p>
@@ -218,10 +236,13 @@ function openManage(t, container) {
     </div>
 
     <div class="pa-section"><h4>Fitur tambahan / dicabut</h4>
+      ${planFeats ? `<p class="small muted" id="m-featsum" style="margin:0 0 8px;">Paket <b>${esc(curPlan.nama)}</b> menyertakan ${planFeats.length} dari ${o.features.length} fitur tambahan. Aktif untuk usaha ini: <b>${countActive(origV)}</b>.</p>`
+        : `<p class="small" style="color:var(--warn);margin:0 0 8px;">Daftar fitur per paket belum tersedia. Jalankan <code>006_pa_overview_fitur_paket.sql</code> di SQL Editor.</p>`}
       <div class="pa-feat-grid">${o.features.map(f => {
-        const cur = t.override?.[f.kode];
-        const v = cur === true ? "on" : cur === false ? "off" : "";
+        const v = origV(f.kode);
+        const st = planFeats ? featState(planFeats.includes(f.kode), v) : null;
         return `<span>${esc(f.nama)}</span>
+          ${st ? `<span class="badge ${st.cls} pa-feat-st" data-st="${esc(f.kode)}">${st.label}</span>` : `<span></span>`}
           <select data-feat="${esc(f.kode)}" data-orig="${v}">
             <option value="" ${v === "" ? "selected" : ""}>Ikut paket</option>
             <option value="on" ${v === "on" ? "selected" : ""}>Tambahkan</option>
@@ -245,6 +266,21 @@ function openManage(t, container) {
   const $ = id => el.querySelector(id);
 
   $("#m-close").addEventListener("click", close);
+
+  // Pratinjau langsung: status badge ikut berubah sebelum disimpan.
+  if (planFeats) {
+    el.querySelectorAll("[data-feat]").forEach(sel => sel.addEventListener("change", () => {
+      const cur = k => el.querySelector(`[data-feat="${k}"]`).value;
+      o.features.forEach(f => {
+        const st = featState(planFeats.includes(f.kode), cur(f.kode));
+        const b = el.querySelector(`[data-st="${f.kode}"]`);
+        b.className = `badge ${st.cls} pa-feat-st`;
+        b.textContent = st.label + (cur(f.kode) !== el.querySelector(`[data-feat="${f.kode}"]`).dataset.orig ? " *" : "");
+      });
+      const sum = $("#m-featsum");
+      if (sum) sum.querySelector("b:last-child").textContent = countActive(cur) + " (belum disimpan)";
+    }));
+  }
 
   $("#m-setplan").addEventListener("click", () => run(
     () => rpc("pa_set_plan", {
@@ -299,6 +335,20 @@ async function drawOrders(body) {
     : `<p class="muted">Belum ada pesanan.</p>`;
 }
 
+// Tabel fitur apa saja yang termasuk di tiap paket.
+function matrixHtml(o) {
+  const plans = o.plans.filter(p => p.is_active && Array.isArray(p.features));
+  if (!plans.length) return "";
+  return `<h2 class="section-title">Fitur per paket</h2>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Fitur</th>${plans.map(p => `<th style="text-align:center;">${esc(p.nama)}</th>`).join("")}</tr></thead>
+      <tbody>${o.features.map(f => `<tr><td>${esc(f.nama)}</td>${plans.map(p => p.features.includes(f.kode)
+        ? `<td style="text-align:center;"><span class="badge badge-ok">Termasuk</span></td>`
+        : `<td style="text-align:center;" class="muted">—</td>`).join("")}</tr>`).join("")}</tbody>
+    </table></div>
+    <p class="small muted" style="margin-top:8px;">Fitur dasar (absensi, riwayat, data karyawan, laporan, master lokasi/jadwal/libur) selalu ada di semua paket.</p>`;
+}
+
 // ---------------------------------------------------------------- Harga & trial
 function drawPricing(body, container) {
   const o = state.overview;
@@ -323,7 +373,9 @@ function drawPricing(body, container) {
         <button class="btn-primary" id="tr-save">Simpan</button>
       </div>
       <p class="small muted" style="margin-top:8px;">0 = pendaftar baru langsung paket Gratis. Setelah trial habis, usaha otomatis kembali ke Gratis (data tetap aman). Hanya berlaku saat pendaftaran publik dibuka.</p>
-    </div>`;
+    </div>
+
+    ${matrixHtml(o)}`;
 
   const done = async msg => { toast(msg, "success"); await reloadCore(); draw(container); };
 
