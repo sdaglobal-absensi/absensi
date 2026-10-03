@@ -45,6 +45,7 @@ const MENU_LABELS = {
   "koreksi-approval": "Approval Koreksi Absen",
   "dinas-luar-approval": "Approval Dinas Luar / WFH / Kunjungan",
   "kasbon-approval": "Approval & Kelola Kasbon / Pinjaman Karyawan",
+  "reimburse-approval": "Approval & Kelola Reimbursement / Klaim Biaya",
   "profil-approval": "Approval Perubahan Data",
   "kenaikan-upah": "Kenaikan Upah & Gaji",
   "slip-gaji": "Slip Gaji",
@@ -85,6 +86,7 @@ const PERSONAL_MENU_LABELS = {
   "pengumuman": "Info Internal (Baca Pengumuman)",
   "dinas-luar": "Pengajuan Dinas Luar / WFH / Kunjungan Pribadi",
   "kasbon": "Pengajuan Kasbon / Pinjaman Pribadi",
+  "reimburse": "Pengajuan Reimbursement / Klaim Biaya Pribadi",
 };
 
 // Tiga role bisa disetel manual di sini, baris per baris, independen satu

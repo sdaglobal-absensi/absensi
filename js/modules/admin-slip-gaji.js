@@ -114,6 +114,7 @@ let salaryByUser = {};
 let attendanceByUser = {};
 let overtimeByUser = {};
 let adjByUser = {};
+let claimByUser = {}; // { [userId]: [{ amount, category, expense_date }] } — klaim reimbursement yang dibayar di periode terpilih (SQL 011)
 let loanByUser = {}; // { [userId]: [{ loan_id, seq, amount, status }] } — cicilan kasbon periode terpilih (SQL 010)
 let allowancesByUser = {}; // { [userId]: [{ nama, nominal }] } — dari Master Tunjangan (aktif saja)
 let penaltyRules = { telat: { weekday: [], saturday: [] }, pulang_cepat: { weekday: [], saturday: [] } };
@@ -334,6 +335,13 @@ async function loadData(p) {
     .select("user_id, loan_id, seq, amount, status").eq("period", p).in("status", ["scheduled", "paid"]);
   (loanInst || []).forEach(i => { (loanByUser[i.user_id] ??= []).push(i); });
 
+  // Reimbursement yang disetujui & dijadwalkan dibayar di periode ini. Kosong kalau
+  // SQL 011 belum dijalankan / paket tanpa fitur reimburse.
+  claimByUser = {};
+  const { data: claimRows } = await supabase.from("expense_claims")
+    .select("user_id, amount, category, expense_date").eq("pay_period", p).in("status", ["approved", "paid"]);
+  (claimRows || []).forEach(c => { (claimByUser[c.user_id] ??= []).push(c); });
+
   frozenSlipsByUser = {};
   (slips || []).forEach(s => { frozenSlipsByUser[s.user_id] = s.snapshot; });
 }
@@ -516,12 +524,15 @@ function computeSlip(emp) {
   const potonganKasbon = (loanByUser[emp.id] || []).reduce((s, i) => s + Number(i.amount || 0), 0);
   const totalPotongan = dendaKeterlambatan + dendaPulangCepat + bpjsKesKaryawan + bpjsTkKaryawan + pph21 + potonganLain + potonganKasbon;
 
-  const gajiBersih = totalPendapatan - totalPotongan;
+  // Reimbursement = penggantian biaya, BUKAN penghasilan: tidak masuk dasar PPh21,
+  // hanya ditambahkan ke take home pay.
+  const reimbursement = (claimByUser[emp.id] || []).reduce((s, c) => s + Number(c.amount || 0), 0);
+  const gajiBersih = totalPendapatan - totalPotongan + reimbursement;
 
   return {
     emp, level, adj, hariHadir, hariTelat, jamLemburBiasa, jamLemburLibur,
     gajiPokok, gajiPokokLabel, rateLemburBiasa, rateLemburLibur, uangLembur, uangDinas, tunjanganList, tunjanganTambahan, tunjanganLain, totalPendapatan,
-    dendaKeterlambatan, dendaPulangCepat, upahLapor, bpjsKesKaryawan, bpjsTkKaryawan, pph21, potonganLain, potonganKasbon, totalPotongan, gajiBersih,
+    dendaKeterlambatan, dendaPulangCepat, upahLapor, bpjsKesKaryawan, bpjsTkKaryawan, pph21, potonganLain, potonganKasbon, totalPotongan, reimbursement, gajiBersih,
   };
 }
 
@@ -708,6 +719,7 @@ function renderSlipContent(s) {
           ${s.tunjanganList.map(t => `<div class="slip-line"><span>${t.nama}</span><span>${fmtRupiah(t.nominal)}</span></div>`).join("")}
           <div class="slip-line"><span>${s.adj.keterangan_tunjangan || "Tunjangan Lain"}</span><span>${fmtRupiah(s.tunjanganLain)}</span></div>
           <div class="slip-line total"><span>Total Pendapatan</span><span>${fmtRupiah(s.totalPendapatan)}</span></div>
+          ${(s.reimbursement || 0) > 0 ? `<div class="slip-line"><span>Reimbursement (penggantian biaya)</span><span>${fmtRupiah(s.reimbursement)}</span></div>` : ""}
         </div>
         <div class="slip-col">
           <h4>Potongan</h4>
@@ -816,6 +828,7 @@ function doExport() {
     "Potongan Lain": s.potonganLain,
     "Potongan Kasbon": s.potonganKasbon || 0,
     "Total Potongan": s.totalPotongan,
+    "Reimbursement": s.reimbursement || 0,
     "Gaji Bersih": s.gajiBersih,
   }));
   exportXLSX(`slip-gaji-ringkasan-${period}.xlsx`, rows, "Slip Gaji");
