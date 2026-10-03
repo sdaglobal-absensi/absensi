@@ -42,6 +42,8 @@ function targetTab(n) {
   if (n.type === "field_work_decided") return "dinas-luar";
   if (n.type === "loan_needed") return "kasbon-approval";
   if (n.type === "loan_decided") return "kasbon";
+  if (n.type === "expense_needed") return "reimburse-approval";
+  if (n.type === "expense_decided") return "reimburse";
   if (n.type === "approval_needed") {
     return { leave: "izin-approval", overtime: "lembur-approval", koreksi: "koreksi-approval" }[n.request_type] || null;
   }
