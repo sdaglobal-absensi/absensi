@@ -202,20 +202,24 @@ async function countBelumCheckinHariIni(date) {
     if (holiday) return 0; // hari libur nasional — tidak ada yang "belum absen"
 
     const dow = dayOfWeekFromDateStr(date);
-    const [emps, att, days] = await Promise.all([
+    const [emps, att, days, ovr] = await Promise.all([
       supabase.from("profiles").select("id, schedule_id").eq("is_active", true),
       supabase.from("attendance").select("user_id").eq("date", date),
       supabase.from("work_schedule_days").select("schedule_id, is_working_day").eq("day_of_week", dow),
+      supabase.from("schedule_overrides").select("user_id, schedule_id").eq("work_date", date),
     ]);
     if (emps.error || att.error || days.error) return null;
 
     const attended = new Set((att.data || []).map(r => r.user_id));
+    const ovMap = {};
+    (ovr.error ? [] : ovr.data || []).forEach(o => { ovMap[o.user_id] = o.schedule_id; });
     const workingBySchedule = {};
     (days.data || []).forEach(d => { workingBySchedule[d.schedule_id] = d.is_working_day; });
 
     return (emps.data || []).filter(e => {
       if (attended.has(e.id)) return false;
-      if (e.schedule_id && workingBySchedule[e.schedule_id] === false) return false;
+      const sid = ovMap[e.id] || e.schedule_id; // tukar shift (SQL 013)
+      if (sid && workingBySchedule[sid] === false) return false;
       return true;
     }).length;
   } catch (e) {

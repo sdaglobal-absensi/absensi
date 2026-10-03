@@ -47,6 +47,7 @@ const MENU_LABELS = {
   "kasbon-approval": "Approval & Kelola Kasbon / Pinjaman Karyawan",
   "reimburse-approval": "Approval & Kelola Reimbursement / Klaim Biaya",
   "dokumen-kelola": "Dokumen Karyawan (Arsip & Pengingat Kontrak Habis)",
+  "tukar-shift-approval": "Approval Tukar Shift / Ganti Jadwal",
   "profil-approval": "Approval Perubahan Data",
   "kenaikan-upah": "Kenaikan Upah & Gaji",
   "slip-gaji": "Slip Gaji",
@@ -89,6 +90,7 @@ const PERSONAL_MENU_LABELS = {
   "kasbon": "Pengajuan Kasbon / Pinjaman Pribadi",
   "reimburse": "Pengajuan Reimbursement / Klaim Biaya Pribadi",
   "dokumen": "Dokumen Saya (Lihat & Unggah Dokumen Pribadi)",
+  "tukar-shift": "Pengajuan Tukar Shift / Ganti Jadwal Pribadi",
 };
 
 // Tiga role bisa disetel manual di sini, baris per baris, independen satu

@@ -54,8 +54,10 @@ export function printSlip() {
 // baris itu, bukan tanggal hari ini). Karyawan tanpa jadwal (schedule_id
 // kosong, atau harinya libur/tidak ketemu di Master Jadwal Kerja) pakai
 // acuan default 08:00-17:00, sama seperti dulu.
-function resolveShiftWindow(emp, dow) {
-  const day = emp.schedule_id ? scheduleDaysByKey[`${emp.schedule_id}_${dow}`] : null;
+function resolveShiftWindow(emp, dow, date) {
+  // Tukar shift (SQL 013): pada tanggal tertentu jadwal bisa ditimpa.
+  const sid = (date && overrideByKey[`${emp.id}_${date}`]) || emp.schedule_id;
+  const day = sid ? scheduleDaysByKey[`${sid}_${dow}`] : null;
   if (day && day.is_working_day && day.start_time && day.end_time) {
     return {
       startMin: hmToMinutes(day.start_time.slice(0, 5)),
@@ -118,6 +120,7 @@ let claimByUser = {}; // { [userId]: [{ amount, category, expense_date }] } — 
 let loanByUser = {}; // { [userId]: [{ loan_id, seq, amount, status }] } — cicilan kasbon periode terpilih (SQL 010)
 let allowancesByUser = {}; // { [userId]: [{ nama, nominal }] } — dari Master Tunjangan (aktif saja)
 let penaltyRules = { telat: { weekday: [], saturday: [] }, pulang_cepat: { weekday: [], saturday: [] } };
+let overrideByKey = {}; // { "${user_id}_${tanggal}": schedule_id } — tukar shift disetujui (SQL 013)
 let scheduleDaysByKey = {}; // { "${schedule_id}_${day_of_week}": work_schedule_days row } — lihat resolveShiftWindow()
 let tzByLokasi = {}; // { [nama_lokasi]: timezone } — dari Master Lokasi Kantor, dipakai supaya potongan telat/pulang-cepat dihitung sesuai jam SETEMPAT tiap cabang, bukan satu zona global.
 let currentSlip = null; // slip yang sedang dibuka di modal detail
@@ -266,7 +269,7 @@ async function loadData(p) {
     : payrollPeriodRange(p, cutoffDay);
   const { start, end } = periodRange;
 
-  const [{ data: emp, error: errEmp }, { data: levels }, { data: wages }, { data: salaries }, { data: att }, { data: ot }, { data: adj }, { data: rules }, { data: schedDays }, { data: types }, { data: alw }, { data: slips }, { data: locs }] = await Promise.all([
+  const [{ data: emp, error: errEmp }, { data: levels }, { data: wages }, { data: salaries }, { data: att }, { data: ot }, { data: adj }, { data: rules }, { data: schedDays }, { data: types }, { data: alw }, { data: slips }, { data: locs }, { data: ovr }] = await Promise.all([
     supabase.from("profiles").select("*").eq("is_active", true).order("full_name"),
     supabase.from("job_levels").select("*"),
     supabase.from("wage_history").select("*").lte("effective_date", end).order("effective_date", { ascending: false }),
@@ -280,6 +283,7 @@ async function loadData(p) {
     supabase.from("employee_allowances").select("*").eq("is_active", true),
     periodInfo ? supabase.from("payroll_slips").select("*").eq("period", p) : Promise.resolve({ data: [] }),
     supabase.from("office_locations").select("name, timezone"),
+    supabase.from("schedule_overrides").select("user_id, work_date, schedule_id").gte("work_date", start).lte("work_date", end),
   ]);
 
   if (errEmp) { toast("Gagal memuat data karyawan: " + errEmp.message, "error"); }
@@ -315,6 +319,8 @@ async function loadData(p) {
   // karyawan, bukan jam dinding tetap (lihat komentar di hitungDendaTelat).
   scheduleDaysByKey = {};
   (schedDays || []).forEach(d => { scheduleDaysByKey[`${d.schedule_id}_${d.day_of_week}`] = d; });
+  overrideByKey = {};
+  (ovr || []).forEach(o => { overrideByKey[`${o.user_id}_${o.work_date}`] = o.schedule_id; });
 
   tzByLokasi = {};
   (locs || []).forEach(l => { tzByLokasi[l.name] = l.timezone; });
@@ -486,7 +492,7 @@ function computeSlip(emp) {
   const tz = tzByLokasi[emp.lokasi_kerja]; // zona waktu cabang tempat karyawan ini ditempatkan
   for (const a of attRows) {
     const dow = dayOfWeekFromDateStr(a.date);
-    const shift = resolveShiftWindow(emp, dow);
+    const shift = resolveShiftWindow(emp, dow, a.date);
     const telat = hitungDendaTelat(a.check_in, dow, dendaDasar, tz, shift);
     if (telat) dendaKeterlambatan += telat.amount;
     const cepat = hitungDendaPulangCepat(a.check_out, dow, dendaDasar, tz, shift);

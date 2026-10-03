@@ -124,8 +124,15 @@ async function load(user, tz) {
     .select("schedule_id, effective_from").eq("user_id", user.id).order("effective_from", { ascending: true });
   const history = !histR.error && histR.data?.length
     ? histR.data
-    : (user.schedule_id ? [{ schedule_id: user.schedule_id, effective_from: "1900-01-01" }] : []);
+    : ((user.base_schedule_id ?? user.schedule_id) ? [{ schedule_id: user.base_schedule_id ?? user.schedule_id, effective_from: "1900-01-01" }] : []);
+
+  // Tukar shift (SQL 013): jadwal penimpa per tanggal. Tabel belum ada -> diabaikan.
+  const ovR = await supabase.from("schedule_overrides")
+    .select("work_date, schedule_id").eq("user_id", user.id).gte("work_date", start).lte("work_date", end);
+  const overrides = ovR.error ? {} : Object.fromEntries((ovR.data || []).map(o => [o.work_date, o.schedule_id]));
+
   const scheduleIdOn = date => {
+    if (overrides[date]) return overrides[date];
     let id = null;
     for (const h of history) { if (h.effective_from <= date) id = h.schedule_id; else break; }
     return id;
@@ -134,6 +141,7 @@ async function load(user, tz) {
   const usedIds = new Set();
   usedIds.add(scheduleIdOn(start));
   history.forEach(h => { if (h.effective_from > start && h.effective_from <= end) usedIds.add(h.schedule_id); });
+  Object.values(overrides).forEach(id => usedIds.add(id));
   const idList = [...usedIds].filter(Boolean);
 
   const [attR, holR, leaveR, korR, schedR, nameR, rules] = await Promise.all([

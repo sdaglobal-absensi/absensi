@@ -214,7 +214,7 @@ async function loadBelumAbsen(date) {
 
   const dow = dayOfWeekFromDateStr(date);
 
-  const [{ data: employees }, { data: attendanceRows }, { data: scheduleDays }, { data: leaves }, specialRules] = await Promise.all([
+  const [{ data: employees }, { data: attendanceRows }, { data: scheduleDays }, { data: leaves }, specialRules, { data: ovRows }] = await Promise.all([
     supabase.from("profiles").select("id, full_name, department, employee_code, photo_url, schedule_id").eq("is_active", true).order("full_name"),
     supabase.from("attendance").select("user_id").eq("date", date),
     supabase.from("work_schedule_days").select("schedule_id, is_working_day").eq("day_of_week", dow),
@@ -224,7 +224,10 @@ async function loadBelumAbsen(date) {
       .lte("start_date", date)
       .gte("end_date", date),
     fetchSpecialLeaveRules(),
+    supabase.from("schedule_overrides").select("user_id, schedule_id").eq("work_date", date), // tukar shift (SQL 013)
   ]);
+  const ovMap = {};
+  (ovRows || []).forEach(o => { ovMap[o.user_id] = o.schedule_id; });
 
   const attendedIds = new Set((attendanceRows || []).map(r => r.user_id));
   const workingDayBySchedule = {};
@@ -241,7 +244,8 @@ async function loadBelumAbsen(date) {
   const rows = (employees || [])
     .filter(emp => {
       if (attendedIds.has(emp.id)) return false; // sudah absen
-      if (emp.schedule_id && workingDayBySchedule[emp.schedule_id] === false) return false; // libur sesuai jadwalnya sendiri
+      const sid = ovMap[emp.id] || emp.schedule_id;
+      if (sid && workingDayBySchedule[sid] === false) return false; // libur sesuai jadwalnya sendiri
       return true;
     })
     .map(emp => ({ emp, leave: leaveByUser[emp.id] || null }));
@@ -331,7 +335,7 @@ async function loadLupaCheckin() {
   const start = addDaysISO(today, -LUPA_CHECKIN_DAYS);
   const end = addDaysISO(today, -1);
 
-  const [emps, att, sched, hol, leaves, koreksi] = await Promise.all([
+  const [emps, att, sched, hol, leaves, koreksi, ovr] = await Promise.all([
     supabase.from("profiles")
       .select("id, full_name, department, employee_code, photo_url, schedule_id, join_date, resign_date")
       .eq("is_active", true).not("schedule_id", "is", null),
@@ -342,7 +346,10 @@ async function loadLupaCheckin() {
       .in("status", ["pending", "approved"]).lte("start_date", end).gte("end_date", start),
     supabase.from("attendance_correction_requests").select("user_id, attendance_date")
       .eq("correction_type", "masuk").eq("status", "pending").gte("attendance_date", start).lte("attendance_date", end),
+    supabase.from("schedule_overrides").select("user_id, work_date, schedule_id").gte("work_date", start).lte("work_date", end), // tukar shift (SQL 013)
   ]);
+  const ovByKey = {};
+  (ovr.error ? [] : ovr.data || []).forEach(o => { ovByKey[`${o.user_id}|${o.work_date}`] = o.schedule_id; });
 
   // Data inti gagal dimuat -> jangan tampilkan apa pun (lebih baik kosong daripada menyesatkan).
   if (emps.error || att.error || sched.error || hol.error) { el.innerHTML = ""; statsState.lupaCheckin = null; renderStats(); return; }
@@ -362,7 +369,8 @@ async function loadLupaCheckin() {
     if (holidays.has(date)) continue;
     const dow = dayOfWeekFromDateStr(date);
     for (const emp of emps.data || []) {
-      if (working[`${emp.schedule_id}|${dow}`] !== true) continue; // libur / jadwal hari itu tidak terdaftar
+      const sid = ovByKey[`${emp.id}|${date}`] || emp.schedule_id;
+      if (working[`${sid}|${dow}`] !== true) continue; // libur / jadwal hari itu tidak terdaftar
       if (emp.join_date && date < emp.join_date) continue;
       if (emp.resign_date && date > emp.resign_date) continue;
       if (checkedIn.has(`${emp.id}|${date}`)) continue;
