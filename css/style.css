@@ -2125,5 +2125,6 @@ img.photo-missing { visibility: hidden; }
 .pa-section h4 { margin: 0 0 8px; font-size: 0.92rem; }
 .pa-inline { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
 .pa-inline label { margin-bottom: 0; }
-.pa-feat-grid { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; align-items: center; font-size: 0.85rem; }
+.pa-feat-grid { display: grid; grid-template-columns: 1fr auto auto; gap: 6px 12px; align-items: center; font-size: 0.85rem; }
+.pa-feat-st { white-space: nowrap; justify-self: start; }
 .pa-feat-grid select { padding: 6px 8px; font-size: 0.82rem; }
