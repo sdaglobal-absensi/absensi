@@ -165,6 +165,7 @@ const MENUS = {
     { id: "struktur-organisasi", label: "Struktur Organisasi", icon: "layers", section: "Organisasi" },
     { id: "pengumuman-kelola", label: "Kelola Pengumuman", icon: "bell", section: "Organisasi" },
     { id: "dokumen-kelola", label: "Dokumen Karyawan", icon: "file", section: "Organisasi" },
+    { id: "analitik-hr", label: "Analitik HR", icon: "chart", section: "Approval & Monitoring" },
     { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock", section: "Approval & Monitoring" },
     { id: "izin-approval", label: "Approval Izin", icon: "check", section: "Approval & Monitoring" },
     { id: "lembur-approval", label: "Approval Lembur", icon: "check", section: "Approval & Monitoring" },
