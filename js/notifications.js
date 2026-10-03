@@ -40,6 +40,8 @@ function targetTab(n) {
   if (n.type === "announcement") return "pengumuman";
   if (n.type === "field_work_needed") return "dinas-luar-approval";
   if (n.type === "field_work_decided") return "dinas-luar";
+  if (n.type === "loan_needed") return "kasbon-approval";
+  if (n.type === "loan_decided") return "kasbon";
   if (n.type === "approval_needed") {
     return { leave: "izin-approval", overtime: "lembur-approval", koreksi: "koreksi-approval" }[n.request_type] || null;
   }
