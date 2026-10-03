@@ -140,6 +140,7 @@ const EMPLOYEE_SELF_MENUS = [
   { id: "reimburse", label: "Reimbursement", icon: "file" },
   { id: "dokumen", label: "Dokumen Saya", icon: "file" },
   { id: "tukar-shift", label: "Tukar Shift", icon: "clock" },
+  { id: "kpi-saya", label: "Penilaian Kinerja Saya", icon: "chart" },
 ];
 
 // Dashboard/beranda — selalu tampil untuk SEMUA role sebagai halaman pertama
@@ -166,6 +167,7 @@ const MENUS = {
     { id: "pengumuman-kelola", label: "Kelola Pengumuman", icon: "bell", section: "Organisasi" },
     { id: "dokumen-kelola", label: "Dokumen Karyawan", icon: "file", section: "Organisasi" },
     { id: "onboarding-kelola", label: "Onboarding & Offboarding", icon: "check", section: "Organisasi" },
+    { id: "kpi-kelola", label: "Penilaian Kinerja (KPI)", icon: "chart", section: "Organisasi" },
     { id: "analitik-hr", label: "Analitik HR", icon: "chart", section: "Approval & Monitoring" },
     { id: "absensi-monitor", label: "Monitor Absensi", icon: "clock", section: "Approval & Monitoring" },
     { id: "izin-approval", label: "Approval Izin", icon: "check", section: "Approval & Monitoring" },
@@ -176,6 +178,7 @@ const MENUS = {
     { id: "reimburse-approval", label: "Approval Reimbursement", icon: "check", section: "Approval & Monitoring" },
     { id: "tukar-shift-approval", label: "Approval Tukar Shift", icon: "check", section: "Approval & Monitoring" },
     { id: "profil-approval", label: "Approval Perubahan Data", icon: "check", section: "Approval & Monitoring" },
+    { id: "kpi-nilai", label: "Penilaian Tim", icon: "check", section: "Approval & Monitoring" },
     { id: "kenaikan-upah", label: "Kenaikan Upah & Gaji", icon: "chart", section: "Payroll & Laporan" },
     { id: "slip-gaji", label: "Slip Gaji", icon: "file", section: "Payroll & Laporan" },
     { id: "invoice-outsourcing", label: "Invoice Outsourcing", icon: "file", section: "Payroll & Laporan" },
