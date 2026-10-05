@@ -4,6 +4,10 @@ Aplikasi absensi karyawan berbasis web (vanilla JS + Supabase). Absensi memakai
 verifikasi **GPS lokasi** + **foto selfie** saat check-in/check-out. Ada 5 role:
 **Super Admin**, **Super Admin HR**, **Admin HR**, **Admin**, dan **Karyawan**.
 
+> **v1.1.0 — hardening:** lihat [CHANGELOG.md](CHANGELOG.md) dan [docs/DEPLOY.md](docs/DEPLOY.md).
+> Migrasi baru `018`–`020` (absensi dinilai server, privasi/retensi, log error) dan format Supabase CLI
+> di `supabase/migrations/` (`./scripts/build-migrations.sh`). Library kini di `vendor/` (bukan CDN).
+
 > ## ⚠️ Baca dulu: urutan SQL & file lama (multi-tenant)
 >
 > Proyek ini sudah **multi-tenant**. Bagian "Setup" di bawah menjelaskan instalasi
@@ -32,7 +36,8 @@ verifikasi **GPS lokasi** + **foto selfie** saat check-in/check-out. Ada 5 role:
 > 3. Migrasi multi-tenant, berurutan dan **sesudah** semua di atas:
 >    `001` → `002` → `002b` → `003` → `004` → `005` → `006` → `007` → `008` → … → `016` → `017`.
 >    File `*z_rollback_*` hanya untuk membatalkan tahap, jangan dijalankan rutin.
-> 4. Deploy Edge Function di `supabase/functions/` (perintah deploy ada di komentar atas
+> 4. Jalankan juga `018` → `019` → `020` (setelah `017`).
+5. Deploy Edge Function di `supabase/functions/` (perintah deploy ada di komentar atas
 >    tiap `index.ts`; mis. `login-pin` memakai `--no-verify-jwt`), jadwalkan cron untuk
 >    `checkout-reminder`, lalu aktifkan CAPTCHA di Supabase (Authentication →
 >    Attack Protection) dan isi site key Turnstile di `js/captcha.js`.
@@ -412,10 +417,11 @@ Supabase).
   ke Admin HR/Super Admin/Super Admin HR — ditegakkan di RLS, bukan cuma di
   form. Kalaupun menu Data Karyawan diizinkan, Admin HR cuma bisa membuat/edit
   akun ber-role Karyawan.
-- Validasi radius GPS saat ini dilakukan di sisi klien untuk kenyamanan UX
-  (tetap mengirim absen meski di luar radius, ditandai untuk ditinjau admin).
-  Untuk validasi yang tidak bisa dimanipulasi user, pertimbangkan menambahkan
-  **Supabase Edge Function** yang memvalidasi jarak sebelum insert.
+- Sejak migrasi `018`, jam absen, jarak ke kantor, dan status telat dihitung di
+  **server** (trigger `tg_attendance_server_guard`); nilai dari browser ditimpa. Absen di
+  luar radius tetap diterima dan ditandai untuk ditinjau admin. Koordinat GPS itu sendiri
+  tetap berasal dari perangkat (bisa dipalsukan dengan aplikasi mock-location); akurasinya
+  kini disimpan untuk ditinjau.
 - Foto disimpan di storage bucket publik `attendance-photos` supaya mudah
   ditampilkan admin; jika perlu lebih privat, ubah bucket jadi private dan
   gunakan signed URL.

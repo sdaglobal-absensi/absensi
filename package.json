@@ -1,0 +1,20 @@
+{
+  "name": "kerjora-absensi",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "KERJORA — aplikasi absensi & HR berbasis Supabase",
+  "scripts": {
+    "lint": "eslint js sw.js tests",
+    "test": "vitest run",
+    "check": "npm run lint && npm test",
+    "serve": "npx serve ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-no-unsanitized": "^4.1.0",
+    "globals": "^15.0.0",
+    "vitest": "^2.1.0"
+  }
+}
