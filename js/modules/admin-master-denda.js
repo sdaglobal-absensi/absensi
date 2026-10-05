@@ -1,6 +1,7 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, fmtRupiah, confirmDialog, escapeHtml } from "../core.js";
 
+import { escapeHtml as escMsg } from "../core.js";
 // =======================================================================
 // MASTER DENDA TERLAMBAT & PULANG CEPAT
 // Tabel jam bertingkat yang dulu "hardcode" di kode Slip Gaji, sekarang
@@ -121,7 +122,7 @@ async function loadGroups(canEdit) {
   el.innerHTML = `<p class="muted">Memuat…</p>`;
 
   const { data, error } = await supabase.from("late_penalty_rules").select("*").order("menit_offset", { ascending: true });
-  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
+  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${escMsg(error.message)}</p>`; return; }
   rules = data || [];
 
   el.innerHTML = GROUPS.map(g => renderGroup(g, canEdit)).join("");

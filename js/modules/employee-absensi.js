@@ -741,6 +741,7 @@ async function submitAttendance(user, activeRow, tz) {
         check_in: now.toISOString(),
         check_in_lat: pos?.lat ?? null,
         check_in_lng: pos?.lng ?? null,
+        check_in_accuracy_m: pos?.accuracy != null ? Math.round(pos.accuracy) : null,
         check_in_distance_m: office ? Math.round(office.distance) : null,
         check_in_photo_url: photoUrl,
         check_in_status: status,
@@ -757,6 +758,7 @@ async function submitAttendance(user, activeRow, tz) {
         check_out: now.toISOString(),
         check_out_lat: pos?.lat ?? null,
         check_out_lng: pos?.lng ?? null,
+        check_out_accuracy_m: pos?.accuracy != null ? Math.round(pos.accuracy) : null,
         check_out_distance_m: office ? Math.round(office.distance) : null,
         check_out_photo_url: photoUrl,
         notes: "Check-out tanpa check-in (batas check-in lewat). Jam masuk perlu Koreksi Absen.",
@@ -771,6 +773,7 @@ async function submitAttendance(user, activeRow, tz) {
         check_out: now.toISOString(),
         check_out_lat: pos?.lat ?? null,
         check_out_lng: pos?.lng ?? null,
+        check_out_accuracy_m: pos?.accuracy != null ? Math.round(pos.accuracy) : null,
         check_out_distance_m: office ? Math.round(office.distance) : null,
         check_out_photo_url: photoUrl,
       }).eq("id", activeRow.id);

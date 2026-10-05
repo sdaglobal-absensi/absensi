@@ -2,6 +2,7 @@ import { supabase } from "../supabaseClient.js";
 import { toast, invalidatePermissionCache, invalidatePayrollSettingsCache, payrollPeriodRange, fmtDate, getPlanInfo } from "../core.js";
 import { ICON_SEARCH } from "../approvalUI.js";
 
+import { escapeHtml as escMsg } from "../core.js";
 // =======================================================================
 // PENGATURAN SISTEM — dibuka default oleh Super Admin (satu-satunya role
 // "root"), tapi sekarang BISA didelegasikan ke Super Admin HR (opsional,
@@ -209,7 +210,7 @@ const normText = s => String(s ?? "").toLowerCase().normalize("NFD").replace(/[\
 async function loadPermissions(user) {
   const el = document.getElementById("perm-list");
   const { data, error } = await supabase.from("role_permissions").select("*");
-  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
+  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${escMsg(error.message)}</p>`; return; }
 
   // enabledMap["admin_hr:absensi"] = true/false, dst — gampang dicari per baris/kolom.
   permState.enabledMap = {};

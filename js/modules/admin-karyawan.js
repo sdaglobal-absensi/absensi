@@ -4,6 +4,7 @@ import { esc } from "../approvalHelper.js";
 import { toast, roleLabel, jenisHubunganKerjaLabel, searchSelectHtml, wireSearchSelect, lamaBekerja, isSuper, avatarHTML } from "../core.js";
 import { downloadKaryawanTemplate, exportKaryawan, importKaryawanFile } from "./karyawan-excel.js";
 import { hasXLSX, pickFileThen } from "../excelIO.js";
+import { escapeHtml as escMsg } from "../core.js";
 import {
   personalFieldsHtml, familySectionHtml, wireFamilyForm, fillBiodataForm,
   readBiodataForm, readChildren, loadChildren, saveChildren, fmtTanggal,
@@ -346,7 +347,7 @@ let karyawanCanEdit = false;
 async function loadTable(canEdit, isFullSuperAdmin) {
   const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
   const el = document.getElementById("karyawan-table");
-  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
+  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${escMsg(error.message)}</p>`; return; }
 
   karyawanRows = data || [];
   karyawanCanEdit = canEdit;

@@ -1,6 +1,7 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, roleLabel, confirmDialog, escapeHtml } from "../core.js";
 
+import { escapeHtml as escMsg } from "../core.js";
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
 export async function render(container, user) {
@@ -235,7 +236,7 @@ function renderEmployeeSearchResults(query) {
 async function loadList(canEdit) {
   const { data: schedules, error } = await supabase.from("work_schedules").select("*").order("name");
   const el = document.getElementById("schedule-list");
-  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
+  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${escMsg(error.message)}</p>`; return; }
   if (!schedules.length) { el.innerHTML = `<p class="muted">Belum ada jadwal kerja.</p>`; return; }
 
   const { data: days } = await supabase.from("work_schedule_days").select("*");

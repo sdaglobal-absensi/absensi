@@ -1,6 +1,7 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, fmtRupiah } from "../core.js";
 
+import { escapeHtml as escMsg } from "../core.js";
 export async function render(container, user) {
   const canEdit = true; // siapa pun yang sampai ke sini sudah lolos guard permission menu ini
 
@@ -94,7 +95,7 @@ async function loadTable(canEdit) {
     .order("grade", { ascending: true });
 
   const el = document.getElementById("level-table");
-  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
+  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${escMsg(error.message)}</p>`; return; }
   if (!data.length) { el.innerHTML = `<p class="muted">Belum ada data master level.</p>`; return; }
 
   const kv = (label, value) => `<div class="kv-row"><span>${label}</span><b>${value}</b></div>`;

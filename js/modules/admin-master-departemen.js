@@ -2,6 +2,7 @@ import { supabase } from "../supabaseClient.js";
 import { toast, confirmDialog, escapeHtml } from "../core.js";
 import { hasXLSX, readFirstSheet, cellText, writeWorkbook, widthsFor, pickFileThen } from "../excelIO.js";
 
+import { escapeHtml as escMsg } from "../core.js";
 // Kolom Excel: Departemen, Bagian, Jabatan, Status (Aktif/Nonaktif).
 // Baris yang kombinasi Departemen+Bagian+Jabatan-nya sudah ada tidak dibuat
 // ganda; kolom Status (kalau diisi) hanya dipakai untuk mengubah aktif/nonaktif.
@@ -78,7 +79,7 @@ async function loadTable(canEdit) {
 
   currentRows = data || [];
   const el = document.getElementById("dept-table");
-  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
+  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${escMsg(error.message)}</p>`; return; }
   if (!data.length) { el.innerHTML = `<p class="muted">Belum ada data master departemen.</p>`; return; }
 
   el.innerHTML = `

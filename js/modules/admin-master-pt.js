@@ -1,6 +1,7 @@
 import { supabase } from "../supabaseClient.js";
 import { toast } from "../core.js";
 
+import { escapeHtml as escMsg } from "../core.js";
 // =======================================================================
 // MASTER PT / VENDOR — daftar badan hukum yang dipilih di kolom "Unit / PT"
 // pada Data Karyawan (jadi tidak perlu diketik manual lagi):
@@ -81,7 +82,7 @@ async function loadTable() {
     supabase.from("master_pt").select("*").order("jenis").order("nama"),
     supabase.from("profiles").select("unit_pt").eq("is_active", true).not("unit_pt", "is", null),
   ]);
-  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
+  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${escMsg(error.message)}</p>`; return; }
   rows = data || [];
   if (!rows.length) { el.innerHTML = `<p class="muted">Belum ada data. Klik "+ Tambah PT / Vendor".</p>`; return; }
 

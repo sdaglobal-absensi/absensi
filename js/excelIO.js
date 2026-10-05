@@ -44,7 +44,7 @@ export function cellDateISO(v) {
   const s = String(v).trim();
   let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (m) return validDate(+m[1], +m[2], +m[3]);
-  m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
   if (m) return validDate(+m[3], +m[2], +m[1]);
   return null;
 }

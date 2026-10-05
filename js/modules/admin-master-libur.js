@@ -1,6 +1,7 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, fmtDate, escapeHtml } from "../core.js";
 
+import { escapeHtml as escMsg } from "../core.js";
 export async function render(container, user) {
   const canEdit = true; // siapa pun yang sampai ke sini sudah lolos guard permission menu ini
 
@@ -51,7 +52,7 @@ export async function render(container, user) {
 async function loadTable(canEdit) {
   const { data, error } = await supabase.from("holidays").select("*").order("date", { ascending: true });
   const el = document.getElementById("holiday-table");
-  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
+  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${escMsg(error.message)}</p>`; return; }
   if (!data.length) { el.innerHTML = `<p class="muted">Belum ada data hari libur.</p>`; return; }
 
   el.innerHTML = `

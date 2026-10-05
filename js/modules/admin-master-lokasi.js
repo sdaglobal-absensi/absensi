@@ -1,6 +1,7 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, getPosition, TIMEZONE_OPTIONS, confirmDialog, escapeHtml } from "../core.js";
 
+import { escapeHtml as escMsg } from "../core.js";
 export async function render(container, user) {
   const canEdit = true; // siapa pun yang sampai ke sini sudah lolos guard permission menu ini
 
@@ -89,7 +90,7 @@ async function useCurrentLocation() {
 async function loadTable() {
   const { data, error } = await supabase.from("office_locations").select("*").order("name");
   const el = document.getElementById("lokasi-table");
-  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${error.message}</p>`; return; }
+  if (error) { el.innerHTML = `<p class="muted">Gagal memuat data: ${escMsg(error.message)}</p>`; return; }
   if (!data.length) { el.innerHTML = `<p class="muted">Belum ada data lokasi kantor.</p>`; return; }
 
   el.innerHTML = `
