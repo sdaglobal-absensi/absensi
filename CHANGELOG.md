@@ -5,7 +5,7 @@
 - Banner "lupa check-out" tetap berfungsi: popup Koreksi Absen terbuka otomatis dengan tanggal & jenis terisi.
 - Tombol pengajuan memakai nama halamannya, seperti Kasbon: **+ Ajukan Izin**, **+ Ajukan Lembur**, **+ Ajukan Koreksi Absen**, **+ Ajukan Kasbon**, **+ Ajukan Dinas Luar**. Nama menu dan judul halaman tidak diubah. Teks daftar kosong seragam "Belum ada pengajuan."
 - Pesan validasi form di popup berbahasa Indonesia ("Kolom ini wajib diisi.").
-- Tes jsdom untuk popup (21 tes total).
+- Layar persetujuan privasi: tombol **Tolak & Keluar** (logout, tanpa mencatat persetujuan), keterangan konsekuensi menolak, dan kotak centang sejajar dengan teks. Tes jsdom untuk popup dan layar privasi (26 tes total).
 
 ## 1.1.0 — 2026-10-05 (hardening & profesionalisasi)
 
