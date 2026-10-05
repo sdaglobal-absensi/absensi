@@ -188,6 +188,22 @@ if ("serviceWorker" in navigator) {
     const caps = {};
     const cap = name => (caps[name] ||= setupCaptcha(document.getElementById("captcha-" + name)));
     const captchaMsg = err => /captcha/i.test(String(err?.message)) ? "Verifikasi CAPTCHA gagal. Coba lagi." : null;
+
+    // Pesan login email yang spesifik. Email/password salah tetap umum (tidak membocorkan
+    // email mana yang terdaftar); Supabase hanya mengirim email_not_confirmed setelah password benar.
+    const loginErrorMsg = err => {
+      const code = String(err?.code || "");
+      const msg = String(err?.message || "");
+      const status = Number(err?.status || 0);
+      if (/captcha/i.test(msg) || code === "captcha_failed") return "Verifikasi CAPTCHA gagal. Coba lagi.";
+      if (code === "email_not_confirmed" || /email not confirmed/i.test(msg)) return "Email belum dikonfirmasi. Buka kotak masuk (cek juga folder spam) dan klik tautan konfirmasi, lalu masuk lagi.";
+      if (status === 429 || /rate_limit/.test(code) || /rate limit/i.test(msg)) return "Terlalu banyak percobaan. Tunggu beberapa menit lalu coba lagi.";
+      if (code === "user_banned" || /banned/i.test(msg)) return "Akun ini dinonaktifkan. Hubungi admin.";
+      if (err?.name === "AuthRetryableFetchError" || /failed to fetch|networkerror|network request/i.test(msg)) return "Tidak bisa terhubung ke server. Periksa koneksi internet lalu coba lagi.";
+      if (status >= 500) return "Layanan sedang bermasalah. Coba lagi sebentar lagi.";
+      if (code === "invalid_credentials" || /invalid login credentials/i.test(msg)) return "Email atau password salah.";
+      return "Gagal masuk. Coba lagi, atau hubungi admin bila terus berulang.";
+    };
     cap("login");
 
     // toggle antara form login dan form lupa password
@@ -270,7 +286,7 @@ if ("serviceWorker" in navigator) {
         await login(fd.get("email"), fd.get("password"), token);
         window.location.href = "app.html";
       } catch (err) {
-        errEl.textContent = captchaMsg(err) || "Email atau password salah.";
+        errEl.textContent = loginErrorMsg(err);
         c.reset();
       }
     });

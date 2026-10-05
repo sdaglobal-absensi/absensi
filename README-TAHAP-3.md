@@ -61,7 +61,7 @@ Jalankan `003z_rollback_tahap3.sql`, nyalakan lagi **Public bucket**, lalu uploa
 - Ekspor hanya berisi data yang **boleh dibaca role pengunduh** (aturan RLS yang sama dengan aplikasi). Untuk backup lengkap, gunakan akun Super Admin.
 - Audit log hanya mencatat aksi **user yang login**. Aksi sistem (membuat usaha baru, migrasi di SQL Editor, service role) tidak dicatat supaya log tidak penuh derau; Edge Function mencatat sendiri lewat `audit_write()`. Check-in/out harian sengaja tidak dicatat (hanya penghapusan absensi).
 - Penghapusan baris audit hanya bisa lewat SQL Editor (pemeliharaan manual).
-- **Sebelum menyalakan `public_mode`**, masih perlu: (1) aktifkan **CAPTCHA** (Authentication → Attack Protection), (2) uji dua usaha sungguhan (data tidak bocor, foto tidak saling terbaca, pengingat jalan untuk keduanya), (3) periksa email konfirmasi terkirim. `public_mode` baru boleh `true` setelah langkah 1–7 di atas lolos.
+- **Sebelum menyalakan `public_mode`**, masih perlu: (1) CAPTCHA: widget sudah ada di halaman login/daftar, pastikan juga aktif di Supabase (Authentication → Attack Protection), (2) uji dua usaha sungguhan (data tidak bocor, foto tidak saling terbaca, pengingat jalan untuk keduanya), (3) periksa email konfirmasi terkirim. `public_mode` baru boleh `true` setelah langkah 1–7 di atas lolos.
 
 ## Yang sudah diuji / belum
 

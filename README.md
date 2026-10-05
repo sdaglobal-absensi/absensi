@@ -4,6 +4,39 @@ Aplikasi absensi karyawan berbasis web (vanilla JS + Supabase). Absensi memakai
 verifikasi **GPS lokasi** + **foto selfie** saat check-in/check-out. Ada 5 role:
 **Super Admin**, **Super Admin HR**, **Admin HR**, **Admin**, dan **Karyawan**.
 
+> ## ⚠️ Baca dulu: urutan SQL & file lama (multi-tenant)
+>
+> Proyek ini sudah **multi-tenant**. Bagian "Setup" di bawah menjelaskan instalasi
+> awal (satu perusahaan); untuk multi-tenant ikuti juga `README-MULTI-TENANT.md`
+> dan README-TAHAP-2…5.
+>
+> **Database yang SUDAH berjalan (mis. produksi):** jangan jalankan ulang
+> `supabase-*.sql`. File-file itu tidak sadar-tenant; menjalankannya setelah
+> `001_multi_tenant.sql` menimpa fungsi (mis. `decide_approval`) dengan versi lama.
+> Cukup jalankan migrasi bernomor yang belum pernah dijalankan.
+>
+> **Instalasi baru, urutan yang disarankan** (diturunkan dari catatan "Butuh/SETELAH"
+> di header tiap file; belum diuji ulang dari database kosong):
+>
+> 1. File dasar & lama, berurutan:
+>    `supabase-schema.sql` → `supabase-org-approval.sql` → `supabase-role-admin-approval.sql`
+>    → `supabase-cuti-khusus.sql` → `supabase-koreksi-absen.sql`
+>    → `supabase-fix-decide-approval-merge.sql` → `supabase-notifikasi.sql`
+>    (`supabase-notifikasi.sql` harus paling akhir dari kelompok approval karena memuat
+>    versi gabungan `decide_approval`).
+> 2. Modul lain, boleh setelah `supabase-schema.sql`:
+>    `supabase-jenis-hubungan-kerja.sql` → `supabase-master-pt.sql` →
+>    `supabase-invoice-outsourcing.sql` → `supabase-invoice-area.sql`;
+>    serta `supabase-revisi-pengajuan.sql`, `supabase-riwayat-jadwal.sql`,
+>    `supabase-push-notifikasi.sql`, `supabase-absensi-monitor-leave-select.sql`.
+> 3. Migrasi multi-tenant, berurutan dan **sesudah** semua di atas:
+>    `001` → `002` → `002b` → `003` → `004` → `005` → `006` → `007` → `008` → … → `016` → `017`.
+>    File `*z_rollback_*` hanya untuk membatalkan tahap, jangan dijalankan rutin.
+> 4. Deploy Edge Function di `supabase/functions/` (perintah deploy ada di komentar atas
+>    tiap `index.ts`; mis. `login-pin` memakai `--no-verify-jwt`), jadwalkan cron untuk
+>    `checkout-reminder`, lalu aktifkan CAPTCHA di Supabase (Authentication →
+>    Attack Protection) dan isi site key Turnstile di `js/captcha.js`.
+
 ## Role
 
 | Role | Akses |

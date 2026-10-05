@@ -317,21 +317,48 @@ function closeModal() {
   document.getElementById("modal-schedule").classList.add("hidden");
 }
 
+// Hitung baris lain yang ikut terdampak bila jadwal dihapus. Gagal menghitung
+// (mis. tabel belum ada) dianggap 0 supaya penghapusan tidak terblokir.
+async function countImpact(id) {
+  const count = async (table, filter) => {
+    try {
+      let q = supabase.from(table).select("id", { count: "exact", head: true });
+      q = filter(q);
+      const { count: c, error } = await q;
+      return error ? 0 : (c || 0);
+    } catch { return 0; }
+  };
+  const [overrides, swaps, history] = await Promise.all([
+    count("schedule_overrides", q => q.eq("schedule_id", id)),
+    count("shift_swaps", q => q.or(`requester_schedule_id.eq.${id},partner_schedule_id.eq.${id}`)),
+    count("employee_schedule_history", q => q.eq("schedule_id", id)),
+  ]);
+  return { overrides, swaps, history };
+}
+
 async function onDeleteSchedule() {
   const id = document.querySelector('#form-schedule input[name="id"]').value;
   if (!id) return;
   const affected = allEmployees.filter(e => e.schedule_id === id).length;
-  const warning = affected
-    ? `${affected} karyawan yang masih memakainya akan kehilangan jadwal kerja (tidak akan ditandai telat/tepat waktu) sampai diberi jadwal baru.`
-    : "Tindakan ini tidak bisa dibatalkan.";
-  const ok = await confirmDialog({ title: "Hapus jadwal ini?", message: warning, confirmLabel: "Hapus", confirmClass: "btn-danger" });
+  const impact = await countImpact(id);
+
+  const lines = [];
+  if (affected) lines.push(`${affected} karyawan yang masih memakainya akan kehilangan jadwal kerja (tidak akan ditandai telat/tepat waktu) sampai diberi jadwal baru.`);
+  if (impact.overrides) lines.push(`${impact.overrides} penggantian jadwal hasil tukar shift (termasuk milik karyawan lain yang menukar ke jadwal ini) akan ikut terhapus; pada tanggal itu mereka kembali ke jadwal dasarnya dan slip gaji periode terkait bisa berubah bila dihitung ulang.`);
+  if (impact.swaps) lines.push(`${impact.swaps} pengajuan tukar shift akan kehilangan keterangan jadwalnya.`);
+  if (impact.history) lines.push(`${impact.history} baris riwayat jadwal karyawan akan tercatat sebagai "tanpa jadwal".`);
+  lines.push("Tindakan ini tidak bisa dibatalkan.");
+
+  const ok = await confirmDialog({ title: "Hapus jadwal ini?", message: lines.join("\n\n"), confirmLabel: "Hapus", confirmClass: "btn-danger" });
   if (!ok) return;
 
   try {
     // Lepas dulu karyawan yang masih memakainya, baru hapus hari kerja &
     // jadwalnya sendiri — supaya tidak ada referensi yang menggantung.
-    await supabase.from("profiles").update({ schedule_id: null }).eq("schedule_id", id);
-    await supabase.from("work_schedule_days").delete().eq("schedule_id", id);
+    const rel = await supabase.from("profiles").update({ schedule_id: null }).eq("schedule_id", id);
+    if (rel.error) throw rel.error;
+    const dd = await supabase.from("work_schedule_days").delete().eq("schedule_id", id);
+    if (dd.error) throw dd.error;
     const { error } = await supabase.from("work_schedules").delete().eq("id", id);
     if (error) throw error;
 
@@ -381,9 +408,10 @@ async function onSubmit(e) {
       };
     });
 
-    // Ganti seluruh baris hari untuk jadwal ini (lebih sederhana & aman daripada upsert parsial)
-    await supabase.from("work_schedule_days").delete().eq("schedule_id", scheduleId);
-    const { error: dayError } = await supabase.from("work_schedule_days").insert(dayRows);
+    // Satu pernyataan upsert (7 hari selalu dikirim lengkap, unik per jadwal+hari):
+    // gagal = tidak ada yang berubah, jadi jadwal tidak pernah tersisa tanpa hari kerja.
+    const { error: dayError } = await supabase.from("work_schedule_days")
+      .upsert(dayRows, { onConflict: "schedule_id,day_of_week" });
     if (dayError) throw dayError;
 
     // Terapkan pilihan karyawan: yang ada di assignedIds -> dikaitkan ke

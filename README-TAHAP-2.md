@@ -55,7 +55,7 @@
 - Penguncian bersifat **per akun**: seseorang yang tahu kode usaha + kode karyawan bisa sengaja mengunci akun itu 15 menit (admin bisa buka dengan Reset PIN). Itu harga untuk menahan tebak-tebakan PIN 6 digit.
 - Akun PIN tidak punya "Lupa password"; pemulihan = admin Reset PIN. Karyawan belum bisa ganti PIN sendiri.
 - Import Excel masih mensyaratkan kolom Email (karyawan tanpa email: tambah satu per satu).
-- Belum ada CAPTCHA di `daftar.html`. **Aktifkan CAPTCHA Supabase (Authentication → Attack Protection) sebelum `public_mode` dinyalakan** di Tahap 3.
+- CAPTCHA (Cloudflare Turnstile) sudah terpasang di `daftar.html` dan `index.html`. **Pastikan CAPTCHA juga aktif di Supabase (Authentication → Attack Protection) sebelum `public_mode` dinyalakan** di Tahap 3.
 - Aturan Tahap 1 tetap berlaku: jangan nyalakan `public_mode` dan jangan buat tenant kedua untuk dipakai sungguhan sebelum Tahap 3 (storage privat + `checkout-reminder` per tenant).
 
 ## Halaman daftar usaha

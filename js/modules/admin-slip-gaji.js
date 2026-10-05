@@ -63,16 +63,20 @@ function resolveShiftWindow(emp, dow, date) {
       startMin: hmToMinutes(day.start_time.slice(0, 5)),
       endMin: hmToMinutes(day.end_time.slice(0, 5)),
       crossesMidnight: !!day.crosses_midnight,
+      scheduled: true, // jam ini berasal dari jadwal kerja nyata, bukan acuan default
     };
   }
-  return { startMin: hmToMinutes("08:00"), endMin: hmToMinutes("17:00"), crossesMidnight: false };
+  return { startMin: hmToMinutes("08:00"), endMin: hmToMinutes("17:00"), crossesMidnight: false, scheduled: false };
 }
 
 // Keterlambatan: tier diurutkan naik. Yang dipakai adalah tier PALING
 // TERAKHIR yang menit-telatnya sudah terlampaui (makin lama telatnya,
 // makin besar potongannya).
 function hitungDendaTelat(checkInAt, dayOfWeek, dendaDasar, tz, shift) {
-  if (!checkInAt || dayOfWeek < 1 || dayOfWeek > 6) return null; // Minggu/tidak absen: tidak ada aturan
+  if (!checkInAt) return null;
+  // Minggu: hanya didenda bila jadwal karyawan menandai Minggu sebagai hari kerja
+  // (memakai tier "weekday"); Minggu di luar jadwal tetap tanpa denda.
+  if (dayOfWeek === 0 && !shift.scheduled) return null;
   const dayType = dayOfWeek === 6 ? "saturday" : "weekday";
   const rules = penaltyRules.telat[dayType] || [];
   let mins = zonedMinutesOfDay(checkInAt, tz);
@@ -94,7 +98,8 @@ function hitungDendaTelat(checkInAt, dayOfWeek, dendaDasar, tz, shift) {
 // TERAKHIR yang menit-lebih-cepatnya sudah terlampaui (makin cepat pulangnya,
 // makin besar potongannya) -- sama seperti hitungDendaTelat.
 function hitungDendaPulangCepat(checkOutAt, dayOfWeek, dendaDasar, tz, shift) {
-  if (!checkOutAt || dayOfWeek < 1 || dayOfWeek > 6) return null;
+  if (!checkOutAt) return null;
+  if (dayOfWeek === 0 && !shift.scheduled) return null; // lihat catatan di hitungDendaTelat
   const dayType = dayOfWeek === 6 ? "saturday" : "weekday";
   const rules = penaltyRules.pulang_cepat[dayType] || [];
   const mins = zonedMinutesOfDay(checkOutAt, tz);
