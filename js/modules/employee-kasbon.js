@@ -82,7 +82,7 @@ async function load() {
   const { data, error } = await supabase.from("employee_loans")
     .select("*").eq("user_id", me.id).order("created_at", { ascending: false }).limit(50);
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat: ${esc(error.message)}</p>`; return; }
-  if (!data.length) { el.innerHTML = `<div class="card"><p class="muted" style="margin:0;">Belum ada pengajuan kasbon.</p></div>`; return; }
+  if (!data.length) { el.innerHTML = `<div class="card"><p class="muted" style="margin:0;">Belum ada pengajuan.</p></div>`; return; }
 
   const pendingIds = data.filter(r => r.status === "pending").map(r => r.id);
   const liveIds = data.filter(r => ["approved", "lunas", "stopped"].includes(r.status)).map(r => r.id);

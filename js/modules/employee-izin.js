@@ -4,6 +4,7 @@ import {
   esc, fetchSteps, stepsHTML, rejectionReason, openRevisionModal, submitErrorMessage,
 } from "../approvalHelper.js";
 import { chainOf, employeeActionsHTML, employeeStatusTag, openChainModal, detailListHTML } from "../requestHistory.js";
+import { openRequestModal, EMPTY_REQUESTS_HTML } from "../requestModal.js";
 import { fetchSpecialLeaveRules, fetchMyLeaveBalance, addDays, leaveTypeLabel } from "../leaveRules.js";
 
 // Pengajuan Izin karyawan. Pengajuan yang DITOLAK punya tombol "Ajukan Ulang"
@@ -175,47 +176,27 @@ export async function render(container, user) {
   current.rules = await fetchSpecialLeaveRules();
 
   container.innerHTML = `
-    <div class="pg-head">
+    <div class="page-header">
       <div>
         <h1>Pengajuan Izin</h1>
-        <p class="pg-head-sub">Ajukan izin tidak masuk, sakit, atau cuti.</p>
+        <p class="muted">Ajukan izin tidak masuk, sakit, atau cuti. Selama disetujui atau menunggu, tombol absen di tanggal itu tidak ditampilkan.</p>
       </div>
-    </div>
-
-    <div class="pg-form-layout">
-      <form id="form-izin" class="pg-card">
-        <div class="pg-card-head"><h2>Formulir Pengajuan</h2></div>
-        <div class="pg-card-body">
-          ${fieldsHTML()}
-          <button type="submit" class="btn-primary btn-block">Kirim Pengajuan</button>
-        </div>
-      </form>
-      <aside class="pg-note">
-        <h3>Informasi</h3>
-        <ul>
-          <li>Pengajuan diteruskan ke atasan sesuai struktur organisasi, bisa melalui lebih dari satu tahap persetujuan.</li>
-          <li>Pantau status pengajuan di tabel Riwayat Pengajuan di bawah.</li>
-          <li>Selama izin/cuti disetujui atau masih menunggu persetujuan, tombol absen untuk tanggal tersebut tidak ditampilkan.</li>
-          <li>Kalau ditolak, kamu bisa mengajukan ulang dari tabel riwayat.</li>
-        </ul>
-      </aside>
-    </div>
-
-    <div class="pg-section-head">
-      <h2>Riwayat Pengajuan</h2>
-      <p>Status dan tahap persetujuan setiap pengajuan izin/cuti yang pernah kamu kirim.</p>
+      <button id="btn-new" class="btn-primary">+ Ajukan Izin</button>
     </div>
     <div id="izin-list" class="table-wrap"><p class="muted">Memuat…</p></div>
   `;
 
-  const form = document.getElementById("form-izin");
-  wireDynamicLeaveForm(form);
-  form.addEventListener("submit", async e => {
-    e.preventDefault();
-    if (await submitRequest(new FormData(form), user, null)) {
-      form.reset();
-      wireDynamicLeaveForm(form); // reset ulang tampilan field dinamis
-    }
+  document.getElementById("btn-new").addEventListener("click", () => {
+    openRequestModal({
+      title: "Pengajuan Izin",
+      fieldsHTML: fieldsHTML(),
+      notes: [
+        "Pengajuan diteruskan ke atasan sesuai struktur organisasi, bisa lebih dari satu tahap persetujuan.",
+        "Kalau ditolak, kamu bisa mengajukan ulang dari tabel riwayat.",
+      ],
+      onMount: wireDynamicLeaveForm,
+      onSubmit: fd => submitRequest(fd, user, null),
+    });
   });
 
   loadList(user);
@@ -248,7 +229,7 @@ async function loadList(user) {
   const el = document.getElementById("izin-list");
   if (!el) return;
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data.</p>`; return; }
-  if (!data.length) { el.innerHTML = `<p class="muted">Belum ada pengajuan.</p>`; return; }
+  if (!data.length) { el.innerHTML = EMPTY_REQUESTS_HTML; return; }
 
   const steps = await fetchSteps("leave", data.map(r => r.id));
   current = { ...current, data, steps };

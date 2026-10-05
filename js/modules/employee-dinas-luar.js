@@ -28,7 +28,7 @@ export async function render(container, user) {
         <h1>Dinas Luar / WFH / Kunjungan</h1>
         <p class="muted">Ajukan sebelum berangkat. Kalau disetujui atasan, absen Anda di luar radius kantor dianggap sah.</p>
       </div>
-      <button id="btn-new" class="btn-primary">+ Ajukan</button>
+      <button id="btn-new" class="btn-primary">+ Ajukan Dinas Luar</button>
     </div>
     <div id="fw-list"><p class="muted">Memuat…</p></div>
 

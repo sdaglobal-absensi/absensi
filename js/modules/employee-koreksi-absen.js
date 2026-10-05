@@ -3,6 +3,7 @@ import { toast, fmtDate, fmtTime, resolveUserTimezone, zonedTimestamp, todayISO 
 import {
   esc, fetchSteps, stepsHTML, rejectionReason, openRevisionModal, submitErrorMessage,
 } from "../approvalHelper.js";
+import { openRequestModal, EMPTY_REQUESTS_HTML } from "../requestModal.js";
 import { chainOf, employeeActionsHTML, employeeStatusTag, openChainModal, detailListHTML } from "../requestHistory.js";
 
 // Pengajuan Koreksi Absen karyawan — dipakai kalau lupa absen MASUK atau
@@ -69,65 +70,54 @@ async function submitRequest(fd, user, revisionOf) {
 
 export async function render(container, user) {
   container.innerHTML = `
-    <div class="pg-head">
+    <div class="page-header">
       <div>
         <h1>Pengajuan Koreksi Absen</h1>
-        <p class="pg-head-sub">Lupa absen masuk atau pulang? Ajukan koreksi untuk disetujui admin/HR.</p>
+        <p class="muted">Lupa absen masuk atau pulang? Ajukan koreksi untuk disetujui admin/HR.</p>
       </div>
-    </div>
-
-    <div class="pg-form-layout">
-      <form id="form-koreksi" class="pg-card">
-        <div class="pg-card-head"><h2>Formulir Pengajuan</h2></div>
-        <div class="pg-card-body">
-          ${FIELDS_HTML}
-          <button type="submit" class="btn-primary btn-block">Kirim Pengajuan</button>
-        </div>
-      </form>
-      <aside class="pg-note">
-        <h3>Informasi</h3>
-        <ul>
-          <li>Satu pengajuan untuk satu tanggal dan satu jenis koreksi (masuk atau pulang).</li>
-          <li>Isi jam sesuai waktu kamu sebenarnya masuk atau pulang, lalu jelaskan alasannya.</li>
-          <li>Setelah disetujui sampai tahap terakhir, jam yang kamu ajukan otomatis diterapkan ke data absensi.</li>
-          <li>Kalau ditolak, kamu bisa mengajukan ulang dari tabel riwayat.</li>
-        </ul>
-      </aside>
-    </div>
-
-    <div class="pg-section-head">
-      <h2>Riwayat Pengajuan Koreksi</h2>
-      <p>Status setiap pengajuan koreksi absen yang pernah kamu kirim.</p>
+      <button id="btn-new" class="btn-primary">+ Ajukan Koreksi Absen</button>
     </div>
     <div id="koreksi-list" class="table-wrap"><p class="muted">Memuat…</p></div>
   `;
 
-  document.getElementById("form-koreksi").addEventListener("submit", async e => {
-    e.preventDefault();
-    const form = e.target;
-    if (await submitRequest(new FormData(form), user, null)) form.reset();
-  });
+  const openForm = values => {
+    const { form } = openRequestModal({
+      title: "Pengajuan Koreksi Absen",
+      fieldsHTML: FIELDS_HTML,
+      notes: [
+        "Satu pengajuan untuk satu tanggal dan satu jenis koreksi (masuk atau pulang).",
+        "Isi jam sesuai waktu kamu sebenarnya masuk atau pulang. Setelah disetujui sampai tahap terakhir, jam otomatis diterapkan ke data absensi.",
+        "Kalau ditolak, kamu bisa mengajukan ulang dari tabel riwayat.",
+      ],
+      values,
+      onSubmit: fd => submitRequest(fd, user, null),
+    });
+    if (values) form.corrected_time?.focus();
+  };
+  document.getElementById("btn-new").addEventListener("click", () => openForm());
 
-  applyPrefill();
   loadList(user);
+
+  // Datang dari banner "lupa check-out" -> langsung buka popup dengan tanggal & jenis terisi.
+  const prefill = takePrefill();
+  if (prefill) openForm(prefill);
 }
 
-// Kalau datang dari banner "lupa check-out" (Dashboard/Absensi), tanggal &
-// jenisnya sudah dipilihkan otomatis lewat sessionStorage — tinggal isi jam
-// & alasannya. Dihapus segera setelah dipakai supaya tidak ikut ke
-// pengajuan berikutnya kalau karyawan balik lagi ke menu ini nanti.
-function applyPrefill() {
+// Banner "lupa check-out" (Dashboard/Absensi) menitipkan tanggal & jenis lewat
+// sessionStorage. Dihapus segera setelah dibaca supaya tidak ikut ke pengajuan
+// berikutnya kalau karyawan kembali ke menu ini nanti.
+function takePrefill() {
   const raw = sessionStorage.getItem("koreksi_prefill");
-  if (!raw) return;
+  if (!raw) return null;
   sessionStorage.removeItem("koreksi_prefill");
-  let prefill;
-  try { prefill = JSON.parse(raw); } catch { return; }
-
-  const form = document.getElementById("form-koreksi");
-  if (!form || !prefill) return;
-  if (prefill.attendance_date) form.attendance_date.value = prefill.attendance_date;
-  if (prefill.correction_type) form.correction_type.value = prefill.correction_type;
-  form.corrected_time?.focus();
+  try {
+    const p = JSON.parse(raw);
+    if (!p) return null;
+    const v = {};
+    if (p.attendance_date) v.attendance_date = p.attendance_date;
+    if (p.correction_type) v.correction_type = p.correction_type;
+    return Object.keys(v).length ? v : null;
+  } catch { return null; }
 }
 
 function startRevision(id, user) {
@@ -166,7 +156,7 @@ async function loadList(user) {
   const el = document.getElementById("koreksi-list");
   if (!el) return;
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data.</p>`; return; }
-  if (!data.length) { el.innerHTML = `<p class="muted">Belum ada pengajuan koreksi absen.</p>`; return; }
+  if (!data.length) { el.innerHTML = EMPTY_REQUESTS_HTML; return; }
 
   const steps = await fetchSteps("koreksi", data.map(r => r.id));
   current = { data, steps };

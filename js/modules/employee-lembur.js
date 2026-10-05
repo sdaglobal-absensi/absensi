@@ -3,6 +3,7 @@ import { toast, fmtDate, roundOvertimeHours, fmtJam, dayOfWeekFromDateStr } from
 import {
   esc, fetchSteps, stepsHTML, rejectionReason, openRevisionModal, submitErrorMessage,
 } from "../approvalHelper.js";
+import { openRequestModal, EMPTY_REQUESTS_HTML } from "../requestModal.js";
 import { chainOf, employeeActionsHTML, employeeStatusTag, openChainModal, detailListHTML } from "../requestHistory.js";
 
 // Pengajuan Lembur karyawan. Pengajuan yang DITOLAK punya tombol "Ajukan
@@ -59,43 +60,27 @@ async function submitRequest(fd, user, revisionOf) {
 
 export async function render(container, user) {
   container.innerHTML = `
-    <div class="pg-head">
+    <div class="page-header">
       <div>
         <h1>Pengajuan Lembur</h1>
-        <p class="pg-head-sub">Ajukan lembur untuk disetujui admin/HR.</p>
+        <p class="muted">Ajukan lembur. Kalau disetujui, uang lembur otomatis masuk ke slip gaji.</p>
       </div>
-    </div>
-
-    <div class="pg-form-layout">
-      <form id="form-lembur" class="pg-card">
-        <div class="pg-card-head"><h2>Formulir Pengajuan</h2></div>
-        <div class="pg-card-body">
-          ${FIELDS_HTML}
-          <button type="submit" class="btn-primary btn-block">Kirim Pengajuan</button>
-        </div>
-      </form>
-      <aside class="pg-note">
-        <h3>Informasi</h3>
-        <ul>
-          <li>Isi jam mulai dan jam selesai sesuai jam lembur yang sebenarnya.</li>
-          <li>Hari Minggu dan tanggal yang ada di Master Hari Libur otomatis dihitung sebagai lembur hari libur.</li>
-          <li>Uang lembur baru masuk ke Slip Gaji setelah pengajuan disetujui.</li>
-          <li>Kalau ditolak, kamu bisa mengajukan ulang dari tabel riwayat.</li>
-        </ul>
-      </aside>
-    </div>
-
-    <div class="pg-section-head">
-      <h2>Riwayat Pengajuan Lembur</h2>
-      <p>Status dan tahap persetujuan setiap pengajuan lembur yang pernah kamu kirim.</p>
+      <button id="btn-new" class="btn-primary">+ Ajukan Lembur</button>
     </div>
     <div id="lembur-list" class="table-wrap"><p class="muted">Memuat…</p></div>
   `;
 
-  document.getElementById("form-lembur").addEventListener("submit", async e => {
-    e.preventDefault();
-    const form = e.target;
-    if (await submitRequest(new FormData(form), user, null)) form.reset();
+  document.getElementById("btn-new").addEventListener("click", () => {
+    openRequestModal({
+      title: "Pengajuan Lembur",
+      fieldsHTML: FIELDS_HTML,
+      notes: [
+        "Isi jam mulai dan jam selesai sesuai jam lembur yang sebenarnya.",
+        "Hari Minggu dan tanggal di Master Hari Libur otomatis dihitung sebagai lembur hari libur.",
+        "Kalau ditolak, kamu bisa mengajukan ulang dari tabel riwayat.",
+      ],
+      onSubmit: fd => submitRequest(fd, user, null),
+    });
   });
 
   loadList(user);
@@ -132,7 +117,7 @@ async function loadList(user) {
   const el = document.getElementById("lembur-list");
   if (!el) return;
   if (error) { el.innerHTML = `<p class="muted">Gagal memuat data.</p>`; return; }
-  if (!data.length) { el.innerHTML = `<p class="muted">Belum ada pengajuan lembur.</p>`; return; }
+  if (!data.length) { el.innerHTML = EMPTY_REQUESTS_HTML; return; }
 
   const steps = await fetchSteps("overtime", data.map(r => r.id));
   current = { data, steps };

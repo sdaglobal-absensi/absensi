@@ -2128,3 +2128,7 @@ img.photo-missing { visibility: hidden; }
 .pa-feat-grid { display: grid; grid-template-columns: 1fr auto auto; gap: 6px 12px; align-items: center; font-size: 0.85rem; }
 .pa-feat-st { white-space: nowrap; justify-self: start; }
 .pa-feat-grid select { padding: 6px 8px; font-size: 0.82rem; }
+
+/* Catatan singkat di dalam popup pengajuan (menggantikan panel "Informasi") */
+.req-notes { margin: 4px 0 14px; padding-left: 18px; color: var(--muted); font-size: 0.82rem; line-height: 1.55; }
+.req-notes li + li { margin-top: 2px; }
