@@ -1,5 +1,6 @@
 // Helper bersama untuk Edge Function account-admin & login-pin.
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 export const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 export const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -12,16 +13,42 @@ const PIN_PEPPER = Deno.env.get("PIN_PEPPER") ?? "";
 // bisa dikirimi email. Kalau Supabase menolaknya, ganti lewat secret.
 export const PIN_EMAIL_DOMAIN = Deno.env.get("PIN_EMAIL_DOMAIN") ?? "pin.kerjora.invalid";
 
-export const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+// Origin yang diizinkan memanggil Edge Function. WAJIB diisi di produksi:
+//   supabase secrets set ALLOWED_ORIGINS=https://app.contoh.com,https://contoh.com
+// Kosong = hanya localhost (pengembangan). Tidak lagi "*".
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
+  .split(",").map(s => s.trim()).filter(Boolean);
+
+export function corsFor(req?: Request): Record<string, string> {
+  const origin = req?.headers.get("origin") ?? "";
+  const dev = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  const ok = origin && (ALLOWED_ORIGINS.includes(origin) || dev);
+  return {
+    "Access-Control-Allow-Origin": ok ? origin : (ALLOWED_ORIGINS[0] ?? "null"),
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+}
+
+// Origin request yang sedang diproses; diisi enterCors(req) di awal handler
+// dan terbawa ke seluruh rantai async request itu (aman untuk request paralel).
+const corsStore = new AsyncLocalStorage<Record<string, string>>();
+export function enterCors(req: Request): Record<string, string> {
+  const h = corsFor(req);
+  corsStore.enterWith(h);
+  return h;
+}
+
+// Header CORS untuk request yang sedang berjalan (default: tanpa wildcard).
+export function currentCors(): Record<string, string> {
+  return corsStore.getStore() ?? corsFor();
+}
 
 export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...currentCors(), "Content-Type": "application/json" },
   });
 }
 

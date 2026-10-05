@@ -15,11 +15,12 @@
 // Lalu isi di Dashboard Midtrans > Settings > Configuration:
 //   Payment Notification URL = https://<project-ref>.supabase.co/functions/v1/midtrans-webhook
 // -----------------------------------------------------------------------
-import { adminClient, corsHeaders, HttpError, json } from "../_shared/common.ts";
+import { adminClient, enterCors, HttpError, json } from "../_shared/common.ts";
 import { applyTransaction, fetchStatus, requireConfig, signatureValid } from "../_shared/midtrans.ts";
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const cors = enterCors(req);
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method tidak didukung" }, 405);
 
   try {

@@ -12,7 +12,7 @@
 // Deploy: supabase functions deploy login-pin --no-verify-jwt
 // -----------------------------------------------------------------------
 import {
-  adminClient, anonClient, corsHeaders, derivePinPassword, HttpError, json, normKode,
+  adminClient, anonClient, enterCors, derivePinPassword, HttpError, json, normKode,
 } from "../_shared/common.ts";
 
 const MAX_FAIL = 5;
@@ -20,7 +20,8 @@ const LOCK_MINUTES = 15;
 const GENERIC = "Kode usaha, kode karyawan, atau PIN salah.";
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const cors = enterCors(req);
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method tidak didukung" }, 405);
 
   try {

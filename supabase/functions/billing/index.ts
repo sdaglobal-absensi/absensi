@@ -20,7 +20,7 @@
 //   supabase functions deploy billing --no-verify-jwt
 //   supabase secrets set MIDTRANS_SERVER_KEY=... MIDTRANS_CLIENT_KEY=... MIDTRANS_ENV=sandbox
 // -----------------------------------------------------------------------
-import { adminClient, anonClient, corsHeaders, HttpError, json } from "../_shared/common.ts";
+import { adminClient, anonClient, enterCors, HttpError, json } from "../_shared/common.ts";
 import {
   applyTransaction, basicAuth, CLIENT_KEY, fetchStatus, requireConfig, SNAP_JS, SNAP_URL,
 } from "../_shared/midtrans.ts";
@@ -28,7 +28,8 @@ import {
 type Caller = { id: string; tenant_id: string; full_name: string; email: string | null };
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const cors = enterCors(req);
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method tidak didukung" }, 405);
 
   try {

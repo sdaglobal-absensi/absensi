@@ -1,0 +1,9 @@
+# Konfigurasi minimal Supabase CLI. Jalankan `supabase login` + `supabase link --project-ref <ref>`.
+project_id = "kerjora-absensi"
+
+[functions.login-pin]
+verify_jwt = false
+[functions.midtrans-webhook]
+verify_jwt = false
+[functions.retention-cleanup]
+verify_jwt = false

@@ -24,14 +24,15 @@
 //   supabase secrets set PIN_PEPPER=<string-acak-panjang>
 // -----------------------------------------------------------------------
 import {
-  adminClient, anonClient, corsHeaders, derivePinPassword, generatePin, HttpError, isValidPin,
+  adminClient, anonClient, enterCors, derivePinPassword, generatePin, HttpError, isValidPin,
   json, normKode, PIN_EMAIL_DOMAIN,
 } from "../_shared/common.ts";
 
 const STAFF_ROLES = ["super_admin", "super_admin_hr", "admin_hr"];
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const cors = enterCors(req);
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method tidak didukung" }, 405);
 
   try {
