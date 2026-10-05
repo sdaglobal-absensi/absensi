@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1 — 2026-10-05 (konsistensi tampilan pengajuan)
+- Halaman **Pengajuan Izin, Pengajuan Lembur, dan Koreksi Absen** kini memakai pola yang sama dengan Dinas Luar dan Kasbon: judul + tombol **+ Ajukan …** + daftar riwayat; formulir tampil di popup (`js/requestModal.js`). Panel "Informasi" dipindah menjadi catatan singkat di dalam popup.
+- Banner "lupa check-out" tetap berfungsi: popup Koreksi Absen terbuka otomatis dengan tanggal & jenis terisi.
+- Tombol pengajuan memakai nama halamannya, seperti Kasbon: **+ Ajukan Izin**, **+ Ajukan Lembur**, **+ Ajukan Koreksi Absen**, **+ Ajukan Kasbon**, **+ Ajukan Dinas Luar**. Nama menu dan judul halaman tidak diubah. Teks daftar kosong seragam "Belum ada pengajuan."
+- Pesan validasi form di popup berbahasa Indonesia ("Kolom ini wajib diisi.").
+- Tes jsdom untuk popup (21 tes total).
+
 ## 1.1.0 — 2026-10-05 (hardening & profesionalisasi)
 
 ### Keamanan
