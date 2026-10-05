@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, reverseGeocode, fmtTime, fmtDate, todayISO, dateOnlyISO, zonedDayOfWeek, zonedMinutesOfDay, zonedTimestamp, hmToMinutes, resolveUserTimezone, tzLabel } from "../core.js";
+import { toast, getPosition, getNearestOffice, uploadPhoto, captureFrameAsBlob, reverseGeocode, fmtTime, fmtDate, todayISO, dateOnlyISO, zonedDayOfWeek, zonedMinutesOfDay, zonedTimestamp, hmToMinutes, resolveUserTimezone, tzLabel, escapeHtml } from "../core.js";
 import { pushSupported, getPushStatus, subscribeToPush } from "../push.js";
 import { fetchSpecialLeaveRules, leaveTypeLabel } from "../leaveRules.js";
 
@@ -455,7 +455,7 @@ function scheduleCardHtml(info, tz) {
       <div class="abs-card-head">
         <div>
           <h2 class="abs-card-title">Jadwal Kerja</h2>
-          <p class="abs-card-sub">${sched.name}</p>
+          <p class="abs-card-sub">${escapeHtml(sched.name)}</p>
         </div>
         ${sched.late_tolerance_minutes ? `<span class="abs-chip abs-chip-idle">Toleransi ${sched.late_tolerance_minutes} menit</span>` : ""}
       </div>

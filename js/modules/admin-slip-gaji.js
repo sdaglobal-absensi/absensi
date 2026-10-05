@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exportXLSX, dayOfWeekFromDateStr, zonedMinutesOfDay, hmToMinutes, getPayrollCutoffDay, payrollPeriodRange, STAFF_ROLES, confirmDialog } from "../core.js";
+import { toast, fmtRupiah, fmtJam, fmtDate, dateOnlyISO, roundOvertimeHours, exportXLSX, dayOfWeekFromDateStr, zonedMinutesOfDay, hmToMinutes, getPayrollCutoffDay, payrollPeriodRange, STAFF_ROLES, confirmDialog, escapeHtml } from "../core.js";
 
 
 // Cetak slip: salin isi slip ke #print-root (langsung di bawah <body>) lalu
@@ -90,22 +90,22 @@ function hitungDendaTelat(checkInAt, dayOfWeek, dendaDasar, tz, shift) {
   return { amount, label: picked.label };
 }
 
-// Pulang cepat: tier diurutkan naik. Yang dipakai adalah tier PERTAMA
-// yang menit-lebih-cepatnya masih terlampaui (makin cepat pulangnya,
-// makin besar potongannya).
+// Pulang cepat: tier diurutkan naik. Yang dipakai adalah tier PALING
+// TERAKHIR yang menit-lebih-cepatnya sudah terlampaui (makin cepat pulangnya,
+// makin besar potongannya) -- sama seperti hitungDendaTelat.
 function hitungDendaPulangCepat(checkOutAt, dayOfWeek, dendaDasar, tz, shift) {
   if (!checkOutAt || dayOfWeek < 1 || dayOfWeek > 6) return null;
   const dayType = dayOfWeek === 6 ? "saturday" : "weekday";
   const rules = penaltyRules.pulang_cepat[dayType] || [];
   const mins = zonedMinutesOfDay(checkOutAt, tz);
   const earlyMinutes = shift.endMin - mins;
+  let picked = null;
   for (const r of rules) {
-    if (earlyMinutes > r.menit_offset) {
-      const amount = r.tipe === "flat" ? r.nominal : dendaDasar * r.persen / 100;
-      return { amount, label: r.label };
-    }
+    if (earlyMinutes > r.menit_offset) picked = r;
   }
-  return null;
+  if (!picked) return null;
+  const amount = picked.tipe === "flat" ? picked.nominal : dendaDasar * picked.persen / 100;
+  return { amount, label: picked.label };
 }
 
 let period = "";
@@ -592,8 +592,8 @@ function renderTable() {
       <div class="pg-slip">
         <div class="pg-slip-head">
           <div>
-            <h2>${s.emp.full_name}</h2>
-            <p class="pg-slip-meta">${s.emp.grade ? `${s.emp.grade} — ${s.emp.level || "-"}` : "Grade belum diatur"} ${statusBadge}</p>
+            <h2>${escapeHtml(s.emp.full_name)}</h2>
+            <p class="pg-slip-meta">${s.emp.grade ? `${escapeHtml(s.emp.grade)} — ${escapeHtml(s.emp.level || "-")}` : "Grade belum diatur"} ${statusBadge}</p>
           </div>
           <button type="button" class="btn-primary btn-detail" data-id="${s.emp.id}">Lihat Detail &amp; Cetak Slip</button>
         </div>
@@ -623,8 +623,8 @@ function renderTable() {
       <tbody>
         ${slips.map(s => `
           <tr>
-            <td>${s.emp.full_name}</td>
-            <td>${s.emp.grade ? `${s.emp.grade} — ${s.emp.level || "-"}` : `<span class="muted">-</span>`}</td>
+            <td>${escapeHtml(s.emp.full_name)}</td>
+            <td>${s.emp.grade ? `${escapeHtml(s.emp.grade)} — ${escapeHtml(s.emp.level || "-")}` : `<span class="muted">-</span>`}</td>
             <td>${s.emp.status_karyawan
               ? `<span class="badge badge-ok">${s.emp.status_karyawan === "bulanan" ? "Bulanan" : "Harian"}</span>`
               : `<span class="badge badge-warn">Belum diatur</span>`}</td>
@@ -706,11 +706,11 @@ function renderSlipContent(s) {
       </div>
 
       <div class="slip-emp-grid">
-        <div><span class="label">Nama</span>${e.full_name}</div>
-        <div><span class="label">Kode Karyawan</span>${e.employee_code || "-"}</div>
-        <div><span class="label">Jabatan</span>${e.position || "-"}</div>
-        <div><span class="label">Departemen</span>${e.department || "-"}${e.bagian ? ` / ${e.bagian}` : ""}</div>
-        <div><span class="label">Grade / Level</span>${e.grade ? `${e.grade} — ${e.level || "-"}` : "-"}</div>
+        <div><span class="label">Nama</span>${escapeHtml(e.full_name)}</div>
+        <div><span class="label">Kode Karyawan</span>${escapeHtml(e.employee_code || "-")}</div>
+        <div><span class="label">Jabatan</span>${escapeHtml(e.position || "-")}</div>
+        <div><span class="label">Departemen</span>${escapeHtml(e.department || "-")}${e.bagian ? ` / ${escapeHtml(e.bagian)}` : ""}</div>
+        <div><span class="label">Grade / Level</span>${e.grade ? `${escapeHtml(e.grade)} — ${escapeHtml(e.level || "-")}` : "-"}</div>
         <div><span class="label">Status Karyawan</span>${e.status_karyawan === "bulanan" ? "Bulanan" : e.status_karyawan === "harian" ? "Harian" : "Belum diatur"}</div>
         <div><span class="label">Hari Hadir / Telat</span>${s.hariHadir} / ${s.hariTelat}</div>
         <div><span class="label">Jam Lembur (Biasa/Libur)</span>${fmtJam(s.jamLemburBiasa)} / ${fmtJam(s.jamLemburLibur)}</div>
@@ -722,8 +722,8 @@ function renderSlipContent(s) {
           <div class="slip-line"><span>${s.gajiPokokLabel}</span><span>${fmtRupiah(s.gajiPokok)}</span></div>
           <div class="slip-line"><span>Uang Lembur (${fmtJam(s.jamLemburBiasa)} biasa + ${fmtJam(s.jamLemburLibur)} libur)</span><span>${fmtRupiah(s.uangLembur)}</span></div>
           <div class="slip-line"><span>Uang Perjalanan Dinas (${s.adj.hari_dinas || 0} hari)</span><span>${fmtRupiah(s.uangDinas)}</span></div>
-          ${s.tunjanganList.map(t => `<div class="slip-line"><span>${t.nama}</span><span>${fmtRupiah(t.nominal)}</span></div>`).join("")}
-          <div class="slip-line"><span>${s.adj.keterangan_tunjangan || "Tunjangan Lain"}</span><span>${fmtRupiah(s.tunjanganLain)}</span></div>
+          ${s.tunjanganList.map(t => `<div class="slip-line"><span>${escapeHtml(t.nama)}</span><span>${fmtRupiah(t.nominal)}</span></div>`).join("")}
+          <div class="slip-line"><span>${escapeHtml(s.adj.keterangan_tunjangan || "Tunjangan Lain")}</span><span>${fmtRupiah(s.tunjanganLain)}</span></div>
           <div class="slip-line total"><span>Total Pendapatan</span><span>${fmtRupiah(s.totalPendapatan)}</span></div>
           ${(s.reimbursement || 0) > 0 ? `<div class="slip-line"><span>Reimbursement (penggantian biaya)</span><span>${fmtRupiah(s.reimbursement)}</span></div>` : ""}
         </div>
@@ -734,7 +734,7 @@ function renderSlipContent(s) {
           <div class="slip-line"><span>BPJS Kesehatan (${s.level?.bpjs_kesehatan_karyawan_persen ?? 0}%)</span><span>${fmtRupiah(s.bpjsKesKaryawan)}</span></div>
           <div class="slip-line"><span>BPJS Ketenagakerjaan (${s.level?.bpjs_tk_karyawan_persen ?? 0}%)</span><span>${fmtRupiah(s.bpjsTkKaryawan)}</span></div>
           <div class="slip-line"><span>PPh21 (${s.level?.pph21_persen ?? 0}%)</span><span>${fmtRupiah(s.pph21)}</span></div>
-          <div class="slip-line"><span>${s.adj.keterangan_potongan || "Potongan Lain"}</span><span>${fmtRupiah(s.potonganLain)}</span></div>
+          <div class="slip-line"><span>${escapeHtml(s.adj.keterangan_potongan || "Potongan Lain")}</span><span>${fmtRupiah(s.potonganLain)}</span></div>
           ${(s.potonganKasbon || 0) > 0 ? `<div class="slip-line"><span>Potongan Kasbon</span><span>${fmtRupiah(s.potonganKasbon)}</span></div>` : ""}
           <div class="slip-line total"><span>Total Potongan</span><span>${fmtRupiah(s.totalPotongan)}</span></div>
         </div>

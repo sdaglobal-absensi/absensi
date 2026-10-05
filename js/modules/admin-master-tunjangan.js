@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtRupiah, confirmDialog } from "../core.js";
+import { toast, fmtRupiah, confirmDialog, escapeHtml } from "../core.js";
 import { hasXLSX, readFirstSheet, cellText, cellNumber, normKey, writeWorkbook, widthsFor, pickFileThen } from "../excelIO.js";
 
 // =======================================================================
@@ -132,8 +132,8 @@ function renderTypeTable() {
       <tbody>
         ${allowanceTypes.map(t => `
           <tr>
-            <td>${t.nama}</td>
-            <td>${t.keterangan || "-"}</td>
+            <td>${escapeHtml(t.nama)}</td>
+            <td>${escapeHtml(t.keterangan || "-")}</td>
             <td><span class="badge badge-${t.is_active ? "ok" : "danger"}">${t.is_active ? "Aktif" : "Nonaktif"}</span></td>
             ${canEdit ? `<td><button class="btn-link btn-edit-type" data-id="${t.id}">Edit</button></td>` : ""}
           </tr>
@@ -212,19 +212,19 @@ function renderEmployeeTable() {
           <th>Nama</th>
           <th>Kode</th>
           <th>Grade/Level</th>
-          ${allowanceTypes.map(t => `<th>${t.nama}${t.is_active ? "" : " (nonaktif)"}</th>`).join("")}
+          ${allowanceTypes.map(t => `<th>${escapeHtml(t.nama)}${t.is_active ? "" : " (nonaktif)"}</th>`).join("")}
           ${canEdit ? "<th></th>" : ""}
         </tr>
       </thead>
       <tbody>
         ${employees.map(emp => {
-          const gradeLevel = emp.grade ? `${emp.grade} — ${emp.level || "-"}` : "-";
+          const gradeLevel = emp.grade ? `${escapeHtml(emp.grade)} — ${escapeHtml(emp.level || "-")}` : "-";
 
           if (!canEdit) {
             return `
               <tr>
-                <td>${emp.full_name}</td>
-                <td>${emp.employee_code || "-"}</td>
+                <td>${escapeHtml(emp.full_name)}</td>
+                <td>${escapeHtml(emp.employee_code || "-")}</td>
                 <td>${gradeLevel}</td>
                 ${allowanceTypes.map(t => {
                   const row = (employeeAllowanceByUser[t.id] || {})[emp.id];
@@ -236,8 +236,8 @@ function renderEmployeeTable() {
 
           return `
             <tr data-row-user="${emp.id}">
-              <td>${emp.full_name}</td>
-              <td>${emp.employee_code || "-"}</td>
+              <td>${escapeHtml(emp.full_name)}</td>
+              <td>${escapeHtml(emp.employee_code || "-")}</td>
               <td>${gradeLevel}</td>
               ${allowanceTypes.map(t => {
                 const row = (employeeAllowanceByUser[t.id] || {})[emp.id];

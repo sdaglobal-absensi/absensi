@@ -30,6 +30,9 @@ Deno.serve(async (req) => {
     const kodeUsaha = normKode(b.kode_usaha).toLowerCase();
     const kodeKaryawan = normKode(b.kode_karyawan);
     const pin = normKode(b.pin);
+    // Token CAPTCHA dari halaman login. Wajib diteruskan ke Supabase Auth karena
+    // CAPTCHA aktif di proyek; tanpa ini signInWithPassword selalu ditolak.
+    const captchaToken = typeof b.captcha_token === "string" ? b.captcha_token : "";
     if (!kodeUsaha || !kodeKaryawan || !/^\d{6}$/.test(pin)) throw new HttpError(400, "Lengkapi kode usaha, kode karyawan, dan PIN 6 digit.");
     if (kodeUsaha.length > 40 || kodeKaryawan.length > 40) throw new HttpError(400, GENERIC);
 
@@ -44,7 +47,11 @@ Deno.serve(async (req) => {
     }
 
     // 2) Cari akun (semua kegagalan memakai pesan yang sama + dihitung)
-    const ok = await tryLogin(admin, kodeUsaha, kodeKaryawan, pin);
+    const res = await tryLogin(admin, kodeUsaha, kodeKaryawan, pin, captchaToken);
+    // Kegagalan CAPTCHA bukan PIN salah: jangan dihitung ke batas percobaan,
+    // supaya akun karyawan tidak terkunci hanya karena verifikasi gagal.
+    if (res && "captchaFailed" in res) throw new HttpError(400, "Verifikasi CAPTCHA gagal. Coba lagi.");
+    const ok = res as { access_token: string; refresh_token: string } | null;
     if (!ok) {
       const fails = (att?.fail_count ?? 0) + 1;
       const locked = fails >= MAX_FAIL;
@@ -66,8 +73,11 @@ Deno.serve(async (req) => {
   }
 });
 
-// Mengembalikan { access_token, refresh_token } kalau cocok, selain itu null.
-async function tryLogin(admin: ReturnType<typeof adminClient>, kodeUsaha: string, kodeKaryawan: string, pin: string) {
+// Mengembalikan { access_token, refresh_token } kalau cocok, { captchaFailed } kalau
+// CAPTCHA ditolak, selain itu null (kode/PIN salah).
+async function tryLogin(
+  admin: ReturnType<typeof adminClient>, kodeUsaha: string, kodeKaryawan: string, pin: string, captchaToken: string,
+): Promise<{ access_token: string; refresh_token: string } | { captchaFailed: true } | null> {
   const { data: tn } = await admin.from("tenants").select("id, status").ilike("kode", escapeLike(kodeUsaha)).maybeSingle();
   if (!tn || tn.status === "suspended") return null;
 
@@ -79,7 +89,11 @@ async function tryLogin(admin: ReturnType<typeof adminClient>, kodeUsaha: string
   if (!au?.user?.email) return null;
 
   const password = await derivePinPassword(p.id, pin);
-  const { data, error } = await anonClient().auth.signInWithPassword({ email: au.user.email, password });
+  const { data, error } = await anonClient().auth.signInWithPassword({
+    email: au.user.email, password, options: captchaToken ? { captchaToken } : undefined,
+  });
+  if (error && (error as { code?: string }).code === "captcha_failed") return { captchaFailed: true };
+  if (error && /captcha/i.test(error.message ?? "")) return { captchaFailed: true };
   if (error || !data.session) return null;
   return { access_token: data.session.access_token, refresh_token: data.session.refresh_token };
 }

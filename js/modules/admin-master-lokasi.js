@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, getPosition, TIMEZONE_OPTIONS, confirmDialog } from "../core.js";
+import { toast, getPosition, TIMEZONE_OPTIONS, confirmDialog, escapeHtml } from "../core.js";
 
 export async function render(container, user) {
   const canEdit = true; // siapa pun yang sampai ke sini sudah lolos guard permission menu ini
@@ -98,7 +98,7 @@ async function loadTable() {
       <tbody>
         ${data.map(r => `
           <tr>
-            <td>${r.name}</td>
+            <td>${escapeHtml(r.name)}</td>
             <td>
               <a href="https://www.google.com/maps?q=${r.lat},${r.lng}" target="_blank" rel="noopener" class="btn-link">${r.lat}, ${r.lng}</a>
             </td>

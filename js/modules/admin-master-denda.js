@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtRupiah, confirmDialog } from "../core.js";
+import { toast, fmtRupiah, confirmDialog, escapeHtml } from "../core.js";
 
 // =======================================================================
 // MASTER DENDA TERLAMBAT & PULANG CEPAT
@@ -162,7 +162,7 @@ function renderGroup(g, canEdit) {
             <tr>
               <td>&gt; ${fmtDurasi(r.menit_offset)} ${r.jenis === "telat" ? "dari jam masuk" : "sebelum jam pulang"}</td>
               <td>${r.tipe === "flat" ? fmtRupiah(r.nominal) : `${r.persen}% dari denda level`}</td>
-              <td>${r.label || "-"}</td>
+              <td>${escapeHtml(r.label || "-")}</td>
               <td><span class="badge badge-${r.is_active ? "ok" : "danger"}">${r.is_active ? "Aktif" : "Nonaktif"}</span></td>
               ${canEdit ? `<td><button class="btn-link btn-edit" data-id="${r.id}">Edit</button></td>` : ""}
             </tr>

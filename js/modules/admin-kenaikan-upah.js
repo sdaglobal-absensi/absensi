@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtRupiah, fmtDate, fmtDateTime, confirmDialog, todayISO } from "../core.js";
+import { toast, fmtRupiah, fmtDate, fmtDateTime, confirmDialog, todayISO, escapeHtml } from "../core.js";
 
 // ---------------------------------------------------------------------
 // Periode kenaikan — Harian: 2x setahun (Maret & September)
@@ -224,10 +224,10 @@ function renderTableHarian() {
           const w = latestWageHarian(emp.id);
           return `
             <tr>
-              <td>${emp.full_name}</td>
-              <td>${emp.grade || "-"}</td>
+              <td>${escapeHtml(emp.full_name)}</td>
+              <td>${escapeHtml(emp.grade || "-")}</td>
               <td>${w ? fmtRupiah(w.daily_wage) : `<span class="muted">Belum diatur</span>`}</td>
-              <td>${w ? `${fmtDate(w.effective_date)} — ${w.reason}` : "-"}</td>
+              <td>${w ? `${fmtDate(w.effective_date)} — ${escapeHtml(w.reason)}` : "-"}</td>
               <td>
                 <button class="btn-link btn-set-wage-harian" data-id="${emp.id}">${w ? "Sesuaikan" : "Set Upah Awal"}</button>
                 ${w ? `<button class="btn-link btn-history-harian" data-id="${emp.id}" style="margin-left:10px;">Riwayat</button>` : ""}
@@ -325,7 +325,7 @@ function openPreviewHarian() {
         <tbody>
           ${list.map(r => `
             <tr>
-              <td>${r.name}</td><td>${r.grade || "-"}</td>
+              <td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.grade || "-")}</td>
               <td>${fmtRupiah(r.current)}</td>
               <td><input type="number" id="${rowInputIdHarian(r.user_id)}" min="0" step="1" value="0" style="width:130px;"></td>
               <td><strong id="${rowNewWageIdHarian(r.user_id)}">${fmtRupiah(r.current)}</strong></td>
@@ -423,10 +423,10 @@ function renderTableBulanan() {
           const s = latestSalaryBulanan(emp.id);
           return `
             <tr>
-              <td>${emp.full_name}</td>
-              <td>${emp.grade || "-"}</td>
+              <td>${escapeHtml(emp.full_name)}</td>
+              <td>${escapeHtml(emp.grade || "-")}</td>
               <td>${s ? fmtRupiah(s.monthly_salary) : `<span class="muted">Belum diatur</span>`}</td>
-              <td>${s ? `${fmtDate(s.effective_date)} — ${s.reason}` : "-"}</td>
+              <td>${s ? `${fmtDate(s.effective_date)} — ${escapeHtml(s.reason)}` : "-"}</td>
               <td>
                 <button class="btn-link btn-set-wage-bulanan" data-id="${emp.id}">${s ? "Sesuaikan" : "Set Gaji Awal"}</button>
                 ${s ? `<button class="btn-link btn-history-bulanan" data-id="${emp.id}" style="margin-left:10px;">Riwayat</button>` : ""}
@@ -524,7 +524,7 @@ function openPreviewBulanan() {
         <tbody>
           ${list.map(r => `
             <tr>
-              <td>${r.name}</td><td>${r.grade || "-"}</td>
+              <td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.grade || "-")}</td>
               <td>${fmtRupiah(r.current)}</td>
               <td><input type="number" id="${rowInputId(r.user_id)}" min="0" step="1" value="0" style="width:130px;"></td>
               <td><strong id="${rowNewSalaryId(r.user_id)}">${fmtRupiah(r.current)}</strong></td>
@@ -608,7 +608,7 @@ function openHistoryHarian(userId) {
             <tr>
               <td>${fmtDate(r.effective_date)}</td>
               <td>${fmtRupiah(r.daily_wage)}${delta ? ` <span class="muted small">(${delta > 0 ? "+" : ""}${fmtRupiah(delta)})</span>` : ""}</td>
-              <td>${r.reason}</td>
+              <td>${escapeHtml(r.reason)}</td>
               <td>${fmtDateTime(r.created_at)}</td>
             </tr>
           `;
@@ -634,7 +634,7 @@ function openHistoryBulanan(userId) {
             <tr>
               <td>${fmtDate(r.effective_date)}</td>
               <td>${fmtRupiah(r.monthly_salary)}${delta ? ` <span class="muted small">(${delta > 0 ? "+" : ""}${fmtRupiah(delta)})</span>` : ""}</td>
-              <td>${r.reason}</td>
+              <td>${escapeHtml(r.reason)}</td>
               <td>${fmtDateTime(r.created_at)}</td>
             </tr>
           `;

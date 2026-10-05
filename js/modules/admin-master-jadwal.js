@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, roleLabel, confirmDialog } from "../core.js";
+import { toast, roleLabel, confirmDialog, escapeHtml } from "../core.js";
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -166,7 +166,7 @@ function renderAssignedList() {
     ? rows.map(emp => `
         <div class="assigned-employee-row">
           <div>
-            <strong>${emp.full_name}</strong>
+            <strong>${escapeHtml(emp.full_name)}</strong>
             <div class="small muted">${empMetaLabel(emp)}</div>
           </div>
           <button type="button" class="btn-link-danger btn-remove-emp" data-id="${emp.id}">Hapus</button>
@@ -214,7 +214,7 @@ function renderEmployeeSearchResults(query) {
     return `
       <button type="button" class="employee-search-result" data-id="${emp.id}">
         <span>
-          <strong>${emp.full_name}</strong>
+          <strong>${escapeHtml(emp.full_name)}</strong>
           <span class="small muted" style="display:block;">${empMetaLabel(emp)}</span>
           ${currentSchedule ? `<span class="small" style="display:block; color:var(--warn);">Saat ini di ${currentSchedule} — akan dipindah ke jadwal ini</span>` : ""}
         </span>
@@ -256,7 +256,7 @@ async function loadList(canEdit) {
       <section class="pg-card jd-card">
         <div class="jd-head">
           <div class="jd-title">
-            <strong>${s.name}</strong>
+            <strong>${escapeHtml(s.name)}</strong>
             <span class="badge badge-${s.is_active ? "ok" : "danger"}">${s.is_active ? "Aktif" : "Nonaktif"}</span>
           </div>
           <div class="jd-meta">

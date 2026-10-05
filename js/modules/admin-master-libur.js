@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, fmtDate } from "../core.js";
+import { toast, fmtDate, escapeHtml } from "../core.js";
 
 export async function render(container, user) {
   const canEdit = true; // siapa pun yang sampai ke sini sudah lolos guard permission menu ini
@@ -61,7 +61,7 @@ async function loadTable(canEdit) {
         ${data.map(r => `
           <tr>
             <td>${fmtDate(r.date)}</td>
-            <td>${r.name}</td>
+            <td>${escapeHtml(r.name)}</td>
             <td><span class="badge badge-${r.is_active ? "ok" : "danger"}">${r.is_active ? "Aktif" : "Nonaktif"}</span></td>
             ${canEdit ? `<td><button class="btn-link btn-edit" data-id="${r.id}">Edit</button></td>` : ""}
           </tr>

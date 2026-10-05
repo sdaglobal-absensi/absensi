@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { toast, confirmDialog } from "../core.js";
+import { toast, confirmDialog, escapeHtml } from "../core.js";
 import { hasXLSX, readFirstSheet, cellText, writeWorkbook, widthsFor, pickFileThen } from "../excelIO.js";
 
 // Kolom Excel: Departemen, Bagian, Jabatan, Status (Aktif/Nonaktif).
@@ -87,9 +87,9 @@ async function loadTable(canEdit) {
       <tbody>
         ${data.map(r => `
           <tr>
-            <td>${r.departemen}</td>
-            <td>${r.bagian}</td>
-            <td>${r.jabatan}</td>
+            <td>${escapeHtml(r.departemen)}</td>
+            <td>${escapeHtml(r.bagian)}</td>
+            <td>${escapeHtml(r.jabatan)}</td>
             <td><span class="badge badge-${r.is_active ? "ok" : "danger"}">${r.is_active ? "Aktif" : "Nonaktif"}</span></td>
             ${canEdit ? `<td><button class="btn-link btn-edit" data-id="${r.id}">Edit</button></td>` : ""}
           </tr>

@@ -929,7 +929,7 @@ export function wireSearchSelect(id, options, { getLabel = o => String(o), getVa
     const f = filter.toLowerCase();
     const filtered = options.filter(o => getLabel(o).toLowerCase().includes(f));
     list.innerHTML = filtered.length
-      ? filtered.map(o => `<div class="search-option" data-value="${escapeAttr(getValue(o))}">${getLabel(o)}</div>`).join("")
+      ? filtered.map(o => `<div class="search-option" data-value="${escapeAttr(getValue(o))}">${escapeAttr(getLabel(o))}</div>`).join("")
       : `<div class="search-option muted">Tidak ada hasil — cek Master Data</div>`;
     list.classList.remove("hidden");
   }
@@ -961,6 +961,12 @@ export function wireSearchSelect(id, options, { getLabel = o => String(o), getVa
 
 function escapeAttr(s) {
   return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Escape teks bebas (nama, keterangan, dsb) sebelum disisipkan ke innerHTML.
+// Satu helper bersama; modul lain boleh mengimpornya alih-alih menulis ulang.
+export function escapeHtml(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 // Hitung "lama bekerja" dari tanggal masuk ke hari ini, format "X tahun Y bulan".

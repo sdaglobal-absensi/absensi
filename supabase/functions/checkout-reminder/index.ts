@@ -27,6 +27,11 @@
 //     nyaris bersamaan tidak akan mengirim dobel.
 //   * Kegagalan satu usaha tidak menghentikan usaha lain.
 //
+// Jadwal efektif: pengingat memakai jadwal hasil tukar shift (schedule_overrides)
+// bila ada, dan pengingat check-in dilewati pada hari libur (holidays aktif) serta
+// saat karyawan punya cuti/izin/sakit berstatus pending atau approved. Dinas luar
+// dan WFH TIDAK melewati pengingat karena karyawan tetap wajib check-in.
+//
 // Catatan: pengingat check-in memakai tanggal kalender HARI INI (menurut
 // zona karyawan) sebagai "tanggal shift" — shift lintas tengah malam yang
 // sangat telat check-in tidak mendapat push (tetap terlihat di panel admin).
@@ -99,6 +104,41 @@ export async function processTenant(db: Db, send: (sub: any, payload: string) =>
   for (const o of offices) tzByOffice.set(o.name, o.timezone || "Asia/Jakarta");
   const offsetOf = (lokasi: string | null) => tzOffsetHours(lokasi ? tzByOffice.get(lokasi) : undefined);
 
+  // Jadwal efektif: tukar shift (schedule_overrides), hari libur, dan cuti/izin/sakit.
+  // Dimuat sekali per usaha untuk jendela tanggal sempit (kemarin..besok, dengan
+  // sisa pengaman) supaya pengingat sama dengan perilaku aplikasi web.
+  const winEnd = addDaysToDateStr(todayInOffset(9, now), 1);
+  const winStart = addDaysToDateStr(todayInOffset(7, now), -2);
+
+  const ovRows = await fetchAll(() => db.from("schedule_overrides")
+    .select("user_id, work_date, schedule_id")
+    .eq("tenant_id", tenantId).gte("work_date", winStart).lte("work_date", winEnd)
+    .order("user_id").order("work_date"));
+  const overrideOf = new Map<string, string>();
+  for (const o of ovRows) overrideOf.set(`${o.user_id}|${o.work_date}`, o.schedule_id);
+  // Jadwal yang berlaku untuk karyawan pada tanggal shift tertentu.
+  const scheduleFor = (userId: string, baseScheduleId: string, dateStr: string): string =>
+    overrideOf.get(`${userId}|${dateStr}`) ?? baseScheduleId;
+
+  const holRows = await fetchAll(() => db.from("holidays")
+    .select("date").eq("tenant_id", tenantId).eq("is_active", true)
+    .gte("date", winStart).lte("date", winEnd).order("date"));
+  const holidays = new Set<string>(holRows.map(h => h.date));
+
+  // Status 'pending' ikut dihitung: aplikasi web juga menyembunyikan tombol
+  // check-in selama pengajuan masih menunggu (lihat employee-absensi.js).
+  const leaveRows = await fetchAll(() => db.from("leave_requests")
+    .select("id, user_id, start_date, end_date")
+    .eq("tenant_id", tenantId).in("status", ["pending", "approved"])
+    .lte("start_date", winEnd).gte("end_date", winStart).order("id"));
+  const leavesByUser = new Map<string, { s: string; e: string }[]>();
+  for (const l of leaveRows) {
+    if (!leavesByUser.has(l.user_id)) leavesByUser.set(l.user_id, []);
+    leavesByUser.get(l.user_id)!.push({ s: l.start_date, e: l.end_date });
+  }
+  const onLeave = (userId: string, dateStr: string) =>
+    (leavesByUser.get(userId) || []).some(l => dateStr >= l.s && dateStr <= l.e);
+
   // Langganan push: dimuat sekali per usaha untuk user yang dibutuhkan.
   const subsByUser = new Map<string, any[]>();
   async function loadSubs(userIds: string[]) {
@@ -140,7 +180,8 @@ export async function processTenant(db: Db, send: (sub: any, payload: string) =>
   for (const row of openRows) {
     const profile = row.profiles;
     if (!profile?.is_active || !profile.schedule_id) continue;
-    const day = dayMap.get(`${profile.schedule_id}:${dayOfWeekFromDateStr(row.date)}`);
+    const schedId = scheduleFor(row.user_id, profile.schedule_id, row.date);
+    const day = dayMap.get(`${schedId}:${dayOfWeekFromDateStr(row.date)}`);
     if (!day?.is_working_day || !day.end_time) continue;
 
     const offset = offsetOf(profile.lokasi_kerja);
@@ -186,7 +227,10 @@ export async function processTenant(db: Db, send: (sub: any, payload: string) =>
   for (const profile of profiles) {
     const offset = offsetOf(profile.lokasi_kerja);
     const todayStr = todayInOffset(offset, now);
-    const day = dayMap.get(`${profile.schedule_id}:${dayOfWeekFromDateStr(todayStr)}`);
+    // Libur & cuti/izin/sakit: tidak perlu diingatkan check-in.
+    if (holidays.has(todayStr) || onLeave(profile.id, todayStr)) continue;
+    const schedId = scheduleFor(profile.id, profile.schedule_id, todayStr);
+    const day = dayMap.get(`${schedId}:${dayOfWeekFromDateStr(todayStr)}`);
     if (!day?.is_working_day || !day.start_time) continue;
     const [sh, sm] = day.start_time.split(":").map(Number);
     const minutesSince = (now - zonedTimestampMs(todayStr, sh, sm, offset)) / 60000;

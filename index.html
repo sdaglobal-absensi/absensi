@@ -234,7 +234,7 @@ if ("serviceWorker" in navigator) {
       // -> lanjutkan di halaman daftar (kalau pendaftaran dibuka).
       supabase.rpc("public_signup_open").then(({ data }) => { if (data === true) location.replace("daftar.html?lanjut=1"); });
       document.getElementById("login-error").textContent =
-        "Akun berhasil login tapi datanya belum lengkap di database (baris di tabel 'profiles' tidak ditemukan). Hubungi admin, atau jalankan ulang supabase-schema.sql lalu buat ulang akun lewat panel admin.";
+        "Akun berhasil login tapi datanya belum lengkap di database (baris di tabel 'profiles' tidak ditemukan). Hubungi admin usahamu atau admin platform untuk memeriksa akun ini. Jangan menjalankan ulang file SQL lama.";
     }
     if (params.get("reason") === "inactive") {
       document.getElementById("login-error").textContent =
