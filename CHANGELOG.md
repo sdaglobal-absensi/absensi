@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.2 — 2026-10-19
+- **Trial paket berbayar memakai role lengkap** (`021_trial_role_lengkap.sql`): usaha trial Bisnis/Enterprise tidak lagi terjebak template ringkas; Pengaturan Sistem menampilkan 4 kolom role.
+- **Export Absensi**: urutan kolom kini Jam Check-in, Jam Check-out, Status, Jarak Check-in (m), Jarak Check-out (m).
+- **Semua modal/form terbuka dari atas** (pengamat global di `js/core.js`), tidak lagi dari posisi scroll sisa/bawah. Tes: `tests/modalScroll.test.js`.
+
 ## 1.1.1 — 2026-10-05 (konsistensi tampilan pengajuan)
 - Halaman **Pengajuan Izin, Pengajuan Lembur, dan Koreksi Absen** kini memakai pola yang sama dengan Dinas Luar dan Kasbon: judul + tombol **+ Ajukan …** + daftar riwayat; formulir tampil di popup (`js/requestModal.js`). Panel "Informasi" dipindah menjadi catatan singkat di dalam popup.
 - Banner "lupa check-out" tetap berfungsi: popup Koreksi Absen terbuka otomatis dengan tanggal & jenis terisi.

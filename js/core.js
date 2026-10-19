@@ -1017,3 +1017,43 @@ export function exportXLSX(filename, rows, sheetName = "Data") {
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   XLSX.writeFile(wb, filename);
 }
+
+// =====================================================================
+// Semua modal/form selalu terbuka dari ATAS.
+// Modal di app ini dibuka-tutup dengan menambah/menghapus class "hidden"
+// pada elemen .modal, sementara kotak isinya (.modal-box) bisa di-scroll.
+// Tanpa ini posisi scroll sisa sebelumnya (atau loncatan fokus ke kolom di
+// bawah) membuat form muncul dari bagian bawah. Satu pengamat global di sini
+// menangani semua modal, termasuk yang dibuat dinamis.
+// =====================================================================
+function resetModalScroll(modal) {
+  const reset = () => {
+    modal.scrollTop = 0;
+    modal.querySelectorAll("*").forEach(el => { if (el.scrollTop > 0) el.scrollTop = 0; });
+  };
+  reset();                         // langsung
+  requestAnimationFrame(reset);    // setelah layout/animasi masuk
+  setTimeout(reset, 80);           // setelah fokus/isi async selesai
+}
+
+if (typeof document !== "undefined" && typeof MutationObserver !== "undefined") {
+  const isModal = el => el.nodeType === 1 && el.classList.contains("modal");
+  new MutationObserver(muts => {
+    for (const m of muts) {
+      if (m.type === "attributes") {
+        const el = m.target;
+        if (isModal(el) && !el.classList.contains("hidden")
+            && (m.oldValue || "").split(/\s+/).includes("hidden")) {
+          resetModalScroll(el);
+        }
+      } else {
+        m.addedNodes.forEach(n => {
+          if (isModal(n) && !n.classList.contains("hidden")) resetModalScroll(n);
+        });
+      }
+    }
+  }).observe(document.documentElement, {
+    subtree: true, childList: true, attributes: true,
+    attributeFilter: ["class"], attributeOldValue: true,
+  });
+}
