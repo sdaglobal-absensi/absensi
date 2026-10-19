@@ -1332,9 +1332,18 @@ button { font-family: 'Inter'; cursor: pointer; }
 
 /* --- Data Karyawan --- */
 .kr-toolbar { margin-bottom: 8px; }
-.kr-table td { white-space: nowrap; vertical-align: middle; }
-.kr-table td.kr-wrap { white-space: normal; min-width: 150px; max-width: 220px; }
-.kr-emp { display: flex; align-items: center; gap: 12px; min-width: 230px; }
+/* Data Karyawan: muat di lebar layar tanpa geser kanan. Teks boleh turun ke
+   baris berikutnya; hanya Kode dan Status yang dijaga satu baris. Email yang
+   panjang dipotong di tempat yang perlu saja (overflow-wrap: anywhere). */
+.kr-table { font-size: 0.85rem; }
+.kr-table th { white-space: normal; padding: 10px 10px; line-height: 1.25; }
+.kr-table td { white-space: normal; vertical-align: middle; padding: 10px; }
+.kr-table td.kr-nowrap { white-space: nowrap; }
+.kr-table td.kr-wrap { min-width: 0; max-width: none; }
+.kr-table .kr-sub { overflow-wrap: anywhere; }
+.kr-emp { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.kr-emp > div { min-width: 0; }
+.kr-emp .row-avatar { flex: none; }
 .kr-name { font-weight: 600; line-height: 1.3; }
 .kr-name-plain { font-weight: 500; }
 .kr-sub { font-size: 0.78rem; color: var(--muted); margin-top: 2px; line-height: 1.35; }

@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.1.2 — 2026-10-19
+- **Data Karyawan tanpa geser kanan**: tabel kini memadatkan kolom (teks boleh turun baris, padding lebih rapat, kolom Karyawan tidak lagi dikunci 230px) sehingga muat di layar laptop. Versi CSS dinaikkan ke `?v=20261019a`.
 - **Buka app lebih cepat saat sudah login**: `js/fastRedirect.js` memindahkan halaman login langsung ke dashboard begitu ada sesi tersimpan, tanpa menampilkan form login selama menunggu token diperbarui (terasa setelah app ditutup berjam-jam). Tes: `tests/fastRedirect.test.js`.
 - **Trial paket berbayar memakai role lengkap** (`021_trial_role_lengkap.sql`): usaha trial Bisnis/Enterprise tidak lagi terjebak template ringkas; Pengaturan Sistem menampilkan 4 kolom role.
 - **Export Absensi**: urutan kolom kini Jam Check-in, Jam Check-out, Status, Jarak Check-in (m), Jarak Check-out (m).

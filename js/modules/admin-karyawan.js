@@ -402,7 +402,7 @@ function renderKaryawanTable() {
                 </div>
               </div>
             </td>
-            <td>${esc(k.employee_code || "-")}</td>
+            <td class="kr-nowrap">${esc(k.employee_code || "-")}</td>
             <td>
               <div class="kr-name kr-name-plain">${esc(k.position || "-")}</div>
               <div class="kr-sub">${esc(k.department || "-")}</div>
@@ -416,7 +416,7 @@ function renderKaryawanTable() {
               ${k.unit_pt ? `<div class="kr-sub">${esc(k.unit_pt)}</div>` : ""}
             </td>
             <td>${roleLabel(k.role)}</td>
-            <td>
+            <td class="kr-nowrap">
               <span class="badge badge-${k.is_active ? "ok" : "danger"}">${k.is_active ? "Aktif" : "Nonaktif"}</span>
               ${k.resign_date ? `<div class="kr-sub">Resign ${fmtTanggal(k.resign_date)}</div>` : ""}
             </td>
