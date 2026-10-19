@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.1.2 — 2026-10-19
+- **Popup form tanpa geser kanan**: kolom dua/tiga-kolom di form memakai `minmax(0, 1fr)` sehingga input tanggal/angka tidak lagi melebar keluar popup (mis. Set Upah Awal). Berlaku untuk semua popup. CSS `?v=20261019b`.
 - **Data Karyawan tanpa geser kanan**: tabel kini memadatkan kolom (teks boleh turun baris, padding lebih rapat, kolom Karyawan tidak lagi dikunci 230px) sehingga muat di layar laptop. Versi CSS dinaikkan ke `?v=20261019a`.
 - **Buka app lebih cepat saat sudah login**: `js/fastRedirect.js` memindahkan halaman login langsung ke dashboard begitu ada sesi tersimpan, tanpa menampilkan form login selama menunggu token diperbarui (terasa setelah app ditutup berjam-jam). Tes: `tests/fastRedirect.test.js`.
 - **Trial paket berbayar memakai role lengkap** (`021_trial_role_lengkap.sql`): usaha trial Bisnis/Enterprise tidak lagi terjebak template ringkas; Pengaturan Sistem menampilkan 4 kolom role.

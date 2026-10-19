@@ -97,8 +97,13 @@ input, select, textarea {
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary-light); box-shadow: 0 0 0 3px rgba(47, 107, 79, 0.15); }
 .form-row { margin-bottom: 4px; }
-.form-row.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.form-row.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+/* minmax(0, 1fr), bukan 1fr: kolom grid tidak boleh melebar mengikuti lebar
+   bawaan input tanggal/angka, kalau tidak isinya keluar dari popup dan muncul
+   bilah geser horizontal. */
+.form-row.two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.form-row.three-col { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.form-row.two-col > label, .form-row.three-col > label { min-width: 0; }
+.form-row input, .form-row select, .form-row textarea { min-width: 0; max-width: 100%; }
 @media (max-width: 560px) { .form-row.three-col { grid-template-columns: 1fr; } .form-row.two-col { grid-template-columns: 1fr; } }
 .form-section-label {
   font-size: 0.76rem; font-weight: 600; color: var(--muted); text-transform: uppercase;
@@ -678,7 +683,7 @@ button { font-family: 'Inter'; cursor: pointer; }
 
 /* ---------------- Camera Modal ---------------- */
 .modal { position: fixed; inset: 0; background: rgba(20,24,21,0.55); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; animation: modal-fade 0.15s var(--ease); }
-.modal-box { background: var(--surface); border-radius: var(--radius-lg); padding: 24px; max-width: 420px; width: 100%; max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow-lg); animation: modal-pop 0.18s var(--ease); }
+.modal-box { background: var(--surface); border-radius: var(--radius-lg); padding: 24px; max-width: 420px; width: 100%; max-height: 88vh; overflow-y: auto; overflow-x: hidden; box-shadow: var(--shadow-lg); animation: modal-pop 0.18s var(--ease); }
 .modal-box-lg { max-width: 620px; }
 .modal-box h3 { margin-bottom: 8px; }
 @keyframes modal-fade { from { opacity: 0; } to { opacity: 1; } }
