@@ -246,7 +246,8 @@ async function loadBelumAbsen(date) {
     .filter(emp => {
       if (attendedIds.has(emp.id)) return false; // sudah absen
       const sid = ovMap[emp.id] || emp.schedule_id;
-      if (sid && workingDayBySchedule[sid] === false) return false; // libur sesuai jadwalnya sendiri
+      if (!sid) return false; // belum punya shift/jadwal kerja -> tidak dipantau
+      if (workingDayBySchedule[sid] !== true) return false; // libur / hari itu tidak terdaftar di jadwalnya
       return true;
     })
     .map(emp => ({ emp, leave: leaveByUser[emp.id] || null }));

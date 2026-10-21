@@ -219,7 +219,8 @@ async function countBelumCheckinHariIni(date) {
     return (emps.data || []).filter(e => {
       if (attended.has(e.id)) return false;
       const sid = ovMap[e.id] || e.schedule_id; // tukar shift (SQL 013)
-      if (sid && workingBySchedule[sid] === false) return false;
+      if (!sid) return false; // belum punya shift/jadwal kerja -> tidak dipantau
+      if (workingBySchedule[sid] !== true) return false; // libur / hari itu tidak terdaftar di jadwalnya
       return true;
     }).length;
   } catch (e) {
