@@ -179,6 +179,25 @@ function renderStats() {
 // Hasil query di-cache per tanggal (belumAbsenState) supaya mengetik di
 // kotak pencarian tidak query ulang ke server tiap huruf.
 // =====================================================================
+// Riwayat jadwal kerja per karyawan (supabase-riwayat-jadwal.sql): jadwal yang berlaku
+// pada TANGGAL tertentu, bukan jadwal yang berlaku sekarang. Tanpa ini, karyawan yang
+// jadwalnya baru dipasang tetap dianggap "lupa check-in / belum absen" di tanggal sebelum
+// jadwalnya ada. Tabel belum ada / kosong -> jatuh balik ke profiles.schedule_id.
+async function fetchScheduleHistory() {
+  const r = await supabase.from("employee_schedule_history")
+    .select("user_id, schedule_id, effective_from").order("effective_from", { ascending: true });
+  const byUser = {};
+  if (!r.error) (r.data || []).forEach(h => { (byUser[h.user_id] ||= []).push(h); });
+  return byUser;
+}
+function scheduleIdOn(historyByUser, emp, date) {
+  const hist = historyByUser[emp.id];
+  if (!hist || !hist.length) return emp.schedule_id || null; // belum ada riwayat -> pakai jadwal sekarang
+  let id = null;
+  for (const h of hist) { if (h.effective_from <= date) id = h.schedule_id; else break; }
+  return id; // null = pada tanggal itu belum/tidak punya jadwal
+}
+
 let belumAbsenState = { date: null, holiday: null, rows: [], specialRules: [] };
 
 async function loadBelumAbsen(date) {
@@ -227,6 +246,7 @@ async function loadBelumAbsen(date) {
     fetchSpecialLeaveRules(),
     supabase.from("schedule_overrides").select("user_id, schedule_id").eq("work_date", date), // tukar shift (SQL 013)
   ]);
+  const histByUser = await fetchScheduleHistory();
   const ovMap = {};
   (ovRows || []).forEach(o => { ovMap[o.user_id] = o.schedule_id; });
 
@@ -245,7 +265,7 @@ async function loadBelumAbsen(date) {
   const rows = (employees || [])
     .filter(emp => {
       if (attendedIds.has(emp.id)) return false; // sudah absen
-      const sid = ovMap[emp.id] || emp.schedule_id;
+      const sid = ovMap[emp.id] || scheduleIdOn(histByUser, emp, date);
       if (!sid) return false; // belum punya shift/jadwal kerja -> tidak dipantau
       if (workingDayBySchedule[sid] !== true) return false; // libur / hari itu tidak terdaftar di jadwalnya
       return true;
@@ -340,7 +360,7 @@ async function loadLupaCheckin() {
   const [emps, att, sched, hol, leaves, koreksi, ovr] = await Promise.all([
     supabase.from("profiles")
       .select("id, full_name, department, employee_code, photo_url, schedule_id, join_date, resign_date")
-      .eq("is_active", true).not("schedule_id", "is", null),
+      .eq("is_active", true),
     supabase.from("attendance").select("user_id, date, check_in").gte("date", start).lte("date", end),
     supabase.from("work_schedule_days").select("schedule_id, day_of_week, is_working_day"),
     supabase.from("holidays").select("date").eq("is_active", true).gte("date", start).lte("date", end),
@@ -350,6 +370,7 @@ async function loadLupaCheckin() {
       .eq("correction_type", "masuk").eq("status", "pending").gte("attendance_date", start).lte("attendance_date", end),
     supabase.from("schedule_overrides").select("user_id, work_date, schedule_id").gte("work_date", start).lte("work_date", end), // tukar shift (SQL 013)
   ]);
+  const histByUser = await fetchScheduleHistory();
   const ovByKey = {};
   (ovr.error ? [] : ovr.data || []).forEach(o => { ovByKey[`${o.user_id}|${o.work_date}`] = o.schedule_id; });
 
@@ -371,7 +392,8 @@ async function loadLupaCheckin() {
     if (holidays.has(date)) continue;
     const dow = dayOfWeekFromDateStr(date);
     for (const emp of emps.data || []) {
-      const sid = ovByKey[`${emp.id}|${date}`] || emp.schedule_id;
+      const sid = ovByKey[`${emp.id}|${date}`] || scheduleIdOn(histByUser, emp, date);
+      if (!sid) continue; // pada tanggal itu belum punya shift/jadwal kerja -> tidak dihitung
       if (working[`${sid}|${dow}`] !== true) continue; // libur / jadwal hari itu tidak terdaftar
       if (emp.join_date && date < emp.join_date) continue;
       if (emp.resign_date && date > emp.resign_date) continue;
