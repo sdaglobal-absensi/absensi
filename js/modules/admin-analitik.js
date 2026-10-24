@@ -1,5 +1,5 @@
 import { supabase } from "../supabaseClient.js";
-import { dateOnlyISO, dayOfWeekFromDateStr, exportXLSX } from "../core.js";
+import { dateOnlyISO, dayOfWeekFromDateStr, exportXLSX, toast } from "../core.js";
 
 // =======================================================================
 // Dashboard Analitik HR (Prioritas Menengah #7)
@@ -19,13 +19,13 @@ const MONTHS_FULL = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Ju
 const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const fmt1 = n => (Math.round(n * 10) / 10).toLocaleString("id-ID");
 
-let state = { profiles: [], holidays: new Set(), working: {}, hist: {}, month: "", dept: "", exportRows: [] };
+let state = { profiles: [], holidays: new Set(), working: {}, hist: {}, month: "", dept: "", pt: "", loc: "", exportRows: [], view: null };
 let reqToken = 0;
 
 export async function render(container) {
   const nowISO = dateOnlyISO(new Date());
   state.month = nowISO.slice(0, 7);
-  state.dept = "";
+  state.dept = ""; state.pt = ""; state.loc = "";
 
   container.innerHTML = `
     <style>
@@ -52,6 +52,20 @@ export async function render(container) {
       .an-delta.bad { color: var(--danger, #d64545); }
       .an-delta.flat { color: var(--muted); }
       .an-lowdata { color: var(--warn, #d9922b); font-weight: 600; }
+      .an-info { cursor: help; color: var(--muted); font-size: .72rem; margin-left: 2px; }
+      .an-def { margin: 0 0 18px; font-size: .82rem; color: var(--muted); }
+      .an-def summary { cursor: pointer; font-weight: 600; color: var(--ink, inherit); }
+      .an-def ul { margin: 8px 0 0; padding-left: 18px; line-height: 1.6; }
+      .an-tbl tbody tr.an-click { cursor: pointer; }
+      .an-tbl tbody tr.an-click:hover { background: var(--surface-2, #F7F6F2); }
+      .an-hint { font-size: .78rem; color: var(--muted); padding: 8px 16px 12px; margin: 0; }
+      .an-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 14px; }
+      .an-chip { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 4px 10px; font-size: .78rem; cursor: pointer; color: var(--ink, inherit); }
+      .an-chip:hover { border-color: var(--primary, #2f5fd0); color: var(--primary, #2f5fd0); }
+      .an-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+      .an-modal-head h3 { margin: 0; }
+      .an-modal-x { flex-shrink: 0; width: 36px; height: 36px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); font-size: 1.4rem; line-height: 1; cursor: pointer; color: var(--ink, inherit); }
+      .an-sum { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .84rem; margin-bottom: 12px; }
       .an-empty { padding: 28px 8px; text-align: center; color: var(--muted); font-size: .85rem; }
     </style>
 
@@ -66,12 +80,26 @@ export async function render(container) {
       <div class="filter-row">
         <input type="month" id="an-month" value="${state.month}" max="${nowISO.slice(0, 7)}">
         <select id="an-dept"><option value="">Semua Departemen</option></select>
+        <select id="an-pt" class="hidden"><option value="">Semua PT / Unit</option></select>
+        <select id="an-loc" class="hidden"><option value="">Semua Lokasi</option></select>
         <button type="button" id="an-export" class="btn-secondary">⬇ Ekspor Excel</button>
       </div>
     </div>
 
     <div class="status-grid" id="an-kpi"><p class="muted">Memuat…</p></div>
+    <div class="status-grid" id="an-kpi2" style="margin-top:12px"></div>
     <p class="an-note" id="an-meta"></p>
+    <details class="an-def">
+      <summary>Cara menghitung angka di halaman ini</summary>
+      <ul>
+        <li><b>Hari terjadwal</b>: hari kerja menurut jadwal masing-masing karyawan (termasuk riwayat jadwal dan tukar shift), mulai tanggal masuk, di luar Master Hari Libur dan izin/cuti/sakit yang disetujui. Bulan berjalan dihitung sampai hari ini.</li>
+        <li><b>Tingkat kehadiran</b>: check-in pada hari terjadwal ÷ hari terjadwal. Check-in di luar jadwal tidak dihitung.</li>
+        <li><b>Tingkat keterlambatan</b>: check-in berstatus telat ÷ seluruh check-in.</li>
+        <li><b>Hari tanpa check-in</b>: hari terjadwal yang sudah lewat, tanpa check-in, izin, atau cuti. Hari ini belum dihitung.</li>
+        <li><b>Lupa check-out</b>: check-in pada tanggal yang sudah lewat tetapi belum ada check-out.</li>
+        <li><b>Karyawan tanpa jadwal</b> pada bulan terpilih tidak dihitung di angka mana pun, kecuali kuota cuti.</li>
+      </ul>
+    </details>
 
     <div class="an-grid2">
       <div class="an-panel"><h3>Tren Keterlambatan</h3><p class="muted small">% check-in yang telat, 6 bulan terakhir</p><div id="an-trend-late"></div></div>
@@ -85,11 +113,28 @@ export async function render(container) {
       <div class="an-panel"><h3>Karyawan Paling Sering Telat</h3><p class="muted small" id="an-late-sub"></p><div id="an-top-late"></div></div>
       <div class="an-panel"><h3>Cuti Tahunan Belum Terpakai</h3><p class="muted small" id="an-leave-sub"></p><div id="an-leave"></div></div>
     </div>
+
+    <div id="an-modal" class="modal hidden"><div class="modal-box modal-box-lg"><div id="an-modal-body"></div></div></div>
   `;
 
   document.getElementById("an-month").addEventListener("change", e => { if (e.target.value) { state.month = e.target.value; load(); } });
   document.getElementById("an-dept").addEventListener("change", e => { state.dept = e.target.value; load(); });
+  document.getElementById("an-pt").addEventListener("change", e => { state.pt = e.target.value; load(); });
+  document.getElementById("an-loc").addEventListener("change", e => { state.loc = e.target.value; load(); });
   document.getElementById("an-export").addEventListener("click", onExport);
+  document.getElementById("an-dept-table").addEventListener("click", e => {
+    const tr = e.target.closest("tr[data-dept]"); if (tr) showDeptDetail(tr.dataset.dept);
+  });
+  document.getElementById("an-top-late").addEventListener("click", e => {
+    const b = e.target.closest("[data-uid]"); if (b) showPersonDetail(b.dataset.uid);
+  });
+  const modal = document.getElementById("an-modal");
+  modal.addEventListener("click", e => {
+    if (e.target === modal || e.target.closest("[data-close]")) { modal.classList.add("hidden"); return; }
+    const u = e.target.closest("[data-uid]"); if (u) { showPersonDetail(u.dataset.uid, u.dataset.back || ""); return; }
+    const bk = e.target.closest("[data-back-dept]"); if (bk) { showDeptDetail(bk.dataset.backDept); return; }
+    const g = e.target.closest("[data-go-date]"); if (g) goMonitor(g.dataset.goDate, g.dataset.q || "");
+  });
 
   await loadStatic();
   load();
@@ -98,7 +143,7 @@ export async function render(container) {
 // ---------- data umum (sekali per halaman dibuka) ----------
 async function loadStatic() {
   const [{ data: profiles }, { data: holidays }, schedDays, hist] = await Promise.all([
-    supabase.from("profiles").select("id, full_name, employee_code, department, join_date, resign_date, schedule_id").eq("is_active", true).order("full_name"),
+    supabase.from("profiles").select("id, full_name, employee_code, department, unit_pt, lokasi_kerja, join_date, resign_date, schedule_id").eq("is_active", true).order("full_name"),
     supabase.from("holidays").select("date").eq("is_active", true),
     supabase.from("work_schedule_days").select("schedule_id, day_of_week, is_working_day"),
     supabase.from("employee_schedule_history").select("user_id, schedule_id, effective_from").order("effective_from", { ascending: true }),
@@ -112,6 +157,20 @@ async function loadStatic() {
   const depts = [...new Set(state.profiles.map(p => p.department).filter(Boolean))].sort();
   const sel = document.getElementById("an-dept");
   sel.innerHTML = `<option value="">Semua Departemen</option>` + depts.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join("");
+  fillFilter("an-pt", "Semua PT / Unit", state.profiles.map(p => p.unit_pt));
+  fillFilter("an-loc", "Semua Lokasi", state.profiles.map(p => p.lokasi_kerja));
+}
+
+// Filter PT/Unit & Lokasi hanya ditampilkan kalau datanya memang ada.
+function fillFilter(id, allLabel, values) {
+  const opts = [...new Set(values.filter(Boolean))].sort();
+  const el = document.getElementById(id);
+  el.innerHTML = `<option value="">${allLabel}</option>` + opts.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  el.classList.toggle("hidden", opts.length === 0);
+}
+
+function matchesFilter(p) {
+  return (!state.dept || p.department === state.dept) && (!state.pt || p.unit_pt === state.pt) && (!state.loc || p.lokasi_kerja === state.loc);
 }
 
 // Supabase membatasi 1000 baris per permintaan, jadi diambil per halaman.
@@ -184,21 +243,28 @@ function analyze(range, people, { att, leaves, ots, ovr }) {
       exp.add(date);
     }
     const mine = attBy.get(p.id) || [];
+    const mineDates = new Set(mine.map(a => a.date));
+    const missDates = [...exp].filter(d => d < today && !mineDates.has(d)).sort();
+    const lateDates = mine.filter(a => a.check_in_status === "telat").map(a => a.date).sort();
+    const lupaOutDates = mine.filter(a => !a.check_out && a.date < today).map(a => a.date).sort();
     out.set(p.id, {
       hasSched,
       exp: exp.size,
       izin,
       hadir: mine.length,
       hadirExp: mine.filter(a => exp.has(a.date)).length,
-      telat: mine.filter(a => a.check_in_status === "telat").length,
+      telat: lateDates.length,
+      tanpa: missDates.length,
+      lupaOut: lupaOutDates.length,
       ot: (otBy.get(p.id) || []).reduce((s, o) => s + otHours(o), 0),
+      missDates, lateDates, lupaOutDates,
     });
   }
   return out;
 }
 
 function totalsOf(stats, scope) {
-  const t = { exp: 0, hadir: 0, hadirExp: 0, telat: 0, izin: 0, ot: 0 };
+  const t = { exp: 0, hadir: 0, hadirExp: 0, telat: 0, izin: 0, ot: 0, tanpa: 0, lupaOut: 0 };
   for (const p of scope) { const s = stats.get(p.id); for (const k in t) t[k] += s[k]; }
   t.rate = t.exp ? Math.min(100, Math.round(t.hadirExp / t.exp * 100)) : null;
   t.lateRate = t.hadir ? Math.round(t.telat / t.hadir * 100) : null;
@@ -235,17 +301,18 @@ async function load() {
   const year = cur.y;
   const isCurrentMonth = month === dateOnlyISO(new Date()).slice(0, 7);
 
-  const people = state.profiles.filter(p => !dept || p.department === dept);
+  const people = state.profiles.filter(matchesFilter);
   const ids = new Set(people.map(p => p.id));
 
-  let att, leaves, ots, balances, ovrRows;
+  let att, leaves, ots, balances, ovrRows, resignRows;
   try {
-    [att, leaves, ots, balances, ovrRows] = await Promise.all([
-      fetchAll(() => supabase.from("attendance").select("user_id, date, check_in, check_in_status").gte("date", trendStart).lte("date", cur.end).order("date")),
+    [att, leaves, ots, balances, ovrRows, resignRows] = await Promise.all([
+      fetchAll(() => supabase.from("attendance").select("user_id, date, check_in, check_out, check_in_status").gte("date", trendStart).lte("date", cur.end).order("date")),
       fetchAll(() => supabase.from("leave_requests").select("user_id, start_date, end_date").eq("status", "approved").lte("start_date", cur.end).gte("end_date", prev.start)),
       fetchAll(() => supabase.from("overtime_requests").select("user_id, date, start_time, end_time, total_jam").eq("status", "approved").gte("date", trendStart).lte("date", cur.end)),
       fetchAll(() => supabase.from("leave_balances").select("user_id, kuota_hari, terpakai_hari").eq("tahun", year)),
       fetchAll(() => supabase.from("schedule_overrides").select("user_id, work_date, schedule_id").gte("work_date", prev.start).lte("work_date", cur.end).order("work_date")).catch(() => []), // tukar shift (opsional)
+      supabase.from("profiles").select("id, department, unit_pt, lokasi_kerja").gte("resign_date", cur.start).lte("resign_date", cur.end).then(r => (r.error ? [] : r.data || [])), // yang resign bulan ini (akun sudah nonaktif)
     ]);
   } catch (e) {
     if (token !== reqToken) return;
@@ -274,13 +341,23 @@ async function load() {
   const otCmp = !isCurrentMonth && (tot.ot > 0 || prevTot.ot > 0) ? deltaChip(tot.ot, prevTot.ot, { unit: " jam", digits: 1, label: prevLabel }) : "";
   const sisaTotal = balances.reduce((s, b) => s + Math.max(0, Number(b.kuota_hari) - Number(b.terpakai_hari)), 0);
 
+  const lbl = (text, tip) => `<span class="status-label">${text} <span class="an-info" title="${esc(tip)}">ⓘ</span></span>`;
   document.getElementById("an-kpi").innerHTML = `
-    <div class="status-card ${tot.rate != null && tot.rate >= 90 ? "done" : ""}"><span class="status-label">Tingkat Kehadiran</span><span class="status-value">${tot.rate ?? "–"}${tot.rate != null ? "%" : ""}</span><span class="muted small">${tot.hadirExp} hadir dari ${tot.exp} hari terjadwal</span>${prevTot.exp ? deltaChip(tot.rate, prevTot.rate, { higherBetter: true, unit: " poin", label: prevLabel }) : ""}</div>
-    <div class="status-card"><span class="status-label">Tingkat Keterlambatan</span><span class="status-value">${tot.lateRate ?? "–"}${tot.lateRate != null ? "%" : ""}</span><span class="muted small">${tot.telat} dari ${tot.hadir} check-in${lowData ? ` · <span class="an-lowdata">data masih sedikit</span>` : ""}</span>${prevTot.hadir ? deltaChip(tot.lateRate, prevTot.lateRate, { higherBetter: false, unit: " poin", label: prevLabel }) : ""}</div>
-    <div class="status-card"><span class="status-label">Total Lembur Disetujui</span><span class="status-value">${fmt1(tot.ot)} jam</span><span class="muted small">${MONTHS_FULL[cur.m - 1]} ${cur.y}</span>${otCmp}</div>
-    <div class="status-card"><span class="status-label">Cuti Belum Terpakai</span><span class="status-value">${fmt1(sisaTotal)} hari</span><span class="muted small">Cuti Tahunan ${year}, ${people.length} karyawan</span></div>`;
+    <div class="status-card ${tot.rate != null && tot.rate >= 90 ? "done" : ""}">${lbl("Tingkat Kehadiran", "Check-in pada hari terjadwal ÷ hari terjadwal. Di luar hari libur dan izin/cuti disetujui.")}<span class="status-value">${tot.rate ?? "–"}${tot.rate != null ? "%" : ""}</span><span class="muted small">${tot.hadirExp} hadir dari ${tot.exp} hari terjadwal</span>${prevTot.exp ? deltaChip(tot.rate, prevTot.rate, { higherBetter: true, unit: " poin", label: prevLabel }) : ""}</div>
+    <div class="status-card">${lbl("Tingkat Keterlambatan", "Check-in berstatus telat ÷ seluruh check-in pada bulan ini.")}<span class="status-value">${tot.lateRate ?? "–"}${tot.lateRate != null ? "%" : ""}</span><span class="muted small">${tot.telat} dari ${tot.hadir} check-in${lowData ? ` · <span class="an-lowdata">data masih sedikit</span>` : ""}</span>${prevTot.hadir ? deltaChip(tot.lateRate, prevTot.lateRate, { higherBetter: false, unit: " poin", label: prevLabel }) : ""}</div>
+    <div class="status-card">${lbl("Total Lembur Disetujui", "Jumlah jam lembur berstatus disetujui pada bulan ini.")}<span class="status-value">${fmt1(tot.ot)} jam</span><span class="muted small">${MONTHS_FULL[cur.m - 1]} ${cur.y}</span>${otCmp}</div>
+    <div class="status-card">${lbl("Cuti Belum Terpakai", "Sisa kuota Cuti Tahunan (kuota − terpakai) seluruh karyawan pada filter ini.")}<span class="status-value">${fmt1(sisaTotal)} hari</span><span class="muted small">Cuti Tahunan ${year}, ${people.length} karyawan</span></div>`;
+
+  const masuk = people.filter(p => p.join_date && p.join_date >= cur.start && p.join_date <= cur.end).length;
+  const keluar = resignRows.filter(matchesFilter).length;
+  document.getElementById("an-kpi2").innerHTML = `
+    <div class="status-card">${lbl("Karyawan Aktif", "Jumlah karyawan aktif pada filter ini. Masuk/keluar dihitung dari tanggal masuk dan tanggal resign di bulan terpilih.")}<span class="status-value">${people.length}</span><span class="muted small">${masuk} masuk · ${keluar} keluar di ${MONTHS_FULL[cur.m - 1]}</span></div>
+    <div class="status-card">${lbl("Hari Tanpa Check-in", "Hari terjadwal yang sudah lewat tanpa check-in, izin, atau cuti. Hari ini belum dihitung.")}<span class="status-value">${tot.tanpa}</span><span class="muted small">hari terjadwal tanpa absen/keterangan</span></div>
+    <div class="status-card">${lbl("Lupa Check-out", "Check-in pada tanggal yang sudah lewat, tetapi belum ada check-out.")}<span class="status-value">${tot.lupaOut}</span><span class="muted small">sesi lama belum check-out</span></div>
+    <div class="status-card">${lbl("Belum Punya Jadwal", "Karyawan aktif yang tidak punya jadwal kerja pada bulan ini, sehingga tidak dihitung di angka kehadiran. Lengkapi jadwalnya di Data Karyawan.")}<span class="status-value">${excluded}</span><span class="muted small">${excluded ? "tidak dihitung di analitik ini" : "semua karyawan sudah berjadwal"}</span></div>`;
+  const filterText = [dept, state.pt, state.loc].filter(Boolean).join(" · ");
   document.getElementById("an-meta").textContent =
-    `${scope.length} karyawan dipantau${dept ? " di " + dept : ""}${excluded ? ` • ${excluded} karyawan tanpa jadwal kerja pada bulan ini tidak dihitung` : ""}. ` +
+    `${scope.length} karyawan dipantau${filterText ? " (" + filterText + ")" : ""}${excluded ? ` • ${excluded} karyawan tanpa jadwal kerja pada bulan ini tidak dihitung` : ""}. ` +
     `Hari terjadwal dihitung per karyawan sesuai jadwal kerjanya, di luar Master Hari Libur dan izin/cuti yang disetujui${isCurrentMonth ? ", sampai hari ini" : ""}.`;
 
   // --- tren 6 bulan ---
@@ -296,30 +373,35 @@ async function load() {
   document.getElementById("an-trend-ot").innerHTML = otSeries.some(x => x.val > 0) ? bars(otSeries, " jam") : `<p class="an-empty">Belum ada lembur disetujui dalam 6 bulan terakhir.</p>`;
 
   // --- per departemen ---
+  const FIELDS = ["exp", "hadir", "hadirExp", "telat", "tanpa", "izin", "ot"];
+  const blank = () => ({ n: 0, exp: 0, hadir: 0, hadirExp: 0, telat: 0, tanpa: 0, izin: 0, ot: 0 });
   const groups = new Map();
   for (const p of scope) {
     const k = p.department || "Tanpa Departemen";
-    if (!groups.has(k)) groups.set(k, { name: k, n: 0, exp: 0, hadir: 0, hadirExp: 0, telat: 0, izin: 0, ot: 0 });
+    if (!groups.has(k)) groups.set(k, { name: k, ...blank() });
     const g = groups.get(k), st = curStats.get(p.id);
-    g.n++; for (const f of ["exp", "hadir", "hadirExp", "telat", "izin", "ot"]) g[f] += st[f];
+    g.n++; for (const f of FIELDS) g[f] += st[f];
   }
   const rows = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
   const pct = (a, b) => (b ? Math.min(100, Math.round(a / b * 100)) : 0);
   const rowHtml = g => {
     const r = pct(g.hadirExp, g.exp);
     const lr = g.hadir ? Math.round(g.telat / g.hadir * 100) : 0;
-    return `<td>${g.n}</td><td class="num">${g.exp}</td><td class="num">${g.hadirExp}</td><td class="num">${g.telat}</td>
+    return `<td class="num">${g.n}</td><td class="num">${g.exp}</td><td class="num">${g.hadirExp}</td><td class="num">${g.telat}</td>
       <td class="num"><span class="badge ${lr >= 20 ? "badge-danger" : lr >= 10 ? "badge-warn" : "badge-ok"}">${lr}%</span></td>
-      <td class="num">${g.izin}</td><td class="num">${fmt1(g.ot)}</td>
+      <td class="num">${g.tanpa}</td><td class="num">${g.izin}</td><td class="num">${fmt1(g.ot)}</td>
       <td><span class="an-meter ${r < 75 ? "danger" : r < 90 ? "warn" : ""}"><i style="width:${r}%"></i></span>${r}%</td>`;
   };
   document.getElementById("an-dept-table").innerHTML = rows.length ? `
     <table class="table an-tbl">
-      <thead><tr><th>Departemen</th><th>Karyawan</th><th class="num">Hari Terjadwal</th><th class="num">Hadir</th><th class="num">Telat</th><th class="num">% Telat</th><th class="num">Izin/Cuti/Sakit (hari)</th><th class="num">Lembur (jam)</th><th>Kehadiran</th></tr></thead>
-      <tbody>${rows.map(g => `<tr><td>${esc(g.name)}</td>${rowHtml(g)}</tr>`).join("")}</tbody>
-      ${rows.length > 1 ? `<tfoot><tr><td>Total</td>${rowHtml(rows.reduce((a, g) => { for (const f of ["n", "exp", "hadir", "hadirExp", "telat", "izin", "ot"]) a[f] += g[f]; return a; }, { n: 0, exp: 0, hadir: 0, hadirExp: 0, telat: 0, izin: 0, ot: 0 }))}</tr></tfoot>` : ""}
-    </table>${lowData ? `<p class="an-note" style="padding:0 16px 12px">Catatan: jumlah check-in masih sedikit, jadi persentase telat belum mewakili tren yang sebenarnya.</p>` : ""}`
+      <thead><tr><th>Departemen</th><th class="num">Karyawan</th><th class="num">Hari Terjadwal</th><th class="num">Hadir</th><th class="num">Telat</th><th class="num">% Telat</th><th class="num">Tanpa Check-in</th><th class="num">Izin/Cuti/Sakit (hari)</th><th class="num">Lembur (jam)</th><th>Kehadiran</th></tr></thead>
+      <tbody>${rows.map(g => `<tr class="an-click" data-dept="${esc(g.name)}" title="Klik untuk rincian per karyawan"><td>${esc(g.name)}</td>${rowHtml(g)}</tr>`).join("")}</tbody>
+      ${rows.length > 1 ? `<tfoot><tr><td>Total</td>${rowHtml(rows.reduce((a, g) => { for (const f of [...FIELDS, "n"]) a[f] += g[f]; return a; }, blank()))}</tr></tfoot>` : ""}
+    </table>
+    <p class="an-hint">Klik baris departemen untuk melihat rincian per karyawan.${lowData ? " Jumlah check-in masih sedikit, jadi persentase telat belum mewakili tren yang sebenarnya." : ""}</p>`
     : `<p class="an-empty">Belum ada karyawan dengan jadwal kerja pada bulan ini. Atur jadwal di Data Karyawan atau Master Jadwal.</p>`;
+
+  state.view = { scope, curStats, cur, month };
 
   // --- data ekspor (per karyawan) ---
   const perPerson = scope.map(p => {
@@ -328,13 +410,13 @@ async function load() {
       "Kode": p.employee_code || "", "Nama": p.full_name, "Departemen": p.department || "-",
       "Hari Terjadwal": st.exp, "Hadir (hari terjadwal)": st.hadirExp, "Total Check-in": st.hadir,
       "Telat": st.telat, "% Telat": st.hadir ? Math.round(st.telat / st.hadir * 100) : 0,
-      "Izin/Cuti/Sakit (hari)": st.izin, "Lembur (jam)": Math.round(st.ot * 10) / 10,
+      "Tanpa Check-in (hari)": st.tanpa, "Lupa Check-out": st.lupaOut, "Izin/Cuti/Sakit (hari)": st.izin, "Lembur (jam)": Math.round(st.ot * 10) / 10,
       "% Kehadiran": pct(st.hadirExp, st.exp),
     };
   });
   if (perPerson.length) perPerson.push({
     "Kode": "", "Nama": "TOTAL", "Departemen": "", "Hari Terjadwal": tot.exp, "Hadir (hari terjadwal)": tot.hadirExp,
-    "Total Check-in": tot.hadir, "Telat": tot.telat, "% Telat": tot.lateRate ?? 0, "Izin/Cuti/Sakit (hari)": tot.izin,
+    "Total Check-in": tot.hadir, "Telat": tot.telat, "% Telat": tot.lateRate ?? 0, "Tanpa Check-in (hari)": tot.tanpa, "Lupa Check-out": tot.lupaOut, "Izin/Cuti/Sakit (hari)": tot.izin,
     "Lembur (jam)": Math.round(tot.ot * 10) / 10, "% Kehadiran": tot.rate ?? 0,
   });
   state.exportRows = perPerson;
@@ -344,7 +426,7 @@ async function load() {
   const topLate = scope.map(p => [p.id, curStats.get(p.id).telat]).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).slice(0, 5);
   document.getElementById("an-late-sub").textContent = `${MONTHS_FULL[cur.m - 1]} ${cur.y}`;
   document.getElementById("an-top-late").innerHTML = topLate.length
-    ? `<table class="table"><tbody>${topLate.map(([id, n]) => `<tr><td>${esc(nameOf.get(id)?.full_name || "-")}<div class="muted small">${esc(nameOf.get(id)?.department || "")}</div></td><td style="text-align:right"><span class="badge badge-warn">${n}× telat</span></td></tr>`).join("")}</tbody></table>`
+    ? `<table class="table"><tbody>${topLate.map(([id, n]) => `<tr><td><button type="button" class="btn-link" data-uid="${esc(id)}">${esc(nameOf.get(id)?.full_name || "-")}</button><div class="muted small">${esc(nameOf.get(id)?.department || "")}</div></td><td style="text-align:right"><span class="badge badge-warn">${n}× telat</span></td></tr>`).join("")}</tbody></table>`
     : `<p class="muted">Tidak ada keterlambatan pada periode ini. 🎉</p>`;
 
   // --- cuti belum terpakai ---
@@ -355,6 +437,57 @@ async function load() {
   document.getElementById("an-leave").innerHTML = topLeave.length
     ? `<table class="table"><tbody>${topLeave.map(([id, v]) => `<tr><td>${esc(nameOf.get(id)?.full_name || "-")}<div class="muted small">${esc(nameOf.get(id)?.department || "")}</div></td><td style="text-align:right"><span class="badge badge-ok">${fmt1(v)} hari</span></td></tr>`).join("")}</tbody></table>`
     : `<p class="muted">Belum ada data kuota cuti untuk tahun ${year}. Isi lewat menu Kuota Cuti Tahunan.</p>`;
+}
+
+const fmtDay = iso => new Date(iso + "T00:00:00Z").toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+
+function openModal(html) {
+  const m = document.getElementById("an-modal");
+  document.getElementById("an-modal-body").innerHTML = html;
+  m.classList.remove("hidden");
+  m.querySelector(".modal-box")?.scrollTo?.({ top: 0 });
+}
+const modalHead = (title, sub = "") => `<div class="an-modal-head"><div><h3>${title}</h3>${sub ? `<div class="muted small">${sub}</div>` : ""}</div><button type="button" class="an-modal-x" data-close aria-label="Tutup" title="Tutup">&times;</button></div>`;
+
+function showDeptDetail(name) {
+  const v = state.view; if (!v) return;
+  const members = v.scope.filter(p => (p.department || "Tanpa Departemen") === name);
+  const body = members.map(p => {
+    const st = v.curStats.get(p.id);
+    const r = st.exp ? Math.min(100, Math.round(st.hadirExp / st.exp * 100)) : 0;
+    return `<tr><td><button type="button" class="btn-link" data-uid="${esc(p.id)}" data-back="${esc(name)}">${esc(p.full_name)}</button></td>
+      <td class="num">${st.exp}</td><td class="num">${st.hadirExp}</td><td class="num">${st.telat}</td><td class="num">${st.tanpa}</td><td class="num">${st.izin}</td><td class="num">${fmt1(st.ot)}</td>
+      <td><span class="an-meter ${r < 75 ? "danger" : r < 90 ? "warn" : ""}"><i style="width:${r}%"></i></span>${r}%</td></tr>`;
+  }).join("");
+  openModal(`${modalHead("Rincian " + esc(name), `${MONTHS_FULL[v.cur.m - 1]} ${v.cur.y} • ${members.length} karyawan`)}
+    <div class="table-wrap"><table class="table an-tbl" style="min-width:560px"><thead><tr><th>Karyawan</th><th class="num">Hari Terjadwal</th><th class="num">Hadir</th><th class="num">Telat</th><th class="num">Tanpa Check-in</th><th class="num">Izin/Cuti</th><th class="num">Lembur (jam)</th><th>Kehadiran</th></tr></thead><tbody>${body}</tbody></table></div>
+    <p class="an-hint">Klik nama untuk melihat tanggal-tanggalnya.</p>`);
+}
+
+function showPersonDetail(id, backDept = "") {
+  const v = state.view; if (!v) return;
+  const p = v.scope.find(x => x.id === id); if (!p) return;
+  const st = v.curStats.get(id);
+  const r = st.exp ? Math.min(100, Math.round(st.hadirExp / st.exp * 100)) : 0;
+  const chips = (dates, empty) => dates.length
+    ? `<div class="an-chips">${dates.map(d => `<button type="button" class="an-chip" data-go-date="${d}" data-q="${esc(p.full_name)}" title="Buka di Monitor Absensi">${fmtDay(d)}</button>`).join("")}</div>`
+    : `<p class="muted small" style="margin:6px 0 14px">${empty}</p>`;
+  openModal(`${backDept ? `<button type="button" class="btn-link" data-back-dept="${esc(backDept)}" style="margin-bottom:6px">← Rincian ${esc(backDept)}</button>` : ""}
+    ${modalHead(esc(p.full_name), `${esc(p.department || "Tanpa Departemen")} • ${MONTHS_FULL[v.cur.m - 1]} ${v.cur.y}`)}
+    <div class="an-sum"><span><b>${st.exp}</b> hari terjadwal</span><span><b>${st.hadirExp}</b> hadir (${r}%)</span><span><b>${st.telat}</b> telat</span><span><b>${st.tanpa}</b> tanpa check-in</span><span><b>${st.izin}</b> izin/cuti</span><span><b>${fmt1(st.ot)}</b> jam lembur</span></div>
+    <h4 style="margin:10px 0 0">Tanggal terlambat</h4>${chips(st.lateDates, "Tidak ada keterlambatan.")}
+    <h4 style="margin:10px 0 0">Tanggal tanpa check-in</h4>${chips(st.missDates, "Tidak ada hari terjadwal yang terlewat.")}
+    <h4 style="margin:10px 0 0">Lupa check-out</h4>${chips(st.lupaOutDates, "Tidak ada.")}
+    <p class="an-hint" style="padding-left:0">Klik tanggal untuk membukanya di Monitor Absensi.</p>`);
+}
+
+// Buka Monitor Absensi pada tanggal tertentu (pola yang sama dengan "koreksi_prefill").
+function goMonitor(date, q) {
+  const nav = document.querySelector('.nav-item[data-target="absensi-monitor"]');
+  if (!nav) { toast("Menu Monitor Absensi tidak tersedia untuk akun ini.", "error"); return; }
+  sessionStorage.setItem("monitor_prefill", JSON.stringify({ date, q }));
+  document.getElementById("an-modal")?.classList.add("hidden");
+  nav.click();
 }
 
 function onExport() {

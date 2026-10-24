@@ -75,6 +75,15 @@ export async function render(container) {
   document.getElementById("btn-cancel-export").addEventListener("click", () => document.getElementById("modal-export").classList.add("hidden"));
   document.getElementById("btn-export").addEventListener("click", doExport);
 
+  // Dibuka dari Dashboard Analitik HR ("buka di Monitor Absensi"): isi tanggal & pencarian dulu.
+  try {
+    const raw = sessionStorage.getItem("monitor_prefill");
+    sessionStorage.removeItem("monitor_prefill");
+    const pre = raw ? JSON.parse(raw) : null;
+    if (pre?.date) document.getElementById("filter-date").value = pre.date;
+    if (pre?.q) document.getElementById("filter-search").value = pre.q;
+  } catch { /* abaikan prefill yang rusak */ }
+
   load();
   loadBelumAbsen(document.getElementById("filter-date").value);
   loadBelumCheckout();
