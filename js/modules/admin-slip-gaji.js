@@ -475,6 +475,18 @@ function groupByUserSorted(rows) {
 // -----------------------------------------------------------------------
 // PERHITUNGAN SATU SLIP
 // -----------------------------------------------------------------------
+// Kepesertaan BPJS per karyawan (022_bpjs_kepesertaan.sql). Dipotong hanya kalau
+// status "aktif" DAN tanggal mulai dipotong <= akhir periode slip (kosong = sejak awal).
+// status === undefined = kolom belum ada di database (SQL belum dijalankan) -> perilaku
+// lama (selalu dipotong) supaya slip tidak mendadak nol.
+function bpjsPotongan(status, mulai, periodEnd) {
+  if (status === undefined) return { aktif: true, ket: "" };
+  if (status === "belum") return { aktif: false, ket: "belum terdaftar" };
+  if (status === "berhenti") return { aktif: false, ket: "tidak aktif" };
+  if (status === "aktif" && mulai && periodEnd && mulai > periodEnd) return { aktif: false, ket: `mulai ${fmtDate(mulai)}` };
+  return { aktif: status === "aktif", ket: "" };
+}
+
 function computeSlip(emp) {
   const level = jobLevels.find(l => l.grade === emp.grade && l.level === emp.level) || null;
   const attRows = attendanceByUser[emp.id] || [];
@@ -528,8 +540,10 @@ function computeSlip(emp) {
   const totalPendapatan = gajiPokok + uangLembur + uangDinas + tunjanganTambahan + tunjanganLain;
 
   const upahLapor = level?.upah_lapor_bpjs || 0;
-  const bpjsKesKaryawan = upahLapor * (level?.bpjs_kesehatan_karyawan_persen || 0) / 100;
-  const bpjsTkKaryawan = upahLapor * (level?.bpjs_tk_karyawan_persen || 0) / 100;
+  const bpjsKes = bpjsPotongan(emp.bpjs_kes_status, emp.bpjs_kes_mulai, periodRange?.end);
+  const bpjsTk = bpjsPotongan(emp.bpjs_tk_status, emp.bpjs_tk_mulai, periodRange?.end);
+  const bpjsKesKaryawan = bpjsKes.aktif ? upahLapor * (level?.bpjs_kesehatan_karyawan_persen || 0) / 100 : 0;
+  const bpjsTkKaryawan = bpjsTk.aktif ? upahLapor * (level?.bpjs_tk_karyawan_persen || 0) / 100 : 0;
   const pph21 = totalPendapatan * (level?.pph21_persen || 0) / 100;
   const potonganLain = adj.potongan_lain || 0;
   const potonganKasbon = (loanByUser[emp.id] || []).reduce((s, i) => s + Number(i.amount || 0), 0);
@@ -543,7 +557,7 @@ function computeSlip(emp) {
   return {
     emp, level, adj, hariHadir, hariTelat, jamLemburBiasa, jamLemburLibur,
     gajiPokok, gajiPokokLabel, rateLemburBiasa, rateLemburLibur, uangLembur, uangDinas, tunjanganList, tunjanganTambahan, tunjanganLain, totalPendapatan,
-    dendaKeterlambatan, dendaPulangCepat, upahLapor, bpjsKesKaryawan, bpjsTkKaryawan, pph21, potonganLain, potonganKasbon, totalPotongan, reimbursement, gajiBersih,
+    dendaKeterlambatan, dendaPulangCepat, upahLapor, bpjsKesKaryawan, bpjsTkKaryawan, bpjsKesKet: bpjsKes.ket, bpjsTkKet: bpjsTk.ket, pph21, potonganLain, potonganKasbon, totalPotongan, reimbursement, gajiBersih,
   };
 }
 
@@ -736,8 +750,8 @@ function renderSlipContent(s) {
           <h4>Potongan</h4>
           <div class="slip-line"><span>Denda Keterlambatan</span><span>${fmtRupiah(s.dendaKeterlambatan)}</span></div>
           <div class="slip-line"><span>Denda Pulang Cepat</span><span>${fmtRupiah(s.dendaPulangCepat)}</span></div>
-          <div class="slip-line"><span>BPJS Kesehatan (${s.level?.bpjs_kesehatan_karyawan_persen ?? 0}%)</span><span>${fmtRupiah(s.bpjsKesKaryawan)}</span></div>
-          <div class="slip-line"><span>BPJS Ketenagakerjaan (${s.level?.bpjs_tk_karyawan_persen ?? 0}%)</span><span>${fmtRupiah(s.bpjsTkKaryawan)}</span></div>
+          <div class="slip-line"><span>BPJS Kesehatan (${s.bpjsKesKet || (s.level?.bpjs_kesehatan_karyawan_persen ?? 0) + "%"})</span><span>${fmtRupiah(s.bpjsKesKaryawan)}</span></div>
+          <div class="slip-line"><span>BPJS Ketenagakerjaan (${s.bpjsTkKet || (s.level?.bpjs_tk_karyawan_persen ?? 0) + "%"})</span><span>${fmtRupiah(s.bpjsTkKaryawan)}</span></div>
           <div class="slip-line"><span>PPh21 (${s.level?.pph21_persen ?? 0}%)</span><span>${fmtRupiah(s.pph21)}</span></div>
           <div class="slip-line"><span>${escapeHtml(s.adj.keterangan_potongan || "Potongan Lain")}</span><span>${fmtRupiah(s.potonganLain)}</span></div>
           ${(s.potonganKasbon || 0) > 0 ? `<div class="slip-line"><span>Potongan Kasbon</span><span>${fmtRupiah(s.potonganKasbon)}</span></div>` : ""}

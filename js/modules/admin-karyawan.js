@@ -207,6 +207,31 @@ export async function render(container, user) {
           </div>
           <p class="small field-hint hidden" id="resign-hint" style="color:var(--warn);">Tanggal resign sudah diisi, tapi akun masih aktif. Hilangkan centang "Akun aktif" di atas kalau karyawan sudah tidak bekerja.</p>
 
+          <div class="form-section-label">Kepesertaan BPJS</div>
+          <div class="form-row three-col">
+            <label>BPJS Kesehatan
+              <select name="bpjs_kes_status">
+                <option value="belum">Belum terdaftar (tidak dipotong)</option>
+                <option value="aktif">Aktif (dipotong)</option>
+                <option value="berhenti">Berhenti (tidak dipotong)</option>
+              </select>
+            </label>
+            <label>No. Kepesertaan <input type="text" name="bpjs_kes_nomor" placeholder="Nomor kartu / VA"></label>
+            <label>Mulai Dipotong <input type="date" name="bpjs_kes_mulai"></label>
+          </div>
+          <div class="form-row three-col">
+            <label>BPJS Ketenagakerjaan
+              <select name="bpjs_tk_status">
+                <option value="belum">Belum terdaftar (tidak dipotong)</option>
+                <option value="aktif">Aktif (dipotong)</option>
+                <option value="berhenti">Berhenti (tidak dipotong)</option>
+              </select>
+            </label>
+            <label>No. Kepesertaan <input type="text" name="bpjs_tk_nomor" placeholder="Nomor kepesertaan"></label>
+            <label>Mulai Dipotong <input type="date" name="bpjs_tk_mulai"></label>
+          </div>
+          <p class="small field-hint">Potongan BPJS di slip gaji hanya muncul kalau status <b>Aktif</b>. Slip periode yang mencakup tanggal “Mulai Dipotong” (dan sesudahnya) mulai memotong; kosongkan tanggal kalau berlaku sejak awal. Tarif dan upah lapor tetap diatur di Master Level.</p>
+
           <div class="modal-actions">
             <button type="button" id="btn-cancel-modal" class="btn-secondary">Batal</button>
             <button type="submit" class="btn-primary">Simpan</button>
@@ -493,6 +518,12 @@ async function openModal(existing = null) {
     form.status_karyawan.value = existing.status_karyawan || "bulanan";
     form.join_date.value = existing.join_date || "";
     form.resign_date.value = existing.resign_date || "";
+    form.bpjs_kes_status.value = existing.bpjs_kes_status || "belum";
+    form.bpjs_kes_nomor.value = existing.bpjs_kes_nomor || "";
+    form.bpjs_kes_mulai.value = existing.bpjs_kes_mulai || "";
+    form.bpjs_tk_status.value = existing.bpjs_tk_status || "belum";
+    form.bpjs_tk_nomor.value = existing.bpjs_tk_nomor || "";
+    form.bpjs_tk_mulai.value = existing.bpjs_tk_mulai || "";
     form.phone.value = existing.phone || "";
     form.nik_ktp.value = existing.nik_ktp || "";
     form.npwp.value = existing.npwp || "";
@@ -519,6 +550,8 @@ async function openModal(existing = null) {
     if (existing.unit_pt) ssUnitPt.setValue(existing.unit_pt); // tetap tampil walau belum ada di Master PT / Vendor
   } else {
     form.id.value = "";
+    form.bpjs_kes_status.value = "belum"; form.bpjs_kes_nomor.value = ""; form.bpjs_kes_mulai.value = "";
+    form.bpjs_tk_status.value = "belum"; form.bpjs_tk_nomor.value = ""; form.bpjs_tk_mulai.value = "";
     form.status_karyawan.value = "bulanan";
     form.jenis_hubungan_kerja.value = "karyawan_tetap";
   }
@@ -551,6 +584,12 @@ async function onSubmit(e, currentUser, isFullSuperAdmin) {
     status_karyawan: fd.get("status_karyawan"),
     join_date: fd.get("join_date") || null,
     resign_date: fd.get("resign_date") || null,
+    bpjs_kes_status: fd.get("bpjs_kes_status") || "belum",
+    bpjs_kes_nomor: (fd.get("bpjs_kes_nomor") || "").trim() || null,
+    bpjs_kes_mulai: fd.get("bpjs_kes_mulai") || null,
+    bpjs_tk_status: fd.get("bpjs_tk_status") || "belum",
+    bpjs_tk_nomor: (fd.get("bpjs_tk_nomor") || "").trim() || null,
+    bpjs_tk_mulai: fd.get("bpjs_tk_mulai") || null,
     phone: fd.get("phone") || null,
     nik_ktp: fd.get("nik_ktp") || null,
     npwp: fd.get("npwp") || null,
