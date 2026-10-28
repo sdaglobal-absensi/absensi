@@ -66,6 +66,24 @@ export async function render(container) {
       .an-modal-head h3 { margin: 0; }
       .an-modal-x { flex-shrink: 0; width: 36px; height: 36px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); font-size: 1.4rem; line-height: 1; cursor: pointer; color: var(--ink, inherit); }
       .an-sum { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .84rem; margin-bottom: 12px; }
+      .an-chart { width: 100%; height: auto; display: block; }
+      .an-chart text { font-family: inherit; fill: var(--muted); font-size: 10px; }
+      .an-chart .an-val { fill: var(--ink, #1B1F1D); font-weight: 600; font-size: 10px; }
+      .an-chart .an-grid { stroke: var(--border); stroke-width: 1; }
+      .an-donut-wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+      .an-donut-wrap svg { width: 168px; height: 168px; flex-shrink: 0; }
+      .an-donut-center { font-size: 26px !important; font-weight: 700; fill: var(--ink, #1B1F1D) !important; }
+      .an-legend { list-style: none; margin: 0; padding: 0; font-size: .82rem; display: grid; gap: 6px; flex: 1; min-width: 150px; }
+      .an-legend li { display: flex; align-items: center; gap: 8px; }
+      .an-legend .dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+      .an-legend .n { margin-left: auto; font-weight: 600; white-space: nowrap; }
+      .an-legend-inline { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .78rem; color: var(--muted); margin-top: 6px; }
+      .an-legend-inline .dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+      .an-hrow { display: grid; grid-template-columns: minmax(70px, 130px) 1fr 44px; align-items: center; gap: 10px; margin: 8px 0; font-size: .84rem; }
+      .an-hname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .an-hbar { display: flex; height: 16px; border-radius: 5px; overflow: hidden; background: #ECEAE4; }
+      .an-hbar i { display: block; height: 100%; }
+      .an-hpct { text-align: right; font-weight: 600; }
       .an-empty { padding: 28px 8px; text-align: center; color: var(--muted); font-size: .85rem; }
     </style>
 
@@ -102,11 +120,17 @@ export async function render(container) {
     </details>
 
     <div class="an-grid2">
-      <div class="an-panel"><h3>Tren Keterlambatan</h3><p class="muted small">% check-in yang telat, 6 bulan terakhir</p><div id="an-trend-late"></div></div>
+      <div class="an-panel"><h3>Komposisi Kehadiran</h3><p class="muted small" id="an-comp-sub"></p><div id="an-donut"></div></div>
+      <div class="an-panel"><h3>Kehadiran Harian</h3><p class="muted small" id="an-daily-sub">% karyawan hadir pada hari terjadwal</p><div id="an-daily"></div></div>
+    </div>
+
+    <div class="an-grid2">
+      <div class="an-panel"><h3>Tren Kehadiran &amp; Keterlambatan</h3><p class="muted small">Per bulan, 6 bulan terakhir</p><div id="an-trend-late"></div></div>
       <div class="an-panel"><h3>Tren Lembur</h3><p class="muted small">Total jam lembur disetujui, 6 bulan terakhir</p><div id="an-trend-ot"></div></div>
     </div>
 
     <h2 class="dash-section-title">Absensi per Departemen</h2>
+    <div class="an-panel" id="an-dept-chart" style="margin-bottom:16px"></div>
     <div id="an-dept-table" class="table-wrap"><p class="muted" style="padding:16px">Memuat…</p></div>
 
     <div class="an-grid2" style="margin-top:24px">
@@ -246,6 +270,7 @@ function analyze(range, people, { att, leaves, ots, ovr }) {
     const mineDates = new Set(mine.map(a => a.date));
     const missDates = [...exp].filter(d => d < today && !mineDates.has(d)).sort();
     const lateDates = mine.filter(a => a.check_in_status === "telat").map(a => a.date).sort();
+    const telatExp = lateDates.filter(d => exp.has(d)).length;
     const lupaOutDates = mine.filter(a => !a.check_out && a.date < today).map(a => a.date).sort();
     out.set(p.id, {
       hasSched,
@@ -254,17 +279,19 @@ function analyze(range, people, { att, leaves, ots, ovr }) {
       hadir: mine.length,
       hadirExp: mine.filter(a => exp.has(a.date)).length,
       telat: lateDates.length,
+      telatExp,
       tanpa: missDates.length,
       lupaOut: lupaOutDates.length,
       ot: (otBy.get(p.id) || []).reduce((s, o) => s + otHours(o), 0),
       missDates, lateDates, lupaOutDates,
+      expSet: exp, attSet: mineDates, lateSet: new Set(lateDates),
     });
   }
   return out;
 }
 
 function totalsOf(stats, scope) {
-  const t = { exp: 0, hadir: 0, hadirExp: 0, telat: 0, izin: 0, ot: 0, tanpa: 0, lupaOut: 0 };
+  const t = { exp: 0, hadir: 0, hadirExp: 0, telat: 0, telatExp: 0, izin: 0, ot: 0, tanpa: 0, lupaOut: 0 };
   for (const p of scope) { const s = stats.get(p.id); for (const k in t) t[k] += s[k]; }
   t.rate = t.exp ? Math.min(100, Math.round(t.hadirExp / t.exp * 100)) : null;
   t.lateRate = t.hadir ? Math.round(t.telat / t.hadir * 100) : null;
@@ -308,10 +335,10 @@ async function load() {
   try {
     [att, leaves, ots, balances, ovrRows, resignRows] = await Promise.all([
       fetchAll(() => supabase.from("attendance").select("user_id, date, check_in, check_out, check_in_status").gte("date", trendStart).lte("date", cur.end).order("date")),
-      fetchAll(() => supabase.from("leave_requests").select("user_id, start_date, end_date").eq("status", "approved").lte("start_date", cur.end).gte("end_date", prev.start)),
+      fetchAll(() => supabase.from("leave_requests").select("user_id, start_date, end_date").eq("status", "approved").lte("start_date", cur.end).gte("end_date", trendStart)),
       fetchAll(() => supabase.from("overtime_requests").select("user_id, date, start_time, end_time, total_jam").eq("status", "approved").gte("date", trendStart).lte("date", cur.end)),
       fetchAll(() => supabase.from("leave_balances").select("user_id, kuota_hari, terpakai_hari").eq("tahun", year)),
-      fetchAll(() => supabase.from("schedule_overrides").select("user_id, work_date, schedule_id").gte("work_date", prev.start).lte("work_date", cur.end).order("work_date")).catch(() => []), // tukar shift (opsional)
+      fetchAll(() => supabase.from("schedule_overrides").select("user_id, work_date, schedule_id").gte("work_date", trendStart).lte("work_date", cur.end).order("work_date")).catch(() => []), // tukar shift (opsional)
       supabase.from("profiles").select("id, department, unit_pt, lokasi_kerja").gte("resign_date", cur.start).lte("resign_date", cur.end).then(r => (r.error ? [] : r.data || [])), // yang resign bulan ini (akun sudah nonaktif)
     ]);
   } catch (e) {
@@ -334,7 +361,9 @@ async function load() {
   const scopeIds = new Set(scope.map(p => p.id));
   const excluded = people.length - scope.length;
   const tot = totalsOf(curStats, scope);
-  const prevTot = totalsOf(analyze(prev, scope, data), scope);
+  const months = Array.from({ length: 6 }, (_, i) => shiftMonth(month, i - 5));
+  const trend = months.map((ym, i) => (i === 5 ? { ym, ...tot } : { ym, ...totalsOf(analyze(monthRange(ym), scope, data), scope) }));
+  const prevTot = trend[4];
   const prevLabel = MONTHS[prev.m - 1];
 
   const lowData = tot.hadir > 0 && tot.hadir < 10;
@@ -343,7 +372,7 @@ async function load() {
 
   const lbl = (text, tip) => `<span class="status-label">${text} <span class="an-info" title="${esc(tip)}">ⓘ</span></span>`;
   document.getElementById("an-kpi").innerHTML = `
-    <div class="status-card ${tot.rate != null && tot.rate >= 90 ? "done" : ""}">${lbl("Tingkat Kehadiran", "Check-in pada hari terjadwal ÷ hari terjadwal. Di luar hari libur dan izin/cuti disetujui.")}<span class="status-value">${tot.rate ?? "–"}${tot.rate != null ? "%" : ""}</span><span class="muted small">${tot.hadirExp} hadir dari ${tot.exp} hari terjadwal</span>${prevTot.exp ? deltaChip(tot.rate, prevTot.rate, { higherBetter: true, unit: " poin", label: prevLabel }) : ""}</div>
+    <div class="status-card ${tot.rate != null && tot.rate >= 90 ? "done" : ""}">${lbl("Tingkat Kehadiran", "Check-in pada hari terjadwal ÷ hari terjadwal. Di luar hari libur dan izin/cuti disetujui.")}<span class="status-value">${tot.rate ?? "–"}${tot.rate != null ? "%" : ""}</span><span class="muted small">${tot.hadirExp} hadir dari ${tot.exp} hari terjadwal</span>${prevTot.hadir && prevTot.exp ? deltaChip(tot.rate, prevTot.rate, { higherBetter: true, unit: " poin", label: prevLabel }) : ""}</div>
     <div class="status-card">${lbl("Tingkat Keterlambatan", "Check-in berstatus telat ÷ seluruh check-in pada bulan ini.")}<span class="status-value">${tot.lateRate ?? "–"}${tot.lateRate != null ? "%" : ""}</span><span class="muted small">${tot.telat} dari ${tot.hadir} check-in${lowData ? ` · <span class="an-lowdata">data masih sedikit</span>` : ""}</span>${prevTot.hadir ? deltaChip(tot.lateRate, prevTot.lateRate, { higherBetter: false, unit: " poin", label: prevLabel }) : ""}</div>
     <div class="status-card">${lbl("Total Lembur Disetujui", "Jumlah jam lembur berstatus disetujui pada bulan ini.")}<span class="status-value">${fmt1(tot.ot)} jam</span><span class="muted small">${MONTHS_FULL[cur.m - 1]} ${cur.y}</span>${otCmp}</div>
     <div class="status-card">${lbl("Cuti Belum Terpakai", "Sisa kuota Cuti Tahunan (kuota − terpakai) seluruh karyawan pada filter ini.")}<span class="status-value">${fmt1(sisaTotal)} hari</span><span class="muted small">Cuti Tahunan ${year}, ${people.length} karyawan</span></div>`;
@@ -363,18 +392,55 @@ async function load() {
   // --- tren 6 bulan ---
   const attScope = att.filter(a => scopeIds.has(a.user_id));
   const otScope = ots.filter(o => scopeIds.has(o.user_id));
-  const months = Array.from({ length: 6 }, (_, i) => shiftMonth(month, i - 5));
-  const lateSeries = months.map(ym => {
-    const rows = attScope.filter(a => a.date.startsWith(ym));
-    return { ym, val: rows.length ? Math.round(rows.filter(a => a.check_in_status === "telat").length / rows.length * 100) : 0, has: rows.length > 0 };
-  });
   const otSeries = months.map(ym => ({ ym, val: otScope.filter(o => o.date.startsWith(ym)).reduce((s, o) => s + otHours(o), 0), has: true }));
-  document.getElementById("an-trend-late").innerHTML = lateSeries.some(x => x.has) ? bars(lateSeries, "%") : `<p class="an-empty">Belum ada data check-in dalam 6 bulan terakhir.</p>`;
+  // --- grafik ---
+  const mLabel = ym => MONTHS[Number(ym.split("-")[1]) - 1];
+  document.getElementById("an-trend-late").innerHTML = trend.some(t => t.hadir > 0)
+    ? lineChart({
+        labels: trend.map(t => mLabel(t.ym)), valueLabels: true,
+        series: [
+          { name: "Kehadiran", color: C.tepat, area: true, values: trend.map(t => (t.hadir && t.exp ? t.rate : null)) },
+          { name: "Keterlambatan", color: C.telat, values: trend.map(t => (t.hadir ? t.lateRate : null)) },
+        ],
+      })
+    : `<p class="an-empty">Belum ada data absensi dalam 6 bulan terakhir.</p>`;
+
+  // komposisi (donat): seluruh hari terjadwal + hari izin/cuti
+  const seg = { tepat: tot.hadirExp - tot.telatExp, telat: tot.telatExp, izin: tot.izin, tanpa: tot.tanpa, belum: Math.max(0, tot.exp - tot.hadirExp - tot.tanpa) };
+  document.getElementById("an-comp-sub").textContent = `${tot.exp + tot.izin} hari terjadwal (termasuk izin/cuti) • ${MONTHS_FULL[cur.m - 1]} ${cur.y}`;
+  document.getElementById("an-donut").innerHTML = donut([
+    { l: "Hadir tepat waktu", v: seg.tepat, c: C.tepat },
+    { l: "Hadir terlambat", v: seg.telat, c: C.telat },
+    { l: "Izin / cuti / sakit", v: seg.izin, c: C.izin },
+    { l: "Tanpa check-in", v: seg.tanpa, c: C.tanpa },
+    { l: "Belum (hari ini)", v: seg.belum, c: C.belum },
+  ], tot.rate != null ? tot.rate + "%" : "–", "kehadiran");
+
+  // harian: % hadir & % telat per hari terjadwal (hari ini belum dihitung, masih berjalan)
+  const yest = new Date(); yest.setDate(yest.getDate() - 1);
+  const lastDay = cur.end < dateOnlyISO(yest) ? cur.end : dateOnlyISO(yest);
+  const dayRows = [];
+  for (const d of lastDay >= cur.start ? isoDays(cur.start, lastDay) : []) {
+    let e = 0, h = 0, t = 0;
+    for (const p of scope) { const st = curStats.get(p.id); if (!st.expSet.has(d)) continue; e++; if (st.attSet.has(d)) { h++; if (st.lateSet.has(d)) t++; } }
+    if (e) dayRows.push({ d, rate: Math.round(h / e * 100), late: h ? Math.round(t / h * 100) : null, e, h });
+  }
+  const avgDaily = dayRows.length ? Math.round(dayRows.reduce((a, r) => a + r.rate, 0) / dayRows.length) : null;
+  document.getElementById("an-daily-sub").textContent = dayRows.length ? `Rata-rata ${avgDaily}% per hari terjadwal${isCurrentMonth ? " • hari ini belum dihitung" : ""}` : "% karyawan hadir pada hari terjadwal";
+  document.getElementById("an-daily").innerHTML = dayRows.length
+    ? lineChart({
+        labels: dayRows.map(r => String(Number(r.d.slice(8)))), tickEvery: Math.ceil(dayRows.length / 12),
+        series: [
+          { name: "Kehadiran", color: C.tepat, area: true, values: dayRows.map(r => r.rate), tips: dayRows.map(r => `${fmtDay(r.d)}: ${r.h} dari ${r.e} hadir (${r.rate}%)`) },
+          { name: "Terlambat", color: C.telat, values: dayRows.map(r => r.late), tips: dayRows.map(r => `${fmtDay(r.d)}: ${r.late ?? 0}% dari yang hadir telat`) },
+        ],
+      })
+    : `<p class="an-empty">Belum ada hari terjadwal yang sudah lewat pada bulan ini.</p>`;
   document.getElementById("an-trend-ot").innerHTML = otSeries.some(x => x.val > 0) ? bars(otSeries, " jam") : `<p class="an-empty">Belum ada lembur disetujui dalam 6 bulan terakhir.</p>`;
 
   // --- per departemen ---
-  const FIELDS = ["exp", "hadir", "hadirExp", "telat", "tanpa", "izin", "ot"];
-  const blank = () => ({ n: 0, exp: 0, hadir: 0, hadirExp: 0, telat: 0, tanpa: 0, izin: 0, ot: 0 });
+  const FIELDS = ["exp", "hadir", "hadirExp", "telat", "telatExp", "tanpa", "izin", "ot"];
+  const blank = () => ({ n: 0, exp: 0, hadir: 0, hadirExp: 0, telat: 0, telatExp: 0, tanpa: 0, izin: 0, ot: 0 });
   const groups = new Map();
   for (const p of scope) {
     const k = p.department || "Tanpa Departemen";
@@ -400,6 +466,18 @@ async function load() {
     </table>
     <p class="an-hint">Klik baris departemen untuk melihat rincian per karyawan.${lowData ? " Jumlah check-in masih sedikit, jadi persentase telat belum mewakili tren yang sebenarnya." : ""}</p>`
     : `<p class="an-empty">Belum ada karyawan dengan jadwal kerja pada bulan ini. Atur jadwal di Data Karyawan atau Master Jadwal.</p>`;
+
+  document.getElementById("an-dept-chart").innerHTML = rows.length ? `
+    <h3 style="margin:0 0 2px">Komposisi Kehadiran per Departemen</h3>
+    <p class="muted small" style="margin:0 0 8px">Porsi dari seluruh hari terjadwal (termasuk izin/cuti). Angka di kanan = tingkat kehadiran.</p>
+    <div class="an-legend-inline">${[["Tepat waktu", C.tepat], ["Terlambat", C.telat], ["Izin/cuti", C.izin], ["Tanpa check-in", C.tanpa], ["Belum", C.belum]].map(([l, c]) => `<span><i class="dot" style="background:${c}"></i>${l}</span>`).join("")}</div>
+    <div style="margin-top:8px">${rows.map(g => {
+      const parts = [["Tepat waktu", g.hadirExp - g.telatExp, C.tepat], ["Terlambat", g.telatExp, C.telat], ["Izin/cuti", g.izin, C.izin], ["Tanpa check-in", g.tanpa, C.tanpa], ["Belum", Math.max(0, g.exp - g.hadirExp - g.tanpa), C.belum]];
+      const total = g.exp + g.izin || 1;
+      return `<div class="an-hrow"><span class="an-hname" title="${esc(g.name)}">${esc(g.name)}</span>
+        <div class="an-hbar" role="img" aria-label="${esc(g.name)}: ${parts.map(([l, v]) => `${l} ${v}`).join(", ")}">${parts.filter(([, v]) => v > 0).map(([l, v, c]) => `<i style="width:${v / total * 100}%;background:${c}" title="${l}: ${v} hari (${Math.round(v / total * 100)}%)"></i>`).join("")}</div>
+        <span class="an-hpct">${pct(g.hadirExp, g.exp)}%</span></div>`;
+    }).join("")}</div>` : "";
 
   state.view = { scope, curStats, cur, month };
 
@@ -493,6 +571,52 @@ function goMonitor(date, q) {
 function onExport() {
   const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   exportXLSX(`analitik-hr-${state.month}${state.dept ? "-" + slug(state.dept) : ""}.xlsx`, state.exportRows, `Analitik ${state.month}`);
+}
+
+// ---------- grafik SVG tanpa pustaka ----------
+const C = { tepat: "#2E7D4F", telat: "#C98A3E", izin: "#6C8EBF", tanpa: "#B3402A", belum: "#CFCBC0" };
+
+function donut(segs, centerMain, centerSub) {
+  const total = segs.reduce((a, x) => a + x.v, 0);
+  if (!total) return `<p class="an-empty">Belum ada hari terjadwal pada bulan ini.</p>`;
+  const R = 68, SW = 26, CIRC = 2 * Math.PI * R;
+  let off = 0;
+  const arcs = segs.filter(x => x.v > 0).map(x => {
+    const len = x.v / total * CIRC, gap = segs.filter(y => y.v > 0).length > 1 ? 1.5 : 0;
+    const el = `<circle cx="100" cy="100" r="${R}" fill="none" stroke="${x.c}" stroke-width="${SW}" stroke-dasharray="${Math.max(0, len - gap)} ${CIRC - Math.max(0, len - gap)}" stroke-dashoffset="${-off}" transform="rotate(-90 100 100)"><title>${esc(x.l)}: ${x.v} hari (${Math.round(x.v / total * 100)}%)</title></circle>`;
+    off += len;
+    return el;
+  }).join("");
+  return `<div class="an-donut-wrap">
+    <svg viewBox="0 0 200 200" role="img" aria-label="Komposisi kehadiran: ${segs.filter(x => x.v > 0).map(x => `${x.l} ${x.v}`).join(", ")}">
+      <circle cx="100" cy="100" r="${R}" fill="none" stroke="#ECEAE4" stroke-width="${SW}"/>${arcs}
+      <text x="100" y="104" text-anchor="middle" class="an-donut-center">${esc(centerMain)}</text>
+      <text x="100" y="124" text-anchor="middle" style="font-size:12px">${esc(centerSub)}</text>
+    </svg>
+    <ul class="an-legend">${segs.map(x => `<li><i class="dot" style="background:${x.c}"></i>${esc(x.l)}<span class="n">${x.v} <span class="muted">(${Math.round(x.v / total * 100)}%)</span></span></li>`).join("")}</ul>
+  </div>`;
+}
+
+// series: [{ name, color, values (null = tidak ada data), area?, tips? }], skala 0–100 (%).
+function lineChart({ labels, series, valueLabels = false, tickEvery = 1 }) {
+  const W = 420, H = 210, L = 32, Rr = 12, T = 16, B = 26;
+  const iw = W - L - Rr, ih = H - T - B, n = labels.length;
+  const x = i => L + (n === 1 ? iw / 2 : i * iw / (n - 1));
+  const y = v => T + ih - Math.min(Math.max(v, 0), 100) / 100 * ih;
+  const grid = [0, 25, 50, 75, 100].map(v => `<line class="an-grid" x1="${L}" x2="${W - Rr}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 3}" text-anchor="end">${v}%</text>`).join("");
+  const xl = labels.map((l, i) => (i % tickEvery === 0 || i === n - 1 ? `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${esc(l)}</text>` : "")).join("");
+  const body = series.map((sr, si) => {
+    const segs = []; let cur = [];
+    sr.values.forEach((v, i) => { if (v == null) { if (cur.length) segs.push(cur); cur = []; } else cur.push([i, v]); });
+    if (cur.length) segs.push(cur);
+    const lines = segs.map(sg => sg.length > 1 ? `<polyline fill="none" stroke="${sr.color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" points="${sg.map(([i, v]) => `${x(i)},${y(v)}`).join(" ")}"/>` : "").join("");
+    const areas = sr.area ? segs.filter(sg => sg.length > 1).map(sg => `<path d="M${x(sg[0][0])},${y(0)} ${sg.map(([i, v]) => `L${x(i)},${y(v)}`).join(" ")} L${x(sg[sg.length - 1][0])},${y(0)} Z" fill="${sr.color}" opacity=".12"/>`).join("") : "";
+    const dots = sr.values.map((v, i) => v == null ? "" : `<circle cx="${x(i)}" cy="${y(v)}" r="${n > 14 ? 2 : 3.2}" fill="${sr.color}" stroke="#fff" stroke-width="1"><title>${esc(sr.tips?.[i] || `${labels[i]} • ${sr.name}: ${v}%`)}</title></circle>`).join("");
+    const vals = valueLabels ? sr.values.map((v, i) => v == null ? "" : `<text class="an-val" x="${x(i)}" y="${y(v) + (si === 0 ? -8 : 14)}" text-anchor="middle">${v}%</text>`).join("") : "";
+    return areas + lines + dots + vals;
+  }).join("");
+  return `<svg class="an-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(series.map(s => s.name).join(" dan "))} per periode">${grid}${xl}${body}</svg>
+    <div class="an-legend-inline">${series.map(sr => `<span><i class="dot" style="background:${sr.color}"></i>${esc(sr.name)}</span>`).join("")}</div>`;
 }
 
 function bars(series, unit) {
