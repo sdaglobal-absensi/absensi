@@ -21,6 +21,7 @@ ORDER=(
   011_reimbursement.sql 012_dokumen_karyawan.sql 013_tukar_shift.sql 014_analitik_hr.sql
   015_onboarding_offboarding.sql 016_kpi_penilaian_kinerja.sql 017_kpi_saya_template_ringkas.sql
   018_absensi_server_side.sql 019_privasi_retensi.sql 020_client_errors.sql
+  022_bpjs_kepesertaan.sql 023_thr.sql
 )
 i=0
 for f in "${ORDER[@]}"; do

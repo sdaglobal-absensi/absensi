@@ -390,7 +390,6 @@ async function load() {
     `Hari terjadwal dihitung per karyawan sesuai jadwal kerjanya, di luar Master Hari Libur dan izin/cuti yang disetujui${isCurrentMonth ? ", sampai hari ini" : ""}.`;
 
   // --- tren 6 bulan ---
-  const attScope = att.filter(a => scopeIds.has(a.user_id));
   const otScope = ots.filter(o => scopeIds.has(o.user_id));
   const otSeries = months.map(ym => ({ ym, val: otScope.filter(o => o.date.startsWith(ym)).reduce((s, o) => s + otHours(o), 0), has: true }));
   // --- grafik ---

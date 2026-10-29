@@ -224,7 +224,7 @@ export async function render(container, user, opts = {}) {
             <label>Tunjangan Lain (Rp) <input type="number" name="tunjangan_lain" min="0" step="1" value="0"></label>
           </div>
           <div class="form-row">
-            <label>Keterangan Tunjangan Lain <input name="keterangan_tunjangan" placeholder="Contoh: Bonus, THR, dsb"></label>
+            <label>Keterangan Tunjangan Lain <input name="keterangan_tunjangan" placeholder="Contoh: Bonus, insentif, dsb (THR diatur di menu THR)"></label>
           </div>
           <div class="form-row">
             <label>Potongan Lain (Rp) <input type="number" name="potongan_lain" min="0" step="1" value="0"></label>
