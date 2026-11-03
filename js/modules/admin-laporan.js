@@ -1,17 +1,43 @@
 import { supabase } from "../supabaseClient.js";
 import { exportCSV, exportXLSX, dateOnlyISO, jenisHubunganKerjaLabel } from "../core.js";
+import { renderHarian } from "./laporan-harian.js";
 
 const MONTH_NAMES = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
+// Menu Laporan punya dua tab: Harian (laporan-harian.js) dan Bulanan (di bawah).
 export async function render(container) {
-  const now = new Date();
   container.innerHTML = `
     <div class="pg-head no-print">
       <div>
-        <h1>Laporan Bulanan</h1>
-        <p class="pg-head-sub">Rekap kehadiran karyawan per bulan. Filter per departemen atau hubungan kerja, lalu cetak atau export.</p>
+        <h1>Laporan</h1>
+        <p class="pg-head-sub">Rekap kehadiran karyawan per hari atau per bulan. Filter per departemen atau hubungan kerja, lalu cetak atau export.</p>
       </div>
     </div>
+    <div class="tabs no-print" role="tablist" style="margin-bottom:16px;">
+      <button type="button" class="tab-btn" role="tab" data-tab="harian">Harian</button>
+      <button type="button" class="tab-btn" role="tab" data-tab="bulanan">Bulanan</button>
+    </div>
+    <div id="laporan-host"></div>
+  `;
+  const host = document.getElementById("laporan-host");
+  const show = tab => {
+    try { sessionStorage.setItem("laporan_tab", tab); } catch { /* private mode: abaikan */ }
+    container.querySelectorAll(".tab-btn").forEach(b => {
+      const on = b.dataset.tab === tab;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-selected", String(on));
+    });
+    return tab === "bulanan" ? renderBulanan(host) : renderHarian(host);
+  };
+  container.querySelectorAll(".tab-btn").forEach(b => b.addEventListener("click", () => show(b.dataset.tab)));
+  let first = "harian";
+  try { first = sessionStorage.getItem("laporan_tab") === "bulanan" ? "bulanan" : "harian"; } catch { /* abaikan */ }
+  return show(first);
+}
+
+async function renderBulanan(container) {
+  const now = new Date();
+  container.innerHTML = `
     <div class="pg-toolbar no-print">
       <div class="filter-row">
         <input type="month" id="filter-month" value="${dateOnlyISO(now).slice(0, 7)}">

@@ -1151,6 +1151,11 @@ button { font-family: 'Inter'; cursor: pointer; }
    ke samping di HP; overflow:hidden di atas sebelumnya memotong kolom Status/Check-out. */
 .dash-panel.table-wrap { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
 .dash-panel.table-wrap .table { min-width: 520px; }
+/* Kartu ringkasan yang bisa diklik untuk menyaring tabel (Laporan Harian). */
+.status-card.clickable { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.status-card.clickable:hover { border-color: var(--primary); }
+.status-card.clickable:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.status-card.active { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary) inset; }
 .dash-panel.table-wrap .table th,
 .dash-panel.table-wrap .table td { white-space: nowrap; }
 
@@ -2152,3 +2157,34 @@ img.photo-missing { visibility: hidden; }
 /* Catatan singkat di dalam popup pengajuan (menggantikan panel "Informasi") */
 .req-notes { margin: 4px 0 14px; padding-left: 18px; color: var(--muted); font-size: 0.82rem; line-height: 1.55; }
 .req-notes li + li { margin-top: 2px; }
+
+/* =====================================================================
+   LAPORAN AKTIVITAS HARIAN (form isian, baca-saja, bilah kemajuan)
+   ===================================================================== */
+.lap-sec { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 16px; overflow: hidden; }
+.lap-sec-title { margin: 0; padding: 10px 14px; background: var(--primary); color: #fff; font-size: .95rem; font-weight: 600; }
+.lap-row { padding: 10px 14px; border-top: 1px solid var(--border); }
+.lap-row:first-of-type { border-top: 0; }
+.lap-row.is-filled { background: rgba(46, 125, 79, .05); }
+.lap-row-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+.lap-no { flex-shrink: 0; min-width: 22px; text-align: right; color: var(--muted); font-weight: 600; font-size: .85rem; padding-top: 1px; }
+.lap-row-title { flex: 1; font-weight: 600; font-size: .9rem; line-height: 1.35; }
+.lap-row-title.muted { font-weight: 500; }
+.lap-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 10px; }
+.lap-f span { display: block; font-size: .72rem; color: var(--muted); margin-bottom: 2px; }
+.lap-f input, .lap-f select { width: 100%; }
+.lap-sec-foot { padding: 10px 14px; border-top: 1px solid var(--border); }
+.lap-empty, .lap-skip { padding: 10px 14px; margin: 0; }
+.lap-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; position: sticky; bottom: 0; padding: 12px 0; background: linear-gradient(to top, var(--bg, #F5F4EF) 70%, transparent); z-index: 5; }
+.lap-progress { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; }
+.lap-bar { flex: 1; min-width: 140px; max-width: 320px; height: 8px; border-radius: 999px; background: #ECEAE4; overflow: hidden; }
+.lap-bar i { display: block; height: 100%; background: var(--ok, #2E7D4F); border-radius: 999px; transition: width .2s; }
+.lap-sec-ro .lap-ro th, .lap-sec-ro .lap-ro td { white-space: normal; vertical-align: top; font-size: .84rem; }
+.lap-sec-ro .lap-ro { min-width: 640px; }
+.lap-tpl-sec { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 12px; background: var(--surface); }
+.lap-tpl-sec textarea { width: 100%; min-height: 110px; font-size: .85rem; }
+@media print {
+  .lap-actions { display: none; }
+  .lap-sec { break-inside: avoid; border-color: #999; }
+  .lap-sec-title { background: #1F4E79 !important; color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

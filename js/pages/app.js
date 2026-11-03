@@ -15,6 +15,8 @@ initErrorReporter();
       "riwayat": () => import("../modules/employee-riwayat.js"),
       "slip-gaji-saya": () => import("../modules/employee-slip-gaji.js"),
       "thr-saya": () => import("../modules/employee-thr.js"),
+      "laporan-aktivitas": () => import("../modules/laporan-aktivitas.js"),
+      "laporan-aktivitas-kelola": () => import("../modules/laporan-aktivitas-kelola.js"),
       "profil": () => import("../modules/employee-profil.js"),
       "pengumuman": () => import("../modules/employee-pengumuman.js"),
       "dinas-luar": () => import("../modules/employee-dinas-luar.js"),
