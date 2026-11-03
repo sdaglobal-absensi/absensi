@@ -29,11 +29,12 @@ const select = (key, label, options) => ({ key, label, type: "select", options }
 export const SECTION_KINDS = {
   aktivitas: {
     label: "Aktivitas & Hasil Pekerjaan", blankDefault: 2,
+    presetExample: "Rekap dan verifikasi absensi\nInput atau update data karyawan\nFollow up dokumen karyawan",
     columns: [
       text("aktivitas", "Aktivitas / pekerjaan", { preset: true }),
-      text("target", "Target"), text("realisasi", "Realisasi"), text("satuan", "Satuan"),
+      text("target", "Target"), text("realisasi", "Realisasi"),
       select("status", "Status", STATUS_KERJA),
-      text("waktu_pic", "Waktu / PIC terkait"), text("keterangan", "Keterangan / bukti"),
+      text("keterangan", "Keterangan / bukti"),
     ],
   },
   kendala: {
@@ -62,6 +63,7 @@ export const SECTION_KINDS = {
   },
   ringkasan: {
     label: "Ringkasan Kondisi Hari Ini", blankDefault: 0,
+    presetExample: "Total manpower | Sesuai data HC | Orang\nAttendance rate | ≥ 98% | %",
     columns: [
       text("indikator", "Indikator", { preset: true }), text("target", "Target / Acuan", { preset: true }),
       text("realisasi", "Realisasi"), text("satuan", "Satuan", { preset: true }),
@@ -70,6 +72,7 @@ export const SECTION_KINDS = {
   },
   monitoring_hr: {
     label: "Monitoring HR", blankDefault: 0,
+    presetExample: "Manpower | Karyawan masuk / join | Orang\nRecruitment | Kandidat interview | Orang",
     columns: [
       text("area", "Area", { preset: true }), text("indikator", "Aktivitas / indikator", { preset: true }),
       text("target", "Target"), text("realisasi", "Realisasi"), text("satuan", "Satuan", { preset: true }),
@@ -78,6 +81,7 @@ export const SECTION_KINDS = {
   },
   monitoring_ga: {
     label: "Monitoring GA, Security & Cleaning Service", blankDefault: 0,
+    presetExample: "GA | Kondisi fasilitas & utilitas | Berfungsi / aman\nSecurity | Patroli / kontrol akses | Sesuai SOP",
     columns: [
       text("area", "Area", { preset: true }), text("indikator", "Indikator / aktivitas", { preset: true }),
       text("target_standar", "Target / standar", { preset: true }), text("realisasi", "Realisasi / temuan"),

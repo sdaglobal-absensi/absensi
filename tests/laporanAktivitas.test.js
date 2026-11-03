@@ -35,9 +35,12 @@ describe("jenis bagian (format Excel)", () => {
       expect(new Set(keys).size, kind).toBe(keys.length);
     }
   });
-  it("kolom Aktivitas sama dengan format Excel", () => {
+  it("kolom Aktivitas: Satuan dan Waktu/PIC sudah dihapus", () => {
     expect(SECTION_KINDS.aktivitas.columns.map(c => c.label)).toEqual([
-      "Aktivitas / pekerjaan", "Target", "Realisasi", "Satuan", "Status", "Waktu / PIC terkait", "Keterangan / bukti"]);
+      "Aktivitas / pekerjaan", "Target", "Realisasi", "Status", "Keterangan / bukti"]);
+    const keys = SECTION_KINDS.aktivitas.columns.map(c => c.key);
+    expect(keys).not.toContain("satuan");
+    expect(keys).not.toContain("waktu_pic");
     expect(SECTION_KINDS.monitoring_ga.columns.map(c => c.label)).toEqual([
       "Area", "Indikator / aktivitas", "Target / standar", "Realisasi / temuan", "Status", "PIC / Vendor", "Tindak lanjut", "Due date"]);
   });
@@ -155,10 +158,10 @@ describe("validateForSubmit", () => {
 describe("ekspor, status, keterlambatan", () => {
   it("flattenReport hanya memuat baris terisi dengan label kolom", () => {
     const d = buildBlankData(sections);
-    d.aktivitas[1].realisasi = "12"; d.aktivitas[1].satuan = "Data";
+    d.aktivitas[1].realisasi = "12"; d.aktivitas[1].target = "15";
     const rows = flattenReport(sections, d);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ Bagian: "Aktivitas & Hasil Pekerjaan", No: 2, "Aktivitas / pekerjaan": "Input atau update data karyawan", Realisasi: "12", Satuan: "Data" });
+    expect(rows[0]).toMatchObject({ Bagian: "Aktivitas & Hasil Pekerjaan", No: 2, "Aktivitas / pekerjaan": "Input atau update data karyawan", Realisasi: "12", Target: "15" });
   });
   it("reportStatus", () => {
     expect(reportStatus(null, true)).toBe("belum");

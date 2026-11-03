@@ -426,8 +426,8 @@ function renderEditor() {
             <label>Judul <input data-f="title" maxlength="120" value="${esc(s.title)}"></label>
           </div>
           <p class="muted small" style="margin:0 0 6px;">Kolom: ${esc(cols.map(c => c.label).join(" • "))}</p>
-          ${pf.length ? `<label>Baris bawaan <span class="muted small">— satu baris per item${pf.length > 1 ? `, kolom dipisah <b>|</b> (${esc(pf.map(f => cols.find(c => c.key === f).label).join(" | "))})` : ""}</span>
-            <textarea data-f="presetText" spellcheck="false">${esc(s.presetText)}</textarea></label>` : ""}
+          ${pf.length ? `<label>Poin-poin dari HR <span class="muted small">— tulis satu poin per baris${pf.length > 1 ? `; kolom dipisah <b>|</b> dengan urutan: ${esc(pf.map(f => cols.find(c => c.key === f).label).join(" | "))}` : ""}. Karyawan tinggal mengisi hasilnya. Kosongkan kalau karyawan menulis sendiri.</span>
+            <textarea data-f="presetText" spellcheck="false" placeholder="${esc(SECTION_KINDS[s.kind].presetExample || "")}">${esc(s.presetText)}</textarea></label>` : ""}
           <div class="form-row two-col" style="margin-top:8px;">
             <label>Jumlah baris kosong tambahan <input type="number" data-f="blank_rows" min="0" max="15" value="${s.blank_rows}"></label>
             <div style="display:flex;gap:8px;align-items:flex-end;justify-content:flex-end;">
