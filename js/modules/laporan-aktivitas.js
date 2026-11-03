@@ -1,8 +1,8 @@
 import { supabase } from "../supabaseClient.js";
 import { toast, todayISO, fmtDate, escapeHtml, confirmDialog } from "../core.js";
 import { addDaysISO } from "../laporanHarian.js";
-import { normalizeSections, buildBlankData, normalizeData, completeness, validateForSubmit, isLateSubmission } from "../laporanAktivitas.js";
-import { renderEditableSections } from "../laporanAktivitasView.js";
+import { normalizeSections, buildBlankData, normalizeData, completeness, validateForSubmit, isLateSubmission, isRowFilled } from "../laporanAktivitas.js";
+import { renderEditableSections, sectionCountText } from "../laporanAktivitasView.js";
 
 // =======================================================================
 // LAPORAN HARIAN SAYA — karyawan mengisi laporan aktivitas harian sesuai
@@ -22,7 +22,7 @@ const fmtDateTime = iso => new Date(iso).toLocaleString("id-ID", { day: "2-digit
 
 export async function render(container, user) {
   const today = todayISO();
-  S = { me: user, today, minDate: addDaysISO(today, -BACK_DAYS), template: null, date: today, report: null, sections: [], data: {}, dirty: false, history: [], busy: false };
+  S = { me: user, today, minDate: addDaysISO(today, -BACK_DAYS), template: null, date: today, report: null, sections: [], data: {}, dirty: false, history: [], busy: false, radio: {} };
 
   container.innerHTML = `
     <div class="pg-head">
@@ -44,17 +44,21 @@ export async function render(container, user) {
   S.template = tpl;
   if (!tpl.is_active) { $("lap-body").innerHTML = `<div class="card"><p>Template laporan "${esc(tpl.name)}" sedang dinonaktifkan oleh HR.</p></div>`; return; }
 
+  const chev = d => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
   $("lap-body").innerHTML = `
-    <div class="pg-toolbar">
-      <div class="filter-row" style="flex-wrap:wrap;">
-        <button type="button" id="lp-prev" class="btn-secondary" aria-label="Hari sebelumnya" title="Hari sebelumnya">◀</button>
-        <input type="date" id="lp-date" min="${S.minDate}" max="${today}" value="${today}">
-        <button type="button" id="lp-next" class="btn-secondary" aria-label="Hari berikutnya" title="Hari berikutnya">▶</button>
-        <button type="button" id="lp-today" class="btn-secondary">Hari ini</button>
+    <div class="lap-top">
+      <div class="lap-top-row">
+        <div class="lap-datenav">
+          <button type="button" id="lp-prev" class="btn-secondary lap-nav" aria-label="Hari sebelumnya" title="Hari sebelumnya">${chev("m15 18-6-6 6-6")}</button>
+          <input type="date" id="lp-date" min="${S.minDate}" max="${today}" value="${today}" aria-label="Tanggal laporan">
+          <button type="button" id="lp-next" class="btn-secondary lap-nav" aria-label="Hari berikutnya" title="Hari berikutnya">${chev("m9 18 6-6-6-6")}</button>
+          <button type="button" id="lp-today" class="btn-secondary">Hari ini</button>
+        </div>
+        <div id="lp-status"></div>
       </div>
+      <div id="lp-banner"></div>
+      <div id="lp-progress" class="lap-progress"></div>
     </div>
-    <div id="lp-banner"></div>
-    <div id="lp-progress" class="lap-progress"></div>
     <div id="lp-form"></div>
     <div id="lp-actions" class="lap-actions"></div>
     <h2 class="dash-section-title" style="margin-top:28px;">Riwayat Laporan</h2>
@@ -74,20 +78,35 @@ export async function render(container, user) {
 
   // Isian: satu pendengar untuk seluruh form (delegasi) supaya tetap jalan setelah render ulang.
   const form = $("lp-form");
-  const onField = e => {
-    const el = e.target.closest("[data-col]");
-    if (!el) return;
+  const setValue = (el, value) => {
     const row = S.data[el.dataset.sec]?.[Number(el.dataset.row)];
     if (!row) return;
-    row[el.dataset.col] = el.value;
+    row[el.dataset.col] = value;
+    const sec = S.sections.find(x => x.key === el.dataset.sec);
+    if (sec) { // tanda centang & hitungan di kepala bagian ikut berubah langsung
+      el.closest(".lap-row")?.classList.toggle("is-filled", isRowFilled(sec.kind, row));
+      const cnt = [...form.querySelectorAll(".lap-sec-count")].find(c => c.dataset.count === sec.key);
+      if (cnt) cnt.textContent = sectionCountText(sec.kind, S.data[sec.key]);
+    }
     markDirty();
     updateProgress();
+  };
+  const onField = e => {
+    const el = e.target.closest("[data-col]");
+    if (el) setValue(el, el.value);
   };
   form.addEventListener("input", onField);
   form.addEventListener("change", onField);
   form.addEventListener("click", e => {
+    // Ketuk pilihan yang sedang aktif sekali lagi = kosongkan pilihan.
+    const rad = e.target.closest('input[type="radio"][data-col]');
+    if (rad) {
+      if (S.radio[rad.name] === rad.value) { rad.checked = false; S.radio[rad.name] = ""; setValue(rad, ""); }
+      else S.radio[rad.name] = rad.value;
+      return;
+    }
     const add = e.target.closest("[data-add]");
-    if (add) { (S.data[add.dataset.add] ||= []).push({}); markDirty(); renderForm(); return; }
+    if (add) { (S.data[add.dataset.add] ||= []).push({}); markDirty(); renderForm(); updateProgress(); return; }
     const del = e.target.closest("[data-del]");
     if (del) { S.data[del.dataset.del]?.splice(Number(del.dataset.row), 1); markDirty(); renderForm(); updateProgress(); }
   });
@@ -126,19 +145,26 @@ const isLocked = () => !!S.report?.reviewed_at;
 
 function renderBanner() {
   const r = S.report;
-  let html = `<div class="muted small" style="margin-bottom:8px;">Template: <b>${esc(S.template.name)}</b> • ${esc(new Date(S.date + "T00:00:00Z").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }))}</div>`;
+  const longDate = new Date(S.date + "T00:00:00Z").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  const chip = r?.reviewed_at ? `<span class="badge badge-ok">Ditinjau HR</span>`
+    : r?.status === "submitted" ? `<span class="badge badge-ok">Terkirim</span>`
+    : r ? `<span class="badge badge-warn">Draf</span>` : `<span class="badge badge-muted">Belum diisi</span>`;
+  $("lp-status").innerHTML = chip;
+  let html = `<div class="lap-meta"><b>${esc(S.template.name)}</b><span>${esc(longDate)}</span></div>`;
   if (r?.reviewed_at) {
-    html += `<div class="mon-alert" style="margin-bottom:12px;"><div class="mon-alert-head"><p class="mon-alert-title">✅ Laporan sudah ditinjau HR (${fmtDateTime(r.reviewed_at)}) dan tidak bisa diubah lagi.</p></div>${r.review_note ? `<p class="small" style="margin:4px 0 0;">Catatan HR: ${esc(r.review_note)}</p>` : ""}</div>`;
+    html += `<div class="lap-note ok"><b>Sudah ditinjau HR</b> pada ${fmtDateTime(r.reviewed_at)}. Laporan ini tidak bisa diubah lagi.${r.review_note ? `<div class="lap-note-sub">Catatan HR: ${esc(r.review_note)}</div>` : ""}</div>`;
   } else if (r?.status === "submitted") {
-    html += `<div class="mon-alert" style="margin-bottom:12px;"><div class="mon-alert-head"><p class="mon-alert-title">Terkirim ${fmtDateTime(r.submitted_at)}${isLateSubmission(r) ? ` <span class="badge badge-warn">Terlambat</span>` : ""}. Kamu masih bisa memperbaruinya sampai ditinjau HR.</p></div></div>`;
+    html += `<div class="lap-note info">Terkirim ${fmtDateTime(r.submitted_at)}${isLateSubmission(r) ? ` <span class="badge badge-warn">Terlambat</span>` : ""}. Kamu masih bisa memperbaruinya sampai HR meninjau.</div>`;
   } else if (r) {
-    html += `<div class="muted small" style="margin-bottom:8px;">📝 Draf tersimpan — belum dikirim.</div>`;
+    html += `<div class="lap-note">Draf sudah tersimpan tapi belum dikirim ke HR.</div>`;
   }
   $("lp-banner").innerHTML = html;
 }
 
 function renderForm() {
   $("lp-form").innerHTML = renderEditableSections(S.sections, S.data, { disabled: isLocked() });
+  S.radio = {};
+  $("lp-form").querySelectorAll('input[type="radio"]:checked').forEach(r => { S.radio[r.name] = r.value; });
 }
 
 function updateProgress() {
@@ -148,8 +174,8 @@ function updateProgress() {
     el.innerHTML = c.filled ? `<span class="small muted">${c.filled} baris terisi</span>` : "";
     return;
   }
-  el.innerHTML = `<div class="lap-bar" role="progressbar" aria-valuenow="${c.pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${c.pct}%"></i></div>
-    <span class="small muted">${c.presetFilled} dari ${c.presetTotal} aktivitas/indikator bawaan terisi (${c.pct}%)${c.extraFilled ? ` • ${c.extraFilled} baris tambahan` : ""}</span>`;
+  el.innerHTML = `<div class="lap-bar" role="progressbar" aria-label="Kelengkapan laporan" aria-valuenow="${c.pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${c.pct}%"></i></div>
+    <span class="lap-pct"><b>${c.pct}%</b> <span class="muted">${c.presetFilled} dari ${c.presetTotal} poin terisi${c.extraFilled ? ` • ${c.extraFilled} tambahan` : ""}</span></span>`;
 }
 
 function renderActions() {
@@ -157,11 +183,14 @@ function renderActions() {
   if (isLocked()) { el.innerHTML = ""; return; }
   const r = S.report;
   const submitted = r?.status === "submitted";
+  const info = S.dirty ? `<span class="lap-dirty">● Belum disimpan</span>` : r ? `<span class="lap-saved">✓ Tersimpan</span>` : "";
   el.innerHTML = `
-    <button type="button" id="lp-save" class="btn-secondary" ${S.busy ? "disabled" : ""}>${submitted ? "Simpan Perubahan" : "Simpan Draf"}</button>
-    <button type="button" id="lp-submit" class="btn-primary" ${S.busy ? "disabled" : ""}>${submitted ? "Perbarui & Kirim Ulang" : "Kirim Laporan"}</button>
-    ${r && r.status === "draft" ? `<button type="button" id="lp-delete" class="btn-link" style="color:var(--danger);">Hapus Draf</button>` : ""}
-    ${S.dirty ? `<span class="small" style="color:var(--warn);">● Ada perubahan yang belum disimpan</span>` : ""}`;
+    <div class="lap-actions-info">${info}</div>
+    <div class="lap-actions-btns">
+      ${r && r.status === "draft" ? `<button type="button" id="lp-delete" class="btn-link lap-delete">Hapus draf</button>` : ""}
+      <button type="button" id="lp-save" class="btn-secondary" ${S.busy ? "disabled" : ""}>${S.busy ? "Menyimpan…" : submitted ? "Simpan Perubahan" : "Simpan Draf"}</button>
+      <button type="button" id="lp-submit" class="btn-primary" ${S.busy ? "disabled" : ""}>${submitted ? "Perbarui & Kirim Ulang" : "Kirim Laporan"}</button>
+    </div>`;
   $("lp-save").addEventListener("click", () => save(false));
   $("lp-submit").addEventListener("click", () => save(true));
   $("lp-delete")?.addEventListener("click", removeDraft);
