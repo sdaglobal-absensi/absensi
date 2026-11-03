@@ -4,7 +4,7 @@ import { addDaysISO } from "../laporanHarian.js";
 import { fetchDailyContext } from "../dailyAttendanceData.js";
 import { printSlip } from "./admin-slip-gaji.js";
 import {
-  SECTION_KINDS, KIND_KEYS, normalizeSections, normalizeData, presetToText, parsePresetText, presetFields,
+  SECTION_KINDS, KIND_KEYS, normalizeSections, normalizeData, presetFields,
   completeness, flattenReport, reportStatus, REPORT_STATUS_LABEL, isLateSubmission,
 } from "../laporanAktivitas.js";
 import { renderReadonlySections } from "../laporanAktivitasView.js";
@@ -392,117 +392,323 @@ async function deleteTemplate(t) {
 }
 
 // --- editor template -------------------------------------------------
+// Tampilan: kepala & tombol simpan menempel (tidak perlu scroll ke bawah untuk menyimpan),
+// tiap bagian bisa dilipat, poin bawaan ditulis per baris (bukan teks dengan tanda "|").
+const MAX_PRESET_ROWS = 40;   // sama dengan batas di laporanAktivitas.js
+const MAX_SECTIONS_UI = 10;
+let escHandler = null;
+let editorSnapshot = "";
+
+const draftKey = d => JSON.stringify({ n: d.name, d: d.description, w: d.wajib, a: d.is_active, s: d.sections.map(({ open, ...s }) => s) });
+const countPreset = s => s.preset.filter(r => Object.values(r).some(v => String(v).trim())).length;
+const sectionSummary = s => {
+  const parts = [];
+  const n = countPreset(s);
+  if (presetFields(s.kind).length) parts.push(n ? `${n} poin bawaan` : "diisi sendiri oleh karyawan");
+  if (s.blank_rows) parts.push(`${s.blank_rows} baris kosong`);
+  return parts.join(" · ") || "tanpa baris";
+};
+
 function openTemplateEditor(t) {
   T.editing = t;
   const sections = normalizeSections(t ? t.sections : [{ kind: "aktivitas" }, { kind: "kendala" }, { kind: "outstanding" }, { kind: "rencana" }]);
   T.draft = {
     name: t?.name || "", description: t?.description || "", wajib: t ? !!t.wajib : true, is_active: t ? !!t.is_active : true,
-    sections: sections.map(s => ({ ...s, presetText: presetToText(s.kind, s.preset) })),
+    sections: sections.map((s, i) => ({ ...s, preset: s.preset.map(r => ({ ...r })), open: i === 0 })),
+    nameError: false,
   };
+  editorSnapshot = draftKey(T.draft);
   renderEditor();
+  setTimeout(() => $("te-name")?.focus(), 30);
 }
 
-function renderEditor() {
+const presetEditorHtml = (s, i) => {
+  const fields = presetFields(s.kind);
+  const cols = SECTION_KINDS[s.kind].columns;
+  if (!fields.length) {
+    return `<p class="tpl-note">Bagian ini diisi sendiri oleh karyawan, jadi tidak ada poin bawaan.</p>`;
+  }
+  const label = f => cols.find(c => c.key === f).label;
+  const example = (SECTION_KINDS[s.kind].presetExample || "").split("\n")[0].split("|").map(x => x.trim());
+  const rows = s.preset.length ? s.preset : [];
+  return `<div class="tpl-preset">
+    <div class="tpl-field-label">Poin dari HR <span class="muted">— karyawan tinggal mengisi hasilnya. Kosongkan jika karyawan menulis sendiri.</span></div>
+    ${fields.length > 1 ? `<div class="tpl-prow tpl-prow-head" style="--n:${fields.length}"><span></span>${fields.map(f => `<span>${esc(label(f))}</span>`).join("")}<span></span></div>` : ""}
+    <div class="tpl-prows">${rows.map((r, ri) => `
+      <div class="tpl-prow ${fields.length > 1 ? "tpl-prow-multi" : ""}" style="--n:${fields.length}">
+        <span class="tpl-pno">${ri + 1}</span>
+        ${fields.map((f, fi) => `<input data-pr="${ri}" data-pf="${f}" maxlength="500" value="${esc(r[f] || "")}" aria-label="${esc(label(f))} poin ${ri + 1}" placeholder="${esc(fields.length > 1 ? label(f) : (example[fi] || "Tulis satu poin"))}">`).join("")}
+        <button type="button" class="tpl-icon-btn" data-rmrow="${ri}" aria-label="Hapus poin ${ri + 1}" title="Hapus poin">×</button>
+      </div>`).join("")}</div>
+    <button type="button" class="btn-secondary tpl-add-row" data-addrow ${rows.length >= MAX_PRESET_ROWS ? "disabled" : ""}>+ Tambah poin</button>
+  </div>`;
+};
+
+function sectionHtml(s, i, total, kindOpts) {
+  const cols = SECTION_KINDS[s.kind].columns;
+  const hr = new Set(presetFields(s.kind));
+  return `<div class="tpl-sec ${s.open ? "open" : ""}" data-i="${i}">
+    <div class="tpl-sec-bar">
+      <button type="button" class="tpl-sec-toggle" data-toggle aria-expanded="${s.open}" aria-controls="tpl-sec-body-${i}">
+        <span class="tpl-sec-no">${i + 1}</span>
+        <span class="tpl-sec-text"><b class="tpl-sec-title">${esc(s.title || SECTION_KINDS[s.kind].label)}</b><span class="tpl-sec-sum muted small">${esc(sectionSummary(s))}</span></span>
+        <svg class="tpl-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="tpl-sec-tools">
+        <button type="button" class="tpl-icon-btn" data-mv="-1" ${i === 0 ? "disabled" : ""} aria-label="Naikkan bagian" title="Naikkan">↑</button>
+        <button type="button" class="tpl-icon-btn" data-mv="1" ${i === total - 1 ? "disabled" : ""} aria-label="Turunkan bagian" title="Turunkan">↓</button>
+        <button type="button" class="tpl-icon-btn tpl-danger" data-rm aria-label="Hapus bagian" title="Hapus bagian">🗑</button>
+      </div>
+    </div>
+    <div class="tpl-sec-body" id="tpl-sec-body-${i}" ${s.open ? "" : "hidden"}>
+      <div class="form-row two-col">
+        <label>Jenis bagian <select data-f="kind">${kindOpts(s.kind)}</select></label>
+        <label>Judul di laporan <input data-f="title" maxlength="120" value="${esc(s.title)}"></label>
+      </div>
+      <div class="tpl-cols">
+        <span class="tpl-field-label">Kolom di laporan</span>
+        ${cols.map(c => `<span class="tpl-chip ${hr.has(c.key) ? "hr" : ""}" title="${hr.has(c.key) ? "Diisi oleh HR lewat poin bawaan" : "Diisi oleh karyawan"}">${esc(c.label)}</span>`).join("")}
+        ${hr.size ? `<span class="tpl-legend muted small">Hijau = diisi HR, abu-abu = diisi karyawan</span>` : ""}
+      </div>
+      ${presetEditorHtml(s, i)}
+      <label class="tpl-blank">Baris kosong tambahan <span class="muted small">untuk pekerjaan di luar poin bawaan</span>
+        <input type="number" data-f="blank_rows" min="0" max="15" value="${s.blank_rows}" inputmode="numeric"></label>
+    </div>
+  </div>`;
+}
+
+function renderEditor(focusSel) {
   const d = T.draft;
+  const prevScroll = $("modal-tpl")?.querySelector(".tpl-body")?.scrollTop || 0;
   const kindOpts = sel => KIND_KEYS.map(k => `<option value="${k}" ${k === sel ? "selected" : ""}>${esc(SECTION_KINDS[k].label)}</option>`).join("");
-  $("lk-modals").innerHTML = `
-    <div id="modal-tpl" class="modal"><div class="modal-box modal-box-lg">
-      <h3>${T.editing ? "Ubah Template" : "Template Baru"}</h3>
-      <div class="form-row two-col">
-        <label>Nama Template <input id="te-name" maxlength="100" required value="${esc(d.name)}" placeholder="Contoh: Laporan Harian HR Admin"></label>
-        <label>Deskripsi <input id="te-desc" maxlength="300" value="${esc(d.description)}" placeholder="Opsional"></label>
+  const full = d.sections.length >= MAX_SECTIONS_UI;
+  const inner = `
+      <div class="tpl-head">
+        <div><h3 id="te-title">${T.editing ? "Ubah Template" : "Template Baru"}</h3>
+          <p class="muted small">Atur bagian laporan yang diisi karyawan setiap hari.</p></div>
+        <button type="button" class="tpl-icon-btn" id="te-x" aria-label="Tutup" title="Tutup">×</button>
       </div>
-      <div class="form-row two-col">
-        <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="te-wajib" style="width:auto;" ${d.wajib ? "checked" : ""}> Wajib diisi tiap hari kerja (yang belum mengisi ditandai di rekap)</label>
-        <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="te-aktif" style="width:auto;" ${d.is_active ? "checked" : ""}> Template aktif</label>
-      </div>
-      <h4 style="margin:14px 0 8px;">Bagian laporan</h4>
-      <div id="te-sections">${d.sections.map((s, i) => {
-        const pf = presetFields(s.kind);
-        const cols = SECTION_KINDS[s.kind].columns;
-        return `<div class="lap-tpl-sec" data-i="${i}">
+      <div class="tpl-body">
+        <div class="tpl-card">
           <div class="form-row two-col">
-            <label>Jenis bagian <select data-f="kind">${kindOpts(s.kind)}</select></label>
-            <label>Judul <input data-f="title" maxlength="120" value="${esc(s.title)}"></label>
+            <label><span>Nama template <span class="tpl-req">wajib</span></span>
+              <input id="te-name" maxlength="100" required value="${esc(d.name)}" placeholder="Contoh: Laporan Harian HR Admin" class="${d.nameError ? "invalid" : ""}" aria-invalid="${d.nameError}">
+              ${d.nameError ? `<span class="tpl-err">Nama template belum diisi.</span>` : ""}</label>
+            <label>Deskripsi <input id="te-desc" maxlength="300" value="${esc(d.description)}" placeholder="Opsional, misalnya untuk jabatan apa"></label>
           </div>
-          <p class="muted small" style="margin:0 0 6px;">Kolom: ${esc(cols.map(c => c.label).join(" • "))}</p>
-          ${pf.length ? `<label>Poin-poin dari HR <span class="muted small">— tulis satu poin per baris${pf.length > 1 ? `; kolom dipisah <b>|</b> dengan urutan: ${esc(pf.map(f => cols.find(c => c.key === f).label).join(" | "))}` : ""}. Karyawan tinggal mengisi hasilnya. Kosongkan kalau karyawan menulis sendiri.</span>
-            <textarea data-f="presetText" spellcheck="false" placeholder="${esc(SECTION_KINDS[s.kind].presetExample || "")}">${esc(s.presetText)}</textarea></label>` : ""}
-          <div class="form-row two-col" style="margin-top:8px;">
-            <label>Jumlah baris kosong tambahan <input type="number" data-f="blank_rows" min="0" max="15" value="${s.blank_rows}"></label>
-            <div style="display:flex;gap:8px;align-items:flex-end;justify-content:flex-end;">
-              <button type="button" class="btn-secondary" data-mv="-1" ${i === 0 ? "disabled" : ""} aria-label="Naikkan">↑</button>
-              <button type="button" class="btn-secondary" data-mv="1" ${i === d.sections.length - 1 ? "disabled" : ""} aria-label="Turunkan">↓</button>
-              <button type="button" class="btn-secondary" data-rm style="color:var(--danger);">Hapus bagian</button>
-            </div>
-          </div>
-        </div>`;
-      }).join("")}</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 16px;">
-        <select id="te-newkind">${kindOpts("aktivitas")}</select>
-        <button type="button" id="te-add" class="btn-secondary" ${d.sections.length >= 10 ? "disabled" : ""}>+ Tambah Bagian</button>
-      </div>
-      <div class="modal-actions">
-        <button type="button" id="te-cancel" class="btn-secondary">Batal</button>
-        <button type="button" id="te-save" class="btn-primary">Simpan Template</button>
-      </div>
-    </div></div>`;
+          <label class="tpl-switch-row"><span><b>Wajib diisi tiap hari kerja</b><small>Karyawan yang belum mengisi ditandai di Rekap Harian.</small></span>
+            <input type="checkbox" role="switch" class="tpl-switch" id="te-wajib" ${d.wajib ? "checked" : ""}></label>
+          <label class="tpl-switch-row"><span><b>Template aktif</b><small>Matikan untuk menghentikan sementara tanpa menghapus.</small></span>
+            <input type="checkbox" role="switch" class="tpl-switch" id="te-aktif" ${d.is_active ? "checked" : ""}></label>
+        </div>
 
-  const root = $("modal-tpl");
-  root.querySelector(".modal-box").addEventListener("input", syncEditor);
-  root.querySelector(".modal-box").addEventListener("change", e => {
-    syncEditor(e);
-    if (e.target.dataset.f === "kind") { // ganti jenis: baris bawaan lama tidak cocok lagi
-      const s = T.draft.sections[Number(e.target.closest(".lap-tpl-sec").dataset.i)];
-      s.kind = e.target.value; s.presetText = ""; s.title = SECTION_KINDS[s.kind].label; s.blank_rows = SECTION_KINDS[s.kind].blankDefault;
-      renderEditor();
-    }
-  });
-  root.addEventListener("click", e => {
-    if (e.target === root) { closeModals(); return; }
-    const sec = e.target.closest(".lap-tpl-sec");
-    if (e.target.closest("#te-cancel")) { closeModals(); return; }
-    if (e.target.closest("#te-save")) { saveTemplate(); return; }
-    if (e.target.closest("#te-add")) { const k = $("te-newkind").value; T.draft.sections.push({ key: `s${Date.now()}`, kind: k, title: SECTION_KINDS[k].label, preset: [], presetText: "", blank_rows: SECTION_KINDS[k].blankDefault }); renderEditor(); return; }
-    if (sec && e.target.closest("[data-rm]")) { T.draft.sections.splice(Number(sec.dataset.i), 1); renderEditor(); return; }
-    const mv = e.target.closest("[data-mv]");
-    if (sec && mv) {
-      const i = Number(sec.dataset.i), j = i + Number(mv.dataset.mv);
-      if (j >= 0 && j < T.draft.sections.length) { [T.draft.sections[i], T.draft.sections[j]] = [T.draft.sections[j], T.draft.sections[i]]; renderEditor(); }
-    }
-  });
-}
+        <div class="tpl-sec-headline">
+          <h4>Bagian laporan <span class="muted">(${d.sections.length})</span></h4>
+          ${d.sections.length > 1 ? `<button type="button" class="btn-link" id="te-fold">${d.sections.every(s => s.open) ? "Ciutkan semua" : "Buka semua"}</button>` : ""}
+        </div>
+        <div id="te-sections">${d.sections.map((s, i) => sectionHtml(s, i, d.sections.length, kindOpts)).join("") || `<p class="tpl-note">Belum ada bagian. Pilih salah satu jenis di bawah.</p>`}</div>
 
-function syncEditor(e) {
-  const d = T.draft;
-  if (e.target.id === "te-name") d.name = e.target.value;
-  else if (e.target.id === "te-desc") d.description = e.target.value;
-  else if (e.target.id === "te-wajib") d.wajib = e.target.checked;
-  else if (e.target.id === "te-aktif") d.is_active = e.target.checked;
-  else if (e.target.dataset?.f) {
-    const sec = e.target.closest(".lap-tpl-sec");
-    if (!sec) return;
-    const s = d.sections[Number(sec.dataset.i)];
-    const f = e.target.dataset.f;
-    if (f === "kind") return; // ditangani di handler change
-    s[f] = f === "blank_rows" ? Number(e.target.value) : e.target.value;
+        <div class="tpl-add">
+          <span class="tpl-field-label">Tambah bagian ${full ? `<span class="muted">(maksimal ${MAX_SECTIONS_UI})</span>` : ""}</span>
+          <div class="tpl-add-list">${KIND_KEYS.map(k => `<button type="button" class="tpl-add-btn" data-addkind="${k}" ${full ? "disabled" : ""}>+ ${esc(SECTION_KINDS[k].label)}</button>`).join("")}</div>
+        </div>
+      </div>
+      <div class="tpl-foot">
+        <span class="muted small tpl-foot-note">Laporan yang sudah dikirim tidak berubah.</span>
+        <div class="tpl-foot-actions">
+          <button type="button" id="te-cancel" class="btn-secondary">Batal</button>
+          <button type="button" id="te-save" class="btn-primary">Simpan Template</button>
+        </div>
+      </div>`;
+
+  // Kerangka modal dibuat SEKALI. Setelah itu hanya isi kotaknya yang diganti: core.js mereset scroll
+  // setiap elemen .modal baru, jadi menggambar ulang seluruh modal akan melempar posisi scroll ke atas.
+  let root = $("modal-tpl");
+  if (!root) {
+    $("lk-modals").innerHTML = `<div id="modal-tpl" class="modal"><div class="modal-box tpl-box" role="dialog" aria-modal="true" aria-labelledby="te-title"></div></div>`;
+    root = $("modal-tpl");
+    const box = root.querySelector(".modal-box");
+    box.addEventListener("input", syncEditor);
+    box.addEventListener("change", onEditorChange);
+    box.addEventListener("keydown", onEditorKey);
+    box.addEventListener("paste", onEditorPaste);
+    let downOnBackdrop = false;
+    root.addEventListener("mousedown", e => { downOnBackdrop = e.target === root; });
+    root.addEventListener("click", onEditorClick);
+    root.addEventListener("click", e => { if (e.target === root && downOnBackdrop) requestCloseEditor(); });
+  }
+  root.querySelector(".modal-box").innerHTML = inner;
+  root.querySelector(".tpl-body").scrollTop = prevScroll;
+  if (focusSel) root.querySelector(focusSel)?.focus({ preventScroll: false });
+
+  if (!escHandler) {
+    escHandler = e => { if (e.key === "Escape" && $("modal-tpl")) requestCloseEditor(); };
+    document.addEventListener("keydown", escHandler);
   }
 }
 
-function closeModals() { $("lk-modals").innerHTML = ""; }
+const secOf = el => T.draft.sections[Number(el.closest(".tpl-sec")?.dataset.i)];
+
+function refreshSecHeader(el) {
+  const secEl = el.closest(".tpl-sec"); const s = secOf(el);
+  if (!secEl || !s) return;
+  secEl.querySelector(".tpl-sec-title").textContent = s.title || SECTION_KINDS[s.kind].label;
+  secEl.querySelector(".tpl-sec-sum").textContent = sectionSummary(s);
+}
+
+function syncEditor(e) {
+  const d = T.draft, t = e.target;
+  if (t.id === "te-name") { d.name = t.value; if (d.nameError && t.value.trim()) { d.nameError = false; t.classList.remove("invalid"); t.setAttribute("aria-invalid", "false"); t.parentElement.querySelector(".tpl-err")?.remove(); } return; }
+  if (t.id === "te-desc") { d.description = t.value; return; }
+  if (t.id === "te-wajib") { d.wajib = t.checked; return; }
+  if (t.id === "te-aktif") { d.is_active = t.checked; return; }
+  const s = t.closest(".tpl-sec") ? secOf(t) : null;
+  if (!s) return;
+  if (t.dataset.pr !== undefined) { s.preset[Number(t.dataset.pr)][t.dataset.pf] = t.value; refreshSecHeader(t); return; }
+  const f = t.dataset.f;
+  if (f === "kind") return; // ditangani di onEditorChange
+  if (f === "blank_rows") s.blank_rows = Math.min(15, Math.max(0, Math.trunc(Number(t.value) || 0)));
+  else if (f === "title") s.title = t.value;
+  refreshSecHeader(t);
+}
+
+async function onEditorChange(e) {
+  const t = e.target;
+  if (t.dataset?.f !== "kind") return;
+  const s = secOf(t);
+  if (countPreset(s)) {
+    const ok = await confirmDialog({
+      title: "Ganti jenis bagian?",
+      message: "Poin bawaan yang sudah ditulis di bagian ini akan dihapus karena kolomnya berbeda.",
+      confirmLabel: "Ganti jenis",
+    });
+    if (!ok) { renderEditor(); return; }
+  }
+  s.kind = t.value; s.preset = []; s.title = SECTION_KINDS[s.kind].label; s.blank_rows = SECTION_KINDS[s.kind].blankDefault;
+  renderEditor();
+}
+
+// Enter di poin terakhir = tambah poin baru; ini mempercepat mengetik banyak poin.
+function onEditorKey(e) {
+  const t = e.target;
+  if (t.dataset?.pr === undefined || e.key !== "Enter") return;
+  e.preventDefault();
+  const s = secOf(t);
+  const fields = presetFields(s.kind);
+  const ri = Number(t.dataset.pr);
+  if (t.dataset.pf !== fields[fields.length - 1]) { t.nextElementSibling?.focus(); return; }
+  if (ri === s.preset.length - 1) {
+    if (s.preset.length >= MAX_PRESET_ROWS) return;
+    s.preset.push(Object.fromEntries(fields.map(f => [f, ""])));
+  }
+  const i = T.draft.sections.indexOf(s);
+  renderEditor(`.tpl-sec[data-i="${i}"] [data-pr="${ri + 1}"][data-pf="${fields[0]}"]`);
+}
+
+// Tempel beberapa baris sekaligus (mis. dari Excel/Word) di bagian satu-kolom: otomatis jadi poin terpisah.
+function onEditorPaste(e) {
+  const t = e.target;
+  if (t.dataset?.pr === undefined) return;
+  const s = secOf(t);
+  const fields = presetFields(s.kind);
+  const text = (e.clipboardData || window.clipboardData)?.getData("text") || "";
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return;
+  e.preventDefault();
+  let ri = Number(t.dataset.pr);
+  const startField = fields.indexOf(t.dataset.pf);
+  lines.forEach((line, k) => {
+    if (ri + k >= MAX_PRESET_ROWS) return;
+    if (!s.preset[ri + k]) s.preset[ri + k] = Object.fromEntries(fields.map(f => [f, ""]));
+    // satu kolom: satu baris = satu poin. Banyak kolom: baris Excel dipisah tab / "|".
+    const cells = fields.length === 1 ? [line] : line.split(/\t|\|/).map(c => c.trim());
+    cells.forEach((c, ci) => { const f = fields[startField + ci]; if (f) s.preset[ri + k][f] = c; });
+  });
+  const i = T.draft.sections.indexOf(s);
+  renderEditor(`.tpl-sec[data-i="${i}"] [data-pr="${Math.min(ri + lines.length - 1, MAX_PRESET_ROWS - 1)}"][data-pf="${fields[0]}"]`);
+  toast(`${Math.min(lines.length, MAX_PRESET_ROWS - ri)} poin ditempel.`, "success");
+}
+
+function onEditorClick(e) {
+  const d = T.draft;
+  const q = sel => e.target.closest(sel);
+  if (q("#te-x") || q("#te-cancel")) { requestCloseEditor(); return; }
+  if (q("#te-save")) { saveTemplate(); return; }
+  if (q("#te-fold")) { const open = !d.sections.every(s => s.open); d.sections.forEach(s => { s.open = open; }); renderEditor(); return; }
+  const add = q("[data-addkind]");
+  if (add) {
+    if (d.sections.length >= MAX_SECTIONS_UI) return;
+    const k = add.dataset.addkind;
+    d.sections.forEach(s => { s.open = false; });
+    d.sections.push({ key: `s${Date.now()}`, kind: k, title: SECTION_KINDS[k].label, preset: [], blank_rows: SECTION_KINDS[k].blankDefault, open: true });
+    renderEditor();
+    const last = $("te-sections").lastElementChild;
+    last?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    return;
+  }
+  const secEl = q(".tpl-sec");
+  if (!secEl) return;
+  const i = Number(secEl.dataset.i), s = d.sections[i];
+  if (q("[data-toggle]")) { s.open = !s.open; renderEditor(); return; }
+  if (q("[data-rm]")) { d.sections.splice(i, 1); renderEditor(); return; }
+  const mv = q("[data-mv]");
+  if (mv) {
+    const j = i + Number(mv.dataset.mv);
+    if (j >= 0 && j < d.sections.length) { [d.sections[i], d.sections[j]] = [d.sections[j], d.sections[i]]; renderEditor(`.tpl-sec[data-i="${j}"] [data-mv="${mv.dataset.mv}"]`); }
+    return;
+  }
+  const fields = presetFields(s.kind);
+  if (q("[data-addrow]")) {
+    s.preset.push(Object.fromEntries(fields.map(f => [f, ""])));
+    renderEditor(`.tpl-sec[data-i="${i}"] [data-pr="${s.preset.length - 1}"][data-pf="${fields[0]}"]`);
+    return;
+  }
+  const rm = q("[data-rmrow]");
+  if (rm) { s.preset.splice(Number(rm.dataset.rmrow), 1); renderEditor(); }
+}
+
+let askingClose = false;
+async function requestCloseEditor() {
+  if (askingClose) return;
+  if (T.draft && draftKey(T.draft) !== editorSnapshot) {
+    askingClose = true;
+    const ok = await confirmDialog({
+      title: "Buang perubahan?",
+      message: "Perubahan pada template ini belum disimpan.",
+      confirmLabel: "Buang", confirmClass: "btn-danger",
+    }).finally(() => { askingClose = false; });
+    if (!ok) return;
+  }
+  closeModals();
+}
+
+function closeModals() {
+  $("lk-modals").innerHTML = "";
+  if (escHandler) { document.removeEventListener("keydown", escHandler); escHandler = null; }
+}
 
 async function saveTemplate() {
   const d = T.draft;
   const name = d.name.trim();
-  if (!name) { toast("Nama template wajib diisi.", "error"); return; }
-  const sections = normalizeSections(d.sections.map(s => ({ ...s, preset: parsePresetText(s.kind, s.presetText) })));
+  if (!name) {
+    d.nameError = true; renderEditor("#te-name");
+    toast("Nama template wajib diisi.", "error");
+    return;
+  }
+  const sections = normalizeSections(d.sections);
   if (!sections.length) { toast("Tambahkan minimal satu bagian laporan.", "error"); return; }
   const row = { name, description: d.description.trim() || null, wajib: d.wajib, is_active: d.is_active, sections };
+  const btn = $("te-save");
+  if (btn) { btn.disabled = true; btn.textContent = "Menyimpan…"; }
   const q = T.editing
     ? supabase.from("daily_report_templates").update(row).eq("id", T.editing.id)
     : supabase.from("daily_report_templates").insert(row);
   const { error } = await q;
-  if (error) { toast(/uq_daily_report_templates_name|duplicate/i.test(error.message) ? "Nama template sudah dipakai." : "Gagal menyimpan template: " + error.message, "error"); return; }
+  if (error) {
+    if (btn) { btn.disabled = false; btn.textContent = "Simpan Template"; }
+    toast(/uq_daily_report_templates_name|duplicate/i.test(error.message) ? "Nama template sudah dipakai." : "Gagal menyimpan template: " + error.message, "error");
+    return;
+  }
   toast("Template disimpan.", "success");
   closeModals();
   await loadTemplates();
